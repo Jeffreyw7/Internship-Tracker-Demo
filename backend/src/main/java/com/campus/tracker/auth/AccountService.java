@@ -7,7 +7,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
 @Service
@@ -23,8 +22,7 @@ public class AccountService {
     @Transactional
     public AuthDtos.UserView register(AuthDtos.Registration input) {
         if (!registrationEnabled) throw new ApiException(HttpStatus.FORBIDDEN, "Registration is disabled for this workspace.");
-        if (input.password().getBytes(StandardCharsets.UTF_8).length > 72)
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Password must fit within 72 UTF-8 bytes.");
+        PasswordPolicy.validate(input.password());
         String email = input.email().trim().toLowerCase(Locale.ROOT);
         if (users.existsByEmail(email)) throw new ApiException(HttpStatus.CONFLICT, "An account with this email already exists. Sign in instead.");
         CampusUser user = users.saveAndFlush(new CampusUser(email, input.displayName().trim(), encoder.encode(input.password())));

@@ -5,10 +5,20 @@ import { ApiError, request, refreshCsrf } from '../src/data/api.ts';
 import { blankDraft, today, activities } from '../src/domain/application.ts';
 import { filterApplications } from '../src/domain/selectors.ts';
 import { sampleApplications } from './fixtures/seed.ts';
+import { passwordError } from '../src/domain/password.ts';
 const originalFetch=globalThis.fetch;
 afterEach(()=>{globalThis.fetch=originalFetch;});
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
 const draft=()=>({...blankDraft(),company:' Example Labs ',role:'Java Intern',status:'Applied',appliedDate:today()});
+
+test('signup password policy checks complexity, character count, and UTF-8 boundaries',()=>{
+  for(const value of ['', 'Abcdefghi1!', 'abcdefghij1!', 'ABCDEFGHIJ1!', 'Abcdefghijk!', 'Abcdefghijk1', 'Abcdefghij1 ', 'Ab1!'+'a'.repeat(69), 'Ab1!'+'é'.repeat(35), 'Ab1!'+'😀'.repeat(7)]) {
+    assert.ok(passwordError(value), 'Expected rejected password');
+  }
+  for(const value of ['Abcdefghij1!', 'Ab1!'+'a'.repeat(68), 'Ab1!'+'é'.repeat(34), 'Ab1!'+'😀'.repeat(8), 'Àbcdefghij1!']) {
+    assert.equal(passwordError(value), null);
+  }
+});
 
 test('JSON payload excludes server-owned metadata and converts empty dates to null',()=>{
   const payload=toPayload({...draft(),id:'server-id',ownerId:'forged',version:8,sample:true,deleted:true});

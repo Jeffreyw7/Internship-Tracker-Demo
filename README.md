@@ -56,6 +56,8 @@ java -jar target/campus-tracker-2.0.0.jar
 
 Use `.\mvnw.cmd` in place of `./mvnw` on Windows. The `with-ui` profile copies the built React files into the executable JAR, so Java serves both the website and `/api` from the same origin. The ordinary backend build does not download or build Node dependencies.
 
+New accounts require a password with at least 12 characters, including an uppercase letter, a lowercase letter, a number, and a symbol. Unicode letters, numbers, and symbols are supported. Passwords must fit within 72 UTF-8 bytes for BCrypt; spaces do not count as symbols. The server enforces the same policy as the signup form. Existing accounts can still sign in with their original passwords.
+
 ## What works
 
 - Account registration, sign-in and sign-out using Spring Security sessions.

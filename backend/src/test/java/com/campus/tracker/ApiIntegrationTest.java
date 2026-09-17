@@ -89,6 +89,39 @@ class ApiIntegrationTest {
                         "displayName", "Duplicate", "includeSamples", false)))).andExpect(status().isConflict());
     }
 
+    @Test void registrationRejectsWeakPasswordsWithoutCreatingAnAccount() throws Exception {
+        for (String password : List.of("", "Abcdefghi1!", "abcdefghij1!", "ABCDEFGHIJ1!",
+                "Abcdefghijk!", "Abcdefghijk1", "Abcdefghij1 ", "Ab1!" + "a".repeat(69),
+                "Ab1!" + "é".repeat(35), "Ab1!" + "😀".repeat(7))) {
+            String email = "rejected-" + UUID.randomUUID() + "@example.test";
+            mvc.perform(post("/api/auth/register").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                    .content(json.writeValueAsString(Map.of("email", email, "password", password,
+                            "displayName", "Policy Tester", "includeSamples", true))))
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").isNotEmpty());
+            assertThat(users.existsByEmail(email)).isFalse();
+        }
+    }
+
+    @Test void registrationAcceptsStrongPasswordsAtCharacterAndByteBoundaries() throws Exception {
+        for (String password : List.of("Abcdefghij1!", "Ab1!" + "a".repeat(68),
+                "Ab1!" + "é".repeat(34), "Ab1!" + "😀".repeat(8), "Àbcdefghij1!")) {
+            String email = "accepted-" + UUID.randomUUID() + "@example.test";
+            mvc.perform(post("/api/auth/register").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                    .content(json.writeValueAsString(Map.of("email", email, "password", password,
+                            "displayName", "Policy Tester", "includeSamples", false))))
+                    .andExpect(status().isCreated());
+            mvc.perform(post("/api/auth/login").with(csrf()).param("email", email).param("password", password))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    @Test void existingAccountsCanStillSignInWithTheirOriginalPassword() throws Exception {
+        String email = "legacy-" + UUID.randomUUID() + "@example.test";
+        users.saveAndFlush(new com.campus.tracker.auth.CampusUser(email, "Existing User", passwords.encode("oldpassword")));
+        mvc.perform(post("/api/auth/login").with(csrf()).param("email", email).param("password", "oldpassword"))
+                .andExpect(status().isOk());
+    }
+
     @Test void samplesAreOptionalAndIsolatedPerAccount() throws Exception {
         Account seeded = account(true), empty = account(false);
         mvc.perform(get("/api/applications").session(seeded.session())).andExpect(status().isOk())
