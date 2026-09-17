@@ -1,6 +1,9 @@
 package com.campus.tracker.config;
 
 import com.campus.tracker.auth.*;
+import com.campus.tracker.auth.abuse.*;
+import org.springframework.security.web.csrf.CsrfFilter;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,9 +27,11 @@ public class SecurityConfig {
                 .map(CampusPrincipal::from).orElseThrow(() -> new UsernameNotFoundException("Invalid credentials"));
     }
 
-    @Bean SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper json) throws Exception {
+    @Bean SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper json, AuthRateLimiter limiter, AuthWorkLimiter work, AuthAbuseProperties policies) throws Exception {
         return http
                 .csrf(csrf -> csrf.csrfTokenRepository(new HttpSessionCsrfTokenRepository()))
+                .addFilterBefore(new AuthAbuseFilter(limiter, policies, json), CsrfFilter.class)
+                .addFilterBefore(new LoginWorkFilter(limiter, work, policies, json), UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.GET, "/api/auth/csrf", "/api/health").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login").permitAll()

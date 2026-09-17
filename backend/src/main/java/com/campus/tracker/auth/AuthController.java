@@ -1,5 +1,7 @@
 package com.campus.tracker.auth;
 
+import com.campus.tracker.auth.abuse.AuthThrottleException;
+import com.campus.tracker.auth.abuse.AuthWorkLimiter;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -11,7 +13,8 @@ import java.util.Map;
 @RequestMapping("/api/auth")
 public class AuthController {
     private final AccountService accounts;
-    public AuthController(AccountService accounts) { this.accounts = accounts; }
+    private final AuthWorkLimiter work;
+    public AuthController(AccountService accounts, AuthWorkLimiter work) { this.accounts = accounts; this.work = work; }
 
     @GetMapping("/csrf")
     public Map<String, String> csrf(CsrfToken token) { return Map.of("token", token.getToken(), "headerName", token.getHeaderName()); }
@@ -21,5 +24,10 @@ public class AuthController {
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    public AuthDtos.UserView register(@Valid @RequestBody AuthDtos.Registration request) { return accounts.register(request); }
+    public AuthDtos.UserView register(@Valid @RequestBody AuthDtos.Registration request) {
+        var permit = work.tryAcquire();
+        if (permit == null) throw new AuthThrottleException(1);
+        // Acquire before entering the transactional service so rejected work holds no database connection.
+        try (permit) { return accounts.register(request); }
+    }
 }

@@ -62,3 +62,26 @@ test('completed interviews and cleared follow-ups leave the activity list',()=>{
   const a=sampleApplications()[0];const initial=activities([a]);assert.equal(initial.length,2);
   assert.equal(activities([{...a,followUpDate:'',stages:a.stages.map(s=>({...s,state:'Completed'}))}]).length,0);
 });
+
+test('CSRF throttling preserves server message and retry interval',async()=>{
+  let calls=0;
+  globalThis.fetch=async()=>{calls++;return new Response(JSON.stringify({message:'Slow down'}),{
+    status:429,headers:{'Content-Type':'application/json','Retry-After':'30'}});};
+  await assert.rejects(()=>refreshCsrf(), e=>e instanceof ApiError&&e.status===429&&e.message.includes('Slow down')&&e.retryAfterSeconds===30);
+  assert.equal(calls,1);
+});
+test('login throttling is never replayed and preserves retry interval',async()=>{
+  let writes=0;
+  globalThis.fetch=async(url)=>{
+    if(url==='/api/auth/csrf')return json({token:'token',headerName:'X-CSRF-TOKEN'});
+    writes++;return new Response(JSON.stringify({message:'Slow down'}),{status:429,headers:{'Retry-After':'5'}});
+  };
+  await refreshCsrf();
+  await assert.rejects(()=>request('/auth/login',{method:'POST'}),e=>e instanceof ApiError&&e.status===429&&e.retryAfterSeconds===5);
+  assert.equal(writes,1);
+});
+test('invalid Retry-After does not hide the original API error',async()=>{
+  globalThis.fetch=async()=>new Response(JSON.stringify({message:'Slow down'}),{status:429,headers:{'Retry-After':'nonsense'}});
+  await assert.rejects(()=>request('/applications'),e=>e instanceof ApiError&&e.status===429&&e.retryAfterSeconds===undefined);
+});
+

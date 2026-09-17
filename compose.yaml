@@ -3,28 +3,48 @@ services:
     image: postgres:17
     environment:
       POSTGRES_DB: campus
-      POSTGRES_USER: campus
-      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
+      POSTGRES_USER: ${DATABASE_ADMIN_USERNAME:-campus_admin}
+      POSTGRES_PASSWORD: ${DATABASE_ADMIN_PASSWORD:?Set DATABASE_ADMIN_PASSWORD in .env}
+      MIGRATION_DATABASE_PASSWORD: ${MIGRATION_DATABASE_PASSWORD:?Set MIGRATION_DATABASE_PASSWORD in .env}
+      RUNTIME_DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
     volumes:
       - campus-postgres:/var/lib/postgresql/data
+      - ./deploy/postgres:/opt/campus/postgres:ro
+      - ./deploy/postgres/10-provision.sh:/docker-entrypoint-initdb.d/10-provision.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U campus -d campus"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d campus"]
       interval: 5s
       timeout: 5s
       retries: 10
+  migrate:
+    build:
+      context: .
+      target: migrate
+    environment:
+      MIGRATION_DATABASE_URL: jdbc:postgresql://database:5432/campus
+      MIGRATION_DATABASE_USERNAME: campus_migrator
+      MIGRATION_DATABASE_PASSWORD: ${MIGRATION_DATABASE_PASSWORD:?Set MIGRATION_DATABASE_PASSWORD in .env}
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: "no"
   app:
-    build: .
+    build:
+      context: .
+      target: app
     ports:
       - "127.0.0.1:8080:8080"
     environment:
       SPRING_PROFILES_ACTIVE: prod
       DATABASE_URL: jdbc:postgresql://database:5432/campus
-      DATABASE_USERNAME: campus
+      DATABASE_USERNAME: campus_runtime
       DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
       COOKIE_SECURE: "false"
       REGISTRATION_ENABLED: "true"
     depends_on:
       database:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 volumes:
   campus-postgres:
