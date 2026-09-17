@@ -1,0 +1,11 @@
+node_modules/
+dist/
+test-results/
+*.log
+node_modules
+/backend/target/
+/backend/data/
+/data/
+.env
+*.db
+*.trace.db

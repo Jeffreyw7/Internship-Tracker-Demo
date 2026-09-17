@@ -1,0 +1,7 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:campus-tests;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+campus:
+  registration-enabled: true
