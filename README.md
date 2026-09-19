@@ -69,6 +69,18 @@ New accounts require a password with at least 12 characters, including an upperc
 
 Follow-ups are displayed in the workspace. They do not send notifications or create calendar events. The app does not include email verification, password reset, admin account management or recruitment integrations.
 
+## Planned updates
+
+The following features are planned for later updates:
+
+- Email notification system
+- Calendar integration
+- Password reset
+- Email verification
+- Admin account management
+- Dark mode
+- A friendlier user interface
+
 ## Database options
 
 H2 is the default for a self-contained local project. To use local PostgreSQL with Docker:
