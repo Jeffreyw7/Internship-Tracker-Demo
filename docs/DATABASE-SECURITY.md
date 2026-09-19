@@ -62,4 +62,16 @@ Keep the app stopped if any step fails. Provisioning/upgrade errors roll back th
 
 From `backend`, run `./mvnw -Ppostgres-it verify` (Windows: `.\mvnw.cmd -Ppostgres-it verify`). The profile creates fresh, disposable PostgreSQL 17 containers and fails visibly if Docker is missing. It exercises the actual provisioning/upgrade scripts, repeated migrations, retained legacy data, allowed DML, and permission-denied SQLSTATE 42501 for prohibited operations. Ordinary H2 tests do not establish PostgreSQL privilege safety.
 
-The optional profile does not prove Compose startup ordering or end-to-end HTTP workflows by itself. Validate the fresh and restored Compose stacks before deployment. Deliberately break a migration in a disposable checkout and verify that `app` remains stopped when `migrate` exits nonzero.
+The optional profile verifies SQL privileges and application HTTP workflows, but does not prove Compose startup ordering. Validate the fresh and restored Compose stacks before deployment. Deliberately break a migration in a disposable checkout and verify that `app` remains stopped when `migrate` exits nonzero.
+
+### Optional Windows verification without Docker
+
+Supply an installed PostgreSQL 17 bin directory containing initdb.exe, pg_ctl.exe, postgres.exe, psql.exe and their runtime libraries:
+
+```powershell
+.\mvnw.cmd -B -Ppostgres-it '-Dpostgres.test.bin=C:/Program Files/PostgreSQL/17/bin' verify
+```
+
+This mode initializes isolated clusters under backend/target, uses loopback and synthetic credentials, and shuts the servers down after each test. It never connects to an existing application database. Subprocess output goes to files to avoid inherited Windows pipe handles blocking shutdown.
+
+Each fresh/legacy scenario also starts the application with runtime credentials and exercises registration with samples, login, application create/edit/delete/restore, and stage removal over HTTP. See [the verification record](../VALIDATION.md) for executed results and remaining deployment checks.

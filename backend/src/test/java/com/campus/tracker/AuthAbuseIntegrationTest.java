@@ -96,6 +96,30 @@ class AuthAbuseIntegrationTest {
         mvc.perform(login("192.0.2.72", "x".repeat(255))).andExpect(status().isBadRequest());
         verifyNoInteractions(passwords);
     }
+    @Test void rotatingUnsafePathsCannotAllocateUnlimitedAnonymousSessions() throws Exception {
+        String[] paths = {"/api/does-not-exist", "/api/auth/csrf", "/api/auth/logout", "/unmapped"};
+        for (String path : paths) {
+            var result = mvc.perform(post(path).with(r -> {r.setRemoteAddr("192.0.2.91"); return r;}))
+                .andExpect(status().isForbidden()).andReturn();
+            assertThat(result.getRequest().getSession(false)).isNotNull();
+        }
+        var rejected = mvc.perform(put("/api/auth/login").with(r -> {r.setRemoteAddr("192.0.2.91"); return r;}))
+            .andExpect(status().isTooManyRequests()).andReturn();
+        assertThat(rejected.getRequest().getSession(false)).isNull();
+    }
+    @Test void contextPathDoesNotBypassLoginBudget() throws Exception {
+        for (int i = 0; i < 2; i++) {
+            mvc.perform(post("/campus/api/auth/login").contextPath("/campus").servletPath("/api/auth/login")
+                .with(csrf()).with(r -> {r.setRemoteAddr("192.0.2.92"); return r;})
+                .param("email", "context"+i+"@example.test").param("password","incorrect"))
+                .andExpect(status().isUnauthorized());
+        }
+        mvc.perform(post("/campus/api/auth/login").contextPath("/campus").servletPath("/api/auth/login")
+            .with(csrf()).with(r -> {r.setRemoteAddr("192.0.2.92"); return r;})
+            .param("email","context-other@example.test").param("password","incorrect"))
+            .andExpect(status().isTooManyRequests());
+    }
+
     @Test void registrationWithRealCsrfCanLoginAndRefreshToken() throws Exception {
         String email = "flow-"+UUID.randomUUID()+"@example.test";
         var first = mvc.perform(get("/api/auth/csrf").with(r -> {r.setRemoteAddr("192.0.2.81"); return r;})).andReturn();

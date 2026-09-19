@@ -39,9 +39,64 @@ class PostgresPrivilegesIT {
      assertThatThrownBy(()->s.execute(denied)).as(denied).isInstanceOfSatisfying(SQLException.class,e->assertThat(e.getSQLState()).isEqualTo("42501"));
     }
    }
+   verifyHttp(db);
    var verification=db.psql("psql","-X","-v","ON_ERROR_STOP=1","-U",db.getUsername(),"-d","campus","-f","verify-runtime.sql");
    assertThat(verification.getExitCode()).withFailMessage(verification.getStderr()).isZero();
   }
+ }
+ private void verifyHttp(TestDatabase db) throws Exception {
+  try(var context=new org.springframework.boot.builder.SpringApplicationBuilder(CampusApplication.class)
+      .profiles("prod").run(
+          "--server.port=0","--server.address=127.0.0.1",
+          "--spring.datasource.url="+db.getJdbcUrl(),
+          "--spring.datasource.username=campus_runtime",
+          "--spring.datasource.password=runtime-'quote-password",
+          "--campus.registration-enabled=true","--server.servlet.session.cookie.secure=false",
+          "--debug=false","--logging.level.root=WARN")) {
+   var server=(org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext)context;
+   String base="http://127.0.0.1:"+server.getWebServer().getPort();
+   var cookies=new java.net.CookieManager(null,java.net.CookiePolicy.ACCEPT_ALL);
+   var client=java.net.http.HttpClient.newBuilder().cookieHandler(cookies).build();
+   var json=new com.fasterxml.jackson.databind.ObjectMapper();
+   var csrf=json.readTree(http(client,base,"GET","/api/auth/csrf",null,null,200).body());
+   String token=csrf.get("token").asText();
+   String email="http-"+java.util.UUID.randomUUID()+"@example.test";
+   http(client,base,"POST","/api/auth/register",json.writeValueAsString(Map.of(
+       "displayName","Runtime Test","email",email,"password","Campus-test-123!","includeSamples",true)),token,201);
+   http(client,base,"POST","/api/auth/login","email="+java.net.URLEncoder.encode(email,java.nio.charset.StandardCharsets.UTF_8)
+       +"&password=Campus-test-123%21",token,200);
+   token=json.readTree(http(client,base,"GET","/api/auth/csrf",null,null,200).body()).get("token").asText();
+   var listed=json.readTree(http(client,base,"GET","/api/applications",null,null,200).body());
+   assertThat(listed.get("totalElements").asInt()).isEqualTo(10);
+   var draft=json.createObjectNode().put("company","Runtime Company").put("role","Intern")
+       .put("location","Remote").put("status","Saved").put("notes","Privilege test");
+   draft.putArray("stages").addObject().put("name","Interview").put("state","Planned");
+   var created=json.readTree(http(client,base,"POST","/api/applications",json.writeValueAsString(draft),token,201).body());
+   String path="/api/applications/"+created.get("id").asText();
+   draft.putArray("stages"); draft.put("company","Updated Runtime Company");
+   var updated=json.readTree(httpVersion(client,base,"PUT",path,json.writeValueAsString(draft),token,
+       created.get("version").asText(),200).body());
+   assertThat(updated.get("stages").size()).isZero();
+   var deleted=json.readTree(httpVersion(client,base,"DELETE",path,null,token,updated.get("version").asText(),200).body());
+   var restored=json.readTree(httpVersion(client,base,"POST",path+"/restore",null,token,deleted.get("version").asText(),200).body());
+   assertThat(restored.get("deleted").asBoolean()).isFalse();
+   http(client,base,"POST","/api/auth/logout",null,token,204);
+  }
+ }
+ private java.net.http.HttpResponse<String> http(java.net.http.HttpClient client,String base,String method,
+      String path,String body,String token,int status) throws Exception {
+  return httpVersion(client,base,method,path,body,token,null,status);
+ }
+ private java.net.http.HttpResponse<String> httpVersion(java.net.http.HttpClient client,String base,String method,
+      String path,String body,String token,String version,int status) throws Exception {
+  var request=java.net.http.HttpRequest.newBuilder(java.net.URI.create(base+path)).timeout(java.time.Duration.ofSeconds(20))
+      .method(method,body==null?java.net.http.HttpRequest.BodyPublishers.noBody():java.net.http.HttpRequest.BodyPublishers.ofString(body));
+  if(body!=null) request.header("Content-Type",path.equals("/api/auth/login")?"application/x-www-form-urlencoded":"application/json");
+  if(token!=null) request.header("X-CSRF-TOKEN",token);
+  if(version!=null) request.header("If-Match",version);
+  var response=client.send(request.build(),java.net.http.HttpResponse.BodyHandlers.ofString());
+  assertThat(response.statusCode()).as(method+" "+path+" "+response.body()).isEqualTo(status);
+  return response;
  }
  /** Local mode always initializes its own cluster; it cannot target an existing database. */
  private static final class TestDatabase implements AutoCloseable {
@@ -86,8 +141,15 @@ class PostgresPrivilegesIT {
    builder.environment().put("PGPASSWORD",password);
    builder.environment().put("MIGRATION_DATABASE_PASSWORD","migration-'quote-password");
    builder.environment().put("RUNTIME_DATABASE_PASSWORD","runtime-'quote-password");
-   var process=builder.start();String output=new String(process.getInputStream().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
-   return new Result(process.waitFor(),output);
+   // Windows descendants can keep inherited pipe handles open after pg_ctl exits.
+   Path output=java.nio.file.Files.createTempFile(dataDirectory.getParent(),"process-",".log");
+   builder.redirectOutput(output.toFile());
+   var process=builder.start();
+   if(!process.waitFor(60,java.util.concurrent.TimeUnit.SECONDS)) {
+    process.destroyForcibly();
+    throw new IllegalStateException("PostgreSQL test command timed out: "+executable);
+   }
+   return new Result(process.exitValue(),java.nio.file.Files.readString(output));
   }
   private void check(Result r){assertThat(r.getExitCode()).withFailMessage(r.getStderr()).isZero();}
   public void close() throws Exception {

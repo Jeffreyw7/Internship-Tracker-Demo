@@ -22,7 +22,7 @@ public final class MigrationMain {
   String password=required(environment,"MIGRATION_DATABASE_PASSWORD");
   if(!"campus_migrator".equals(user)) throw new IllegalArgumentException("Migrations require campus_migrator credentials");
   if(!url.startsWith("jdbc:postgresql:")) throw new IllegalArgumentException("Migration URL must use PostgreSQL");
-  Flyway.configure().dataSource(url,user,password).locations("classpath:db/migration").loggers("none").load().migrate();
+  Flyway.configure().dataSource(url,user,password).locations("classpath:db/migration").loggers().load().migrate();
   try(var script=MigrationMain.class.getResourceAsStream("/db/security/runtime-grants.sql")) {
    if(script==null) throw new IllegalStateException("Packaged runtime grants are missing");
    String sql=new String(script.readAllBytes(),StandardCharsets.UTF_8);
