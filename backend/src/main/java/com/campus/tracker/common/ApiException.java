@@ -1,3 +1,4 @@
+// Carries a deliberate HTTP status and user-facing message from services to the API error handler.
 package com.campus.tracker.common;
 
 import org.springframework.http.HttpStatus;

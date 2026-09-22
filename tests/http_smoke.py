@@ -17,6 +17,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+# Locate the bundled application and choose an unused loopback port for this test.
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 JAR = ROOT / 'backend/target/campus-tracker-2.0.0.jar'
 assert JAR.exists(), 'Build the with-ui JAR before running this test.'
@@ -24,10 +25,12 @@ with socket.socket() as sock:
     sock.bind(('127.0.0.1', 0))
     port = sock.getsockname()[1]
 base = f'http://127.0.0.1:{port}'
+# Reuse a cookie jar so HTTP requests share the server-issued session.
 cookies = http.cookiejar.CookieJar()
 client = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor(cookies))
 
 
+# Send JSON or form data, assert the status, and decode JSON only when appropriate.
 def call(path, method='GET', data=None, headers=None, expected=200, form=False):
     headers = dict(headers or {})
     if data is not None:
@@ -45,11 +48,13 @@ def call(path, method='GET', data=None, headers=None, expected=200, form=False):
     return json.loads(raw) if 'application/json' in response.headers.get('Content-Type', '') and raw else raw
 
 
+# Fetch a fresh token and return the header mapping needed for writes.
 def csrf():
     token = call('/api/auth/csrf')
     return {token['headerName']: token['token']}
 
 
+# Shut down the test JVM, escalating to a kill only if graceful termination times out.
 def stop(process):
     process.terminate()
     try:
@@ -59,6 +64,7 @@ def stop(process):
         process.wait(timeout=5)
 
 
+# Keep all database files and logs isolated from the user\'s saved applications.
 with tempfile.TemporaryDirectory(prefix='campus-http-test-') as temp:
     log_path = pathlib.Path(temp) / 'server.log'
     with log_path.open('w') as log:
@@ -66,6 +72,7 @@ with tempfile.TemporaryDirectory(prefix='campus-http-test-') as temp:
                    f'--spring.datasource.url=jdbc:h2:file:{temp}/campus;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE',
                    '--campus.registration-enabled=true', '--server.servlet.session.cookie.secure=false']
 
+# Launch the JAR and wait for its health endpoint, reporting startup logs on failure.
         def start():
             process = subprocess.Popen(command, cwd=temp, stdout=log, stderr=subprocess.STDOUT)
             try:
@@ -84,6 +91,7 @@ with tempfile.TemporaryDirectory(prefix='campus-http-test-') as temp:
 
         process = start()
         try:
+# Verify the packaged UI and its assets before exercising the authenticated API.
             page = call('/').decode()
             assert 'Campus' in page and 'id="root"' in page
             for path in re.findall(r'(?:src|href)="([^"]+\.(?:js|css))"', page):
@@ -94,6 +102,7 @@ with tempfile.TemporaryDirectory(prefix='campus-http-test-') as temp:
             call('/api/auth/login', 'POST', identity, csrf(), form=True)
             assert call('/api/applications')['totalElements'] == 10
             headers = csrf()
+# Exercise versioned create, update, soft delete, and restore through real HTTP.
             draft = {'company': 'Restart verification', 'role': 'Java Intern', 'location': 'Remote',
                      'status': 'Applied', 'appliedDate': str(datetime.date.today() - datetime.timedelta(days=1)),
                      'deadline': None, 'followUpDate': None, 'notes': 'Saved through real HTTP', 'stages': []}
@@ -112,6 +121,7 @@ with tempfile.TemporaryDirectory(prefix='campus-http-test-') as temp:
 
         process = start()
         try:
+# After restarting the JVM, verify sessions expired while stored application data survived.
             call('/api/auth/me', expected=401)
             call('/api/auth/login', 'POST', identity, csrf(), form=True)
             persisted = call(path)

@@ -1,3 +1,4 @@
+// Builds illustrative test applications with dates relative to today; this is not production persistence.
 import { offsetDate, type Application, type Status } from '../../src/domain/application.ts';
 export function sampleApplications():Application[] {
   const rows: [string,string,string,Status,number,number|null,number|null][] = [
@@ -12,6 +13,7 @@ export function sampleApplications():Application[] {
     ['Adobe','Software Engineer Intern','San Jose, CA','Rejected',-21,null,null],
     ['Ramp','Software Engineer Intern','New York, NY','Applied',-2,20,7]
   ];
+  // Expand compact sample rows into full API-shaped records and interview stages.
   return rows.map(([company,role,location,status,applied,deadline,follow],i)=>({
     version:0,sample:true,deleted:false,id:'sample-'+i,company,role,location,status,appliedDate:status==='Saved'?'':offsetDate(applied),
     deadline:deadline===null?'':offsetDate(deadline),followUpDate:follow===null?'':offsetDate(follow),

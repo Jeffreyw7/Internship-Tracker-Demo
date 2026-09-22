@@ -95,6 +95,8 @@ Flyway creates the schema; Hibernate validates it. No passwords are included in 
 
 ## Architecture
 
+Source comments explain each main code section. See [docs/CODE_GUIDE.md](docs/CODE_GUIDE.md) for the end-to-end request flow, database schema, and build configuration purposes.
+
 - `backend/.../auth`: accounts, password hashing, login identity and CSRF endpoint.
 - `backend/.../application`: DTOs, JPA entities, repository, owner-scoped service, REST controller and sample-data service.
 - `backend/.../config`: Spring Security setup.

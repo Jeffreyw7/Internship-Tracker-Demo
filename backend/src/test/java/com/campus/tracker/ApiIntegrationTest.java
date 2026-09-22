@@ -1,3 +1,4 @@
+// Exercises real Spring Security, controllers, services, and persistence against an isolated in-memory test database.
 package com.campus.tracker;
 
 import com.campus.tracker.auth.UserRepository;
@@ -31,6 +32,7 @@ class ApiIntegrationTest {
     private static final String PASSWORD = "Campus-test-123!";
     record Account(String email, MockHttpSession session) {}
 
+    // Create a unique synthetic account and capture its authenticated session for each scenario.
     Account account(boolean samples) throws Exception {
         String email = "user-" + UUID.randomUUID() + "@example.test";
         mvc.perform(post("/api/auth/register").with(csrf()).contentType(MediaType.APPLICATION_JSON)
@@ -41,6 +43,7 @@ class ApiIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.email").value(email)).andReturn();
         return new Account(email, (MockHttpSession) result.getRequest().getSession(false));
     }
+    // Build a valid request fixture with dates that remain valid when tests run later.
     Map<String, Object> draft() {
         Map<String, Object> d = new LinkedHashMap<>();
         d.put("company", "Example Labs"); d.put("role", "Backend Intern"); d.put("location", "New York, NY");
@@ -48,13 +51,16 @@ class ApiIntegrationTest {
         d.put("deadline", LocalDate.now().plusDays(8).toString()); d.put("followUpDate", LocalDate.now().plusDays(2).toString());
         d.put("notes", "Prepare Java API examples"); d.put("stages", List.of()); return d;
     }
+    // Create a record through the secured endpoint and verify its version header.
     JsonNode create(Account account, Map<String, Object> d) throws Exception {
         return body(mvc.perform(post("/api/applications").session(account.session()).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(d)))
                 .andExpect(status().isCreated()).andExpect(header().exists("ETag")).andReturn());
     }
+    // Parse JSON responses for assertions without depending on property order.
     JsonNode body(MvcResult result) throws Exception { return json.readTree(result.getResponse().getContentAsString()); }
 
+    // Verify anonymous reads, tokenless writes, and signed-out access are rejected.
     @Test void authenticationAndCsrfProtectTheApi() throws Exception {
         mvc.perform(get("/api/applications")).andExpect(status().isUnauthorized());
         Account a = account(false);
@@ -64,6 +70,7 @@ class ApiIntegrationTest {
         mvc.perform(get("/api/auth/me")).andExpect(status().isUnauthorized());
     }
 
+    // Exercise real token retrieval instead of the test-only CSRF helper.
     @Test void realCsrfEndpointTokenWorksForRegistrationAndLogin() throws Exception {
         MvcResult csrfResult = mvc.perform(get("/api/auth/csrf")).andExpect(status().isOk()).andReturn();
         JsonNode token = body(csrfResult);
@@ -77,6 +84,7 @@ class ApiIntegrationTest {
                 .param("email", email).param("password", PASSWORD)).andExpect(status().isOk());
     }
 
+    // Verify password hashing, rejected credentials, and duplicate email handling.
     @Test void registrationHashesPasswordsAndInvalidLoginsFail() throws Exception {
         Account a = account(false);
         var user = users.findByEmail(a.email()).orElseThrow();
@@ -89,6 +97,7 @@ class ApiIntegrationTest {
                         "displayName", "Duplicate", "includeSamples", false)))).andExpect(status().isConflict());
     }
 
+    // Verify each password requirement and confirm rejected requests persist no account.
     @Test void registrationRejectsWeakPasswordsWithoutCreatingAnAccount() throws Exception {
         for (String password : List.of("", "Abcdefghi1!", "abcdefghij1!", "ABCDEFGHIJ1!",
                 "Abcdefghijk!", "Abcdefghijk1", "Abcdefghij1 ", "Ab1!" + "a".repeat(69),
@@ -102,6 +111,7 @@ class ApiIntegrationTest {
         }
     }
 
+    // Check Unicode and exact length boundaries, including successful login afterward.
     @Test void registrationAcceptsStrongPasswordsAtCharacterAndByteBoundaries() throws Exception {
         for (String password : List.of("Abcdefghij1!", "Ab1!" + "a".repeat(68),
                 "Ab1!" + "é".repeat(34), "Ab1!" + "😀".repeat(8), "Àbcdefghij1!")) {
@@ -115,6 +125,7 @@ class ApiIntegrationTest {
         }
     }
 
+    // Ensure the new signup policy does not lock out older accounts.
     @Test void existingAccountsCanStillSignInWithTheirOriginalPassword() throws Exception {
         String email = "legacy-" + UUID.randomUUID() + "@example.test";
         users.saveAndFlush(new com.campus.tracker.auth.CampusUser(email, "Existing User", passwords.encode("oldpassword")));
@@ -122,6 +133,7 @@ class ApiIntegrationTest {
                 .andExpect(status().isOk());
     }
 
+    // Verify optional demo data belongs only to the requesting account.
     @Test void samplesAreOptionalAndIsolatedPerAccount() throws Exception {
         Account seeded = account(true), empty = account(false);
         mvc.perform(get("/api/applications").session(seeded.session())).andExpect(status().isOk())
@@ -130,6 +142,7 @@ class ApiIntegrationTest {
                 .andExpect(jsonPath("$.totalElements").value(0));
     }
 
+    // Check persisted edits, stable creation timestamps, and optimistic version requirements.
     @Test void createReadUpdateAndVersionConflict() throws Exception {
         Account a = account(false); JsonNode initial = create(a, draft());
         String path = "/api/applications/" + initial.get("id").asText();
@@ -147,6 +160,7 @@ class ApiIntegrationTest {
                 .content(json.writeValueAsString(draft()))).andExpect(status().isPreconditionRequired());
     }
 
+    // Attempt all record operations from another account to guard against ownership bypass.
     @Test void anotherUserCannotReadModifyDeleteOrRestoreRecords() throws Exception {
         Account owner = account(false), other = account(false);
         JsonNode app = create(owner, draft()); String path = "/api/applications/" + app.get("id").asText();
@@ -159,6 +173,7 @@ class ApiIntegrationTest {
                 .andExpect(jsonPath("$.totalElements").value(0));
     }
 
+    // Verify deletion hides records and undo requires the latest version.
     @Test void softDeleteAndUndoPreserveData() throws Exception {
         Account a = account(false); JsonNode initial = create(a, draft());
         String path = "/api/applications/" + initial.get("id").asText();
@@ -171,6 +186,7 @@ class ApiIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.deleted").value(false)).andExpect(jsonPath("$.company").value("Example Labs"));
     }
 
+    // Verify date validation and stage creation, updates, and removal.
     @Test void scheduledStagesValidatePersistUpdateAndRemove() throws Exception {
         Account a = account(false); var d = draft();
         d.put("stages", List.of(Map.of("name", "Technical", "state", "Scheduled")));
@@ -190,6 +206,7 @@ class ApiIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.stages").isEmpty());
     }
 
+    // Reject malformed data and attempted injection of server-owned fields.
     @Test void inputValidationRejectsInvalidDatesStatusAndOwnerInjection() throws Exception {
         Account a = account(false);
         for (Map<String, Object> invalid : List.of(Map.<String,Object>of("company", " "),
@@ -206,6 +223,7 @@ class ApiIntegrationTest {
         d.put("status", "Saved"); create(a, d);
     }
 
+    // Verify bounded paging, literal wildcard searches, and an allowed sort-field list.
     @Test void paginationSearchAndStatusFiltersAreOwnerScoped() throws Exception {
         Account a = account(true);
         mvc.perform(get("/api/applications").session(a.session()).param("size", "3").param("page", "1"))
