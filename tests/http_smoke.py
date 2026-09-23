@@ -7,8 +7,10 @@ Uses a temporary H2 database and test account; does not touch user data.
 import datetime
 import http.cookiejar
 import json
+import os
 import pathlib
 import re
+import shutil
 import socket
 import subprocess
 import tempfile
@@ -21,6 +23,16 @@ import urllib.request
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 JAR = ROOT / 'backend/target/campus-tracker-2.0.0.jar'
 assert JAR.exists(), 'Build the with-ui JAR before running this test.'
+# Resolve the actual JVM instead of a Windows java.exe shim that can outlive
+# its launcher's PID and keep the first server bound during the restart check.
+java_home = os.environ.get('JAVA_HOME')
+if not java_home:
+    version = subprocess.run(['java', '-XshowSettings:properties', '-version'],
+                             capture_output=True, text=True, check=True)
+    match = re.search(r'^\s*java\.home\s*=\s*(.+)$', version.stderr, re.MULTILINE)
+    java_home = match.group(1) if match else None
+java_executable = (pathlib.Path(java_home) / 'bin' / ('java.exe' if os.name == 'nt' else 'java')) if java_home else shutil.which('java')
+assert java_executable and pathlib.Path(java_executable).exists(), 'Java executable not found.'
 with socket.socket() as sock:
     sock.bind(('127.0.0.1', 0))
     port = sock.getsockname()[1]
@@ -56,19 +68,31 @@ def csrf():
 
 # Shut down the test JVM, escalating to a kill only if graceful termination times out.
 def stop(process):
-    process.terminate()
+    # Windows' `java` launcher can leave its child JVM alive after the launcher exits.
+    # Stop the process tree while its PID is still available so the next JVM gets the same port.
+    if os.name == 'nt':
+        subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+    elif process.poll() is None:
+        process.terminate()
     try:
         process.wait(timeout=20)
     except subprocess.TimeoutExpired:
         process.kill()
         process.wait(timeout=5)
+    for _ in range(50):
+        with socket.socket() as sock:
+            if sock.connect_ex(('127.0.0.1', port)) != 0:
+                return
+        time.sleep(0.1)
+    raise RuntimeError(f'Test JVM still listening on port {port} after shutdown')
 
 
 # Keep all database files and logs isolated from the user\'s saved applications.
 with tempfile.TemporaryDirectory(prefix='campus-http-test-') as temp:
     log_path = pathlib.Path(temp) / 'server.log'
     with log_path.open('w') as log:
-        command = ['java', '-jar', str(JAR), f'--server.port={port}', '--server.address=127.0.0.1',
+        command = [str(java_executable), '-jar', str(JAR), f'--server.port={port}', '--server.address=127.0.0.1',
                    f'--spring.datasource.url=jdbc:h2:file:{temp}/campus;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE',
                    '--campus.registration-enabled=true', '--server.servlet.session.cookie.secure=false']
 
@@ -101,7 +125,11 @@ with tempfile.TemporaryDirectory(prefix='campus-http-test-') as temp:
             call('/api/auth/register', 'POST', {**identity, 'displayName': 'HTTP Tester', 'includeSamples': True}, csrf(), expected=201)
             call('/api/auth/login', 'POST', identity, csrf(), form=True)
             assert call('/api/applications')['totalElements'] == 10
+            assert call('/api/me/preferences') == {'themePreference': 'system'}
             headers = csrf()
+            call('/api/me/preferences', 'PUT', {'themePreference': 'dark'}, expected=403)
+            assert call('/api/me/preferences', 'PUT', {'themePreference': 'dark'}, headers) == {'themePreference': 'dark'}
+            call('/api/me/preferences', 'PUT', {'themePreference': 'sepia'}, headers, expected=400)
 # Exercise versioned create, update, soft delete, and restore through real HTTP.
             draft = {'company': 'Restart verification', 'role': 'Java Intern', 'location': 'Remote',
                      'status': 'Applied', 'appliedDate': str(datetime.date.today() - datetime.timedelta(days=1)),
@@ -124,6 +152,7 @@ with tempfile.TemporaryDirectory(prefix='campus-http-test-') as temp:
 # After restarting the JVM, verify sessions expired while stored application data survived.
             call('/api/auth/me', expected=401)
             call('/api/auth/login', 'POST', identity, csrf(), form=True)
+            assert call('/api/me/preferences') == {'themePreference': 'dark'}
             persisted = call(path)
             assert persisted['notes'] == 'Survives a complete JVM restart'
             assert call('/api/applications')['totalElements'] == 11
@@ -132,4 +161,4 @@ with tempfile.TemporaryDirectory(prefix='campus-http-test-') as temp:
         finally:
             stop(process)
 
-print('PASS: real HTTP page/assets, authentication, CRUD, CSRF, conflict, delete/undo, logout, and H2 restart persistence.')
+print('PASS: real HTTP page/assets, authentication, theme preferences, CRUD, CSRF, conflict, delete/undo, logout, and H2 restart persistence.')

@@ -66,6 +66,7 @@ New accounts require a password with at least 12 characters, including an upperc
 - Follow-up completion and undo, immediate search and filters, status summaries, sorting, paging, CSV export, and explicit refresh.
 - Database-backed optional sample applications at registration; these are illustrative, not verified vacancies.
 - CSRF-protected writes, HttpOnly session cookies, BCrypt password hashing, request validation, ownership checks on all application operations, and optimistic concurrency checks.
+- Light, Dark, and System appearance, with the signed-in choice saved to the account and refreshed on other devices when they regain focus or while visible.
 
 Follow-ups are displayed in the workspace. They do not send notifications or create calendar events. The app does not include email verification, password reset, admin account management or recruitment integrations.
 
@@ -78,7 +79,6 @@ The following features are planned for later updates:
 - Password reset
 - Email verification
 - Admin account management
-- Dark mode
 - A friendlier user interface
 
 ## Database options

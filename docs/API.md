@@ -13,6 +13,15 @@ All routes are under `/api`. The production JAR serves React and the API from th
 
 The CSRF token is kept only in frontend memory. The session cookie is HttpOnly. API authentication errors return JSON rather than an HTML login redirect.
 
+## Appearance preference
+
+| Method | Path | Response |
+| --- | --- | --- |
+| GET | `/me/preferences` | `{ "themePreference": "system" }` |
+| PUT | `/me/preferences` | Accepts and returns `{ "themePreference": "dark" }` |
+
+`themePreference` must be exactly `system`, `light`, or `dark`. It belongs to the signed-in account; callers cannot choose a user ID. New and migrated accounts default to `system`. The PUT requires the current CSRF token. Invalid values return 400, missing authentication returns 401, and missing CSRF returns 403. Both routes bypass HTTP caching.
+
 ## Applications
 
 | Method | Path | Purpose |
