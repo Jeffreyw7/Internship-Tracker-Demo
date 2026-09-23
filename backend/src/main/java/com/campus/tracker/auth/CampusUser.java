@@ -14,6 +14,7 @@ public class CampusUser {
     @Column(name = "display_name", nullable = false, length = 80) private String displayName;
     @Column(name = "password_hash", nullable = false, length = 100) private String passwordHash;
     @Column(name = "created_at", nullable = false) private Instant createdAt;
+    @Column(name = "theme_preference", nullable = false, length = 6) private String themePreference = "system";
 
     // Provide the no-argument constructor JPA needs when loading database rows.
     protected CampusUser() {}
@@ -27,4 +28,5 @@ public class CampusUser {
     public String getEmail() { return email; }
     public String getDisplayName() { return displayName; }
     public String getPasswordHash() { return passwordHash; }
+    public String getThemePreference() { return themePreference; }
 }

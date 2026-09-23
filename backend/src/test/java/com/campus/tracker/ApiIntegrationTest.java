@@ -32,6 +32,42 @@ class ApiIntegrationTest {
     private static final String PASSWORD = "Campus-test-123!";
     record Account(String email, MockHttpSession session) {}
 
+    @Test void preferencesAreValidatedIsolatedAndPersistAcrossSessions() throws Exception {
+        Account a = account(false), b = account(false);
+        mvc.perform(get("/api/me/preferences").session(a.session()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.themePreference").value("system"));
+        for (String preference : List.of("light", "system", "dark")) {
+            mvc.perform(put("/api/me/preferences").session(a.session()).with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(json.writeValueAsString(Map.of("themePreference", preference))))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.themePreference").value(preference));
+        }
+        mvc.perform(get("/api/me/preferences").session(b.session()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.themePreference").value("system"));
+        mvc.perform(put("/api/me/preferences").session(a.session()).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("themePreference", "light", "userId", users.findByEmail(b.email()).orElseThrow().getId()))))
+                .andExpect(status().isBadRequest());
+        for (String invalid : List.of("{}", "{\"themePreference\":null}", "{\"themePreference\":\"DARK\"}", "{\"themePreference\":\"sepia\"}")) {
+            mvc.perform(put("/api/me/preferences").session(a.session()).with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON).content(invalid)).andExpect(status().isBadRequest());
+        }
+        MvcResult login = mvc.perform(post("/api/auth/login").with(csrf()).param("email", a.email()).param("password", PASSWORD))
+                .andExpect(status().isOk()).andReturn();
+        mvc.perform(get("/api/me/preferences").session((MockHttpSession) login.getRequest().getSession(false)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.themePreference").value("dark"));
+    }
+
+    @Test void preferenceEndpointsRequireAuthenticationAndCsrf() throws Exception {
+        mvc.perform(get("/api/me/preferences")).andExpect(status().isUnauthorized());
+        mvc.perform(put("/api/me/preferences").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"themePreference\":\"dark\"}")).andExpect(status().isUnauthorized());
+        Account a = account(false);
+        mvc.perform(put("/api/me/preferences").session(a.session()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"themePreference\":\"dark\"}")).andExpect(status().isForbidden());
+        mvc.perform(get("/api/me/preferences").session(a.session()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.themePreference").value("system"));
+    }
+
     // Create a unique synthetic account and capture its authenticated session for each scenario.
     Account account(boolean samples) throws Exception {
         String email = "user-" + UUID.randomUUID() + "@example.test";

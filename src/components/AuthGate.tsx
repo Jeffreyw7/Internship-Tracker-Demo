@@ -1,9 +1,11 @@
 // Checks the session and switches between account forms and the signed-in workspace.
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useState, type FormEvent } from 'react';
 import { GraduationCap, LockKeyhole, ArrowRight } from 'lucide-react';
 import { ApiError, authApi, type User } from '../data/api';
 import App from '../App';
 import { PASSWORD_REQUIREMENTS, passwordError } from '../domain/password';
+import { useTheme } from '../theme/ThemeProvider';
+import { ThemeSelect } from './ThemeSelect';
 
 export default function AuthGate() {
   // Track authentication, form input, and request state independently.
@@ -12,6 +14,11 @@ export default function AuthGate() {
   const [mode,setMode]=useState<'login'|'register'>('login');
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
+  const {bindAccount}=useTheme();
+  useLayoutEffect(()=>{
+    bindAccount(loading?undefined:user?.id??null);
+    return ()=>bindAccount(undefined);
+  },[bindAccount,loading,user?.id]);
   const [displayName,setDisplayName]=useState('');
   const [email,setEmail]=useState('');
   const [password,setPassword]=useState('');
@@ -35,10 +42,10 @@ export default function AuthGate() {
   // Return to the account screen only after the server confirms logout.
   async function logout(){await authApi.logout();setUser(null);setError('');}
   // Avoid showing the sign-in screen until the initial session lookup finishes.
-  if(loading)return <div className="auth-shell"><div className="auth-card" role="status">Opening your workspace…</div></div>;
+  if(loading)return <div className="auth-shell"><div className="auth-appearance"><ThemeSelect/></div><div className="auth-card" role="status">Opening your workspace…</div></div>;
   if(user)return <App key={user.id} user={user} onLogout={logout}/>;
   // Render signup-specific fields and policy guidance only in registration mode.
-  return <div className="auth-shell"><div className="auth-story"><div className="brand"><span className="brand-symbol"><GraduationCap size={24}/></span><span>campus.</span></div><span className="eyebrow">YOUR NEXT CHAPTER</span><h1>Make room for<br/>what comes next.</h1><p>Your applications, interviews, and next steps.<br/>One personal workspace, ready when you are.</p><span className="auth-note"><LockKeyhole size={15}/> Your applications are private to your account.</span></div><div className="auth-card"><h2>{mode==='login'?'Welcome back.':'Start your next chapter.'}</h2><p>{mode==='login'?'Sign in to your internship workspace.':'Create your account and make your first move.'}</p><form className="application-form auth-form" onSubmit={submit}>
+  return <div className="auth-shell"><div className="auth-appearance"><ThemeSelect/></div><div className="auth-story"><div className="brand"><span className="brand-symbol"><GraduationCap size={24}/></span><span>campus.</span></div><span className="eyebrow">YOUR NEXT CHAPTER</span><h1>Make room for<br/>what comes next.</h1><p>Your applications, interviews, and next steps.<br/>One personal workspace, ready when you are.</p><span className="auth-note"><LockKeyhole size={15}/> Your applications are private to your account.</span></div><div className="auth-card"><h2>{mode==='login'?'Welcome back.':'Start your next chapter.'}</h2><p>{mode==='login'?'Sign in to your internship workspace.':'Create your account and make your first move.'}</p><form className="application-form auth-form" onSubmit={submit}>
     {/* Collect a display name only when creating a new account. */}
     {mode==='register'&&<label>Your name<input required maxLength={80} autoComplete="name" value={displayName} onChange={e=>setDisplayName(e.target.value)} placeholder="Jeffrey Wang"/></label>}
     {/* Use email as the account identifier for both signup and login. */}

@@ -7,6 +7,7 @@ import { ApplicationDrawer } from './components/ApplicationDrawer';
 import { CompanyButton, CompanyMark, StatusBadge } from './components/Shared';
 import {filterApplications, matchesQuery, type Tab} from './domain/selectors';
 import type {User} from './data/api';
+import { ThemeSelect } from './components/ThemeSelect';
 // Limit navigation to the three workspace views.
 type View='applications'|'interviews'|'followups';
 // Retain the server version and previous data needed to safely undo each supported change.
@@ -67,7 +68,7 @@ export default function App({user,onLogout}:{user:User;onLogout:()=>Promise<void
       <div className="sidebar-bottom"><div className="little-note"><Sparkles size={18}/><strong>Big things start small.</strong><p>One application. One conversation.<br/>One step closer.</p><span className="note-line"/></div><div className="profile"><span className="avatar">{user.displayName.split(/\s+/).slice(0,2).map(n=>n[0]).join('').toUpperCase()}</span><div><strong>{user.displayName}</strong><small>Personal workspace</small></div><LockKeyhole size={14}/></div></div>
     </aside>
     {/* Show the current view title and account controls above the workspace. */}
-    <div className="main-shell"><header className="topbar"><div className="breadcrumbs"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={()=>setMobileNav(true)}><Menu size={20}/></button><span>Workspace</span><ChevronRight size={13}/><strong>{view==='applications'?'Applications':view==='interviews'?'Interviews':'Follow-ups'}</strong></div><div className="topbar-right"><span className="private-pill"><LockKeyhole size={12}/> Private workspace</span><button className="text-button" disabled={busy} onClick={signOut}>Sign out</button><span className="topbar-date">{new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span></div></header>
+    <div className="main-shell"><header className="topbar"><div className="breadcrumbs"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={()=>setMobileNav(true)}><Menu size={20}/></button><span>Workspace</span><ChevronRight size={13}/><strong>{view==='applications'?'Applications':view==='interviews'?'Interviews':'Follow-ups'}</strong></div><div className="topbar-right"><ThemeSelect/><span className="private-pill"><LockKeyhole size={12}/> Private workspace</span><button className="text-button" disabled={busy} onClick={signOut}>Sign out</button><span className="topbar-date">{new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span></div></header>
       <main><section className="welcome"><div><div className="eyebrow"><span/> THE NEXT STEP IS YOURS</div><h1>{heading}</h1><p>Keep your opportunities organized. Focus on what comes next.</p></div><button className="button primary add-main" disabled={!ready||busy} onClick={()=>setDrawer({id:null})}><Plus size={17}/> Add application</button></section>
         {error&&<div className="error-box" role="alert">{error} <button className="text-button" disabled={busy} onClick={()=>void refresh()}>Retry connection</button></div>}
         {/* Use summary cards as shortcuts into the corresponding application filters. */}

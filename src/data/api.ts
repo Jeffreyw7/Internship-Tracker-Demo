@@ -15,7 +15,7 @@ export async function refreshCsrf() {
   csrf=await response.json();
 }
 // Attach CSRF headers to writes and include same-origin session credentials.
-export async function request<T>(path:string, init:RequestInit={}):Promise<T> {
+export async function request<T>(path:string, init:RequestInit={}, isCurrent:()=>boolean=()=>true):Promise<T> {
   const method=init.method ?? 'GET';
   const write=!['GET','HEAD','OPTIONS'].includes(method);
   if(write&&!csrf) await refreshCsrf();
@@ -27,7 +27,8 @@ export async function request<T>(path:string, init:RequestInit={}):Promise<T> {
   catch {throw new ApiError(0,'Cannot reach the Java server. Check the connection and try again.');}
   if(!response.ok) {
     const data=await response.json().catch(()=>({}));
-    if(response.status===401 && path!=='/auth/login' && path!=='/auth/me' && typeof window!=='undefined') window.dispatchEvent(new Event('campus:session-expired'));
+    // Account-scoped background requests must not expire a newer session after logout/login.
+    if(response.status===401 && path!=='/auth/login' && path!=='/auth/me' && typeof window!=='undefined' && isCurrent()) window.dispatchEvent(new Event('campus:session-expired'));
     // Do not automatically replay writes; the server may already have committed the change.
     throw new ApiError(response.status,data.message ?? `Request failed (${response.status}). Please try again.`);
   }
