@@ -2,6 +2,19 @@
 spring:
   application:
     name: campus-tracker
+  # Local capture SMTP only; run a capture server on loopback before registering.
+  mail:
+    host: ${SMTP_HOST:127.0.0.1}
+    port: ${SMTP_PORT:1025}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTH:false}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS:false}
+      mail.smtp.starttls.required: ${SMTP_STARTTLS:false}
+      mail.smtp.connectiontimeout: 10000
+      mail.smtp.timeout: 20000
+      mail.smtp.writetimeout: 20000
 # Keep local accounts in a file; H2_PASSWORD can override the default empty database password.
   datasource:
     url: jdbc:h2:file:./data/campus;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
@@ -38,3 +51,15 @@ server:
 # Allow demo signup locally; the production profile changes this default.
 campus:
   registration-enabled: ${REGISTRATION_ENABLED:true}
+  mail:
+    public-origin: ${PUBLIC_ORIGIN:http://127.0.0.1:8080}
+    sender: ${MAIL_SENDER:campus@localhost.test}
+    # Synthetic development key. Production requires external secrets and rejects this key.
+    key-id: ${OUTBOX_KEY_ID:local-capture-only}
+    encryption-key: ${OUTBOX_ENCRYPTION_KEY:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+    production: false
+    worker-enabled: ${MAIL_WORKER_ENABLED:true}
+  verification:
+    token-ttl: ${VERIFICATION_TOKEN_TTL:24h}
+    rate-limit-secret: ${VERIFICATION_RATE_LIMIT_SECRET:local-development-rate-limit-secret}
+    rate-limits-enabled: ${VERIFICATION_RATE_LIMITS_ENABLED:true}

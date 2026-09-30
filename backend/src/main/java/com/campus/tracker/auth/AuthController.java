@@ -7,12 +7,17 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
+import jakarta.servlet.http.HttpServletRequest;
+import com.campus.tracker.auth.verification.AuthRateLimiter;
 
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
     private final AccountService accounts;
-    public AuthController(AccountService accounts) { this.accounts = accounts; }
+    private final AuthRateLimiter rateLimiter;
+    public AuthController(AccountService accounts, AuthRateLimiter rateLimiter) {
+        this.accounts = accounts; this.rateLimiter = rateLimiter;
+    }
 
     // Return the session CSRF token and the header name required for write requests.
     @GetMapping("/csrf")
@@ -24,6 +29,9 @@ public class AuthController {
 
     // Validate incoming JSON before delegating account creation to the service.
     @PostMapping("/register")
-    @ResponseStatus(HttpStatus.CREATED)
-    public AuthDtos.UserView register(@Valid @RequestBody AuthDtos.Registration request) { return accounts.register(request); }
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public AuthDtos.Accepted register(@Valid @RequestBody AuthDtos.Registration request, HttpServletRequest http) {
+        rateLimiter.requireRequestAllowed(http.getRemoteAddr());
+        return accounts.register(request);
+    }
 }
