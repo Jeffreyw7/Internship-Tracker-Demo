@@ -4,6 +4,7 @@ import { ArrowDown, ArrowDownToLine, ArrowRight, ArrowUpRight, Bell, BriefcaseBu
 import { activities, dayDistance, formatDate, isClosed, relativeDate, STATUSES, today, type Activity, type Application, type ApplicationDraft, type Status } from './domain/application';
 import { useApplications } from './hooks/useApplications';
 import { ApplicationDrawer } from './components/ApplicationDrawer';
+import ReminderCenter from './components/ReminderCenter';
 import { CompanyButton, CompanyMark, StatusBadge } from './components/Shared';
 import {filterApplications, matchesQuery, type Tab} from './domain/selectors';
 import type {User} from './data/api';
@@ -22,6 +23,7 @@ export default function App({user,onLogout,onSecurity}:{user:User;onLogout:()=>P
   const [tab,setTab]=useState<Tab>('All applications');const [status,setStatus]=useState('All statuses');
   const [sort,setSort]=useState('recent');const [dueOnly,setDueOnly]=useState(false);const [page,setPage]=useState(1);
   const [drawer,setDrawer]=useState<{id:string|null}|null>(null);const [mobileNav,setMobileNav]=useState(false);
+  const [remindersOpen,setRemindersOpen]=useState(false);
   const [toast,setToast]=useState<Toast|null>(null);const searchRef=useRef<HTMLInputElement>(null);
   // Expire notifications, reset pagination on filter changes, and register the search shortcut.
   useEffect(()=>{if(!toast)return;const t=setTimeout(()=>setToast(null),toast.undo?12000:4500);return ()=>clearTimeout(t);},[toast]);
@@ -42,6 +44,8 @@ export default function App({user,onLogout,onSecurity}:{user:User;onLogout:()=>P
   function filterStatus(s:string){navigate('applications');setTab('All applications');setStatus(s);}
   // Select the application whose detail drawer should open.
   function open(app:Application){setDrawer({id:app.id});}
+  // Reminders can include applications created in another tab since the workspace last loaded.
+  async function openReminderApplication(id:string){await refresh();setRemindersOpen(false);setDrawer({id});}
   // Close the editor and notify the user after a confirmed save.
   async function saveApplication(draft:ApplicationDraft,id?:string,version?:number){await save(draft,id,version);setDrawer(null);setToast({message:id?'Application updated. You’re all set.':'Application added. Here’s to your next opportunity.'});}
   // Keep the returned deleted record so undo uses the new server version.
@@ -67,7 +71,7 @@ export default function App({user,onLogout,onSecurity}:{user:User;onLogout:()=>P
       <div className="sidebar-bottom"><div className="little-note"><Sparkles size={18}/><strong>Big things start small.</strong><p>One application. One conversation.<br/>One step closer.</p><span className="note-line"/></div><div className="profile"><span className="avatar">{user.displayName.split(/\s+/).slice(0,2).map(n=>n[0]).join('').toUpperCase()}</span><div><strong>{user.displayName}</strong><small>Personal workspace</small></div><LockKeyhole size={14}/></div></div>
     </aside>
     {/* Show the current view title and account controls above the workspace. */}
-    <div className="main-shell"><header className="topbar"><div className="breadcrumbs"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={()=>setMobileNav(true)}><Menu size={20}/></button><span>Workspace</span><ChevronRight size={13}/><strong>{view==='applications'?'Applications':view==='interviews'?'Interviews':'Follow-ups'}</strong></div><div className="topbar-right"><span className="private-pill"><LockKeyhole size={12}/> Private workspace</span><button className="text-button" disabled={busy} onClick={onSecurity}>Account security</button><button className="text-button" disabled={busy} onClick={signOut}>Sign out</button><span className="topbar-date">{new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span></div></header>
+    <div className="main-shell"><header className="topbar"><div className="breadcrumbs"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={()=>setMobileNav(true)}><Menu size={20}/></button><span>Workspace</span><ChevronRight size={13}/><strong>{view==='applications'?'Applications':view==='interviews'?'Interviews':'Follow-ups'}</strong></div><div className="topbar-right"><span className="private-pill"><LockKeyhole size={12}/> Private workspace</span><button className="text-button reminder-launcher" onClick={()=>setRemindersOpen(true)}><Bell size={14}/> Reminders</button><button className="text-button" disabled={busy} onClick={onSecurity}>Account security</button><button className="text-button" disabled={busy} onClick={signOut}>Sign out</button><span className="topbar-date">{new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span></div></header>
       <main><section className="welcome"><div><div className="eyebrow"><span/> THE NEXT STEP IS YOURS</div><h1>{heading}</h1><p>Keep your opportunities organized. Focus on what comes next.</p></div><button className="button primary add-main" disabled={!ready||busy} onClick={()=>setDrawer({id:null})}><Plus size={17}/> Add application</button></section>
         {error&&<div className="error-box" role="alert">{error} <button className="text-button" disabled={busy} onClick={()=>void refresh()}>Retry connection</button></div>}
         {/* Use summary cards as shortcuts into the corresponding application filters. */}
@@ -92,6 +96,7 @@ export default function App({user,onLogout,onSecurity}:{user:User;onLogout:()=>P
       </main>
     </div>
     {/* Mount a fresh editor for the selected record or a blank new application. */}
+    {remindersOpen&&<ReminderCenter onClose={()=>setRemindersOpen(false)} onOpenApplication={id=>void openReminderApplication(id)}/>}
     {drawer&&(!drawer.id||selected)&&<ApplicationDrawer key={drawer.id??'new'} application={selected??null} isNew={!drawer.id} onClose={()=>setDrawer(null)} onSave={saveApplication} onDelete={deleteApplication}/>}
     {/* Announce action results and expose the version-aware undo operation. */}
     {toast&&<div className="toast" role="status"><CircleCheck size={18}/><span>{toast.message}</span>{toast.undo&&<button disabled={busy} onClick={undoChange}>Undo</button>}<button className="icon-button" aria-label="Dismiss notification" onClick={()=>setToast(null)}><X size={15}/></button></div>}

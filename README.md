@@ -67,19 +67,38 @@ New accounts require a password with at least 12 characters, including an upperc
 - Database-backed optional sample applications at registration; these are illustrative, not verified vacancies.
 - CSRF-protected writes, HttpOnly session cookies, BCrypt password hashing, request validation, ownership checks on all application operations, and optimistic concurrency checks.
 
-Follow-ups are displayed in the workspace. They do not send notifications or create calendar events. The app does not include email verification, password reset, admin account management or recruitment integrations.
+Automated reminders support interviews, saved application deadlines and follow-ups, with configurable timing, snooze and daily digests. Password recovery is also available after mail configuration. Signup email verification, admin account management and recruitment integrations remain separate features.
 
 ## Planned updates
 
 The following features are planned for later updates:
 
-- Email notification system
+- Signup email verification
 - Calendar integration
-- Password reset
-- Email verification
 - Admin account management
 - Dark mode
 - A friendlier user interface
+
+## Automated reminders
+
+Open **Reminders** in the workspace and enable reminders, then **Save settings**. Choose category toggles, lead times (0–30 days), a timezone and local reminder time. Interviews currently store dates only; reminder time is a notification time. Defaults are one day before interviews, three days before saved application deadlines, and on the follow-up date. Reminder preferences default to disabled.
+
+**As each reminder becomes due** releases reminders individually. **Daily digest** groups newly due reminders at the selected local digest time, once per day. Items added after that day's digest join the next day's digest. The reminder center refreshes every 30 seconds while open. Snooze for 15 minutes, one hour, one day or one week; daily digest timing still applies to snoozed items. Dismiss removes that occurrence. Application edits, interview completion, follow-up completion, deletion and closed statuses cancel affected reminders. Samples never generate reminders or email.
+
+Reminders work in the app without SMTP, and persist in the database across restarts. For optional email to the account's saved address, configure the Java host:
+
+| Variable | Setting |
+| --- | --- |
+| `REMINDER_MAIL_ENABLED` | `true`; defaults to `false` |
+| `REMINDER_MAIL_FROM` | Authorized SMTP sender address |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD` | Same SMTP connection as password mail; default port 587 |
+| `SMTP_AUTH`, `SMTP_STARTTLS` | Default `true`; disable only for a local SMTP sink |
+| `REMINDER_WORKER_ENABLED` | Default `true` |
+| `REMINDER_WORKER_DELAY` | Milliseconds between ticks; default `30000` |
+
+Then select **Also send to my account email** in Reminders. Reminder SMTP can be configured independently of password recovery. Email failures retry up to six attempts, and failed delivery remains visible beside the in-app reminder. Jobs use database leases, and ordinary successful sends are deduplicated; a crash after SMTP accepts a message can still cause a duplicate on retry. Already sending mail cannot be recalled. SMTP credentials/provider setup, hosted deployment and production delivery are not provisioned by this feature.
+
+See [the reminder system design](docs/superpowers/specs/2026-10-02-automated-reminders-design.md) for the component diagram, lifecycle and deployment limits.
 
 ## Database options
 

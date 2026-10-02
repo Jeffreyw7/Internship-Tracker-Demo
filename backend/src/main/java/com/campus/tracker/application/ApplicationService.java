@@ -2,6 +2,7 @@
 package com.campus.tracker.application;
 
 import com.campus.tracker.common.ApiException;
+import com.campus.tracker.reminder.ReminderService;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -18,8 +19,9 @@ import static com.campus.tracker.application.ApplicationDtos.*;
 @Transactional
 public class ApplicationService {
     private final ApplicationRepository repository;
+    private final ReminderService reminders;
     // Receive the repository used by all reads and writes.
-    public ApplicationService(ApplicationRepository repository) { this.repository = repository; }
+    public ApplicationService(ApplicationRepository repository, ReminderService reminders) { this.repository = repository; this.reminders=reminders; }
 
     // Build an owner-scoped search and return one page of response objects.
     @Transactional(readOnly = true)
@@ -66,7 +68,7 @@ public class ApplicationService {
         InternshipApplication a = new InternshipApplication(ownerId);
         a.sample = sample;
         apply(a, input);
-        return ApplicationView.from(repository.saveAndFlush(a));
+        return persist(a);
     }
 
     // Update the owned record only if its version still matches the editor.
@@ -74,7 +76,7 @@ public class ApplicationService {
         InternshipApplication a = owned(ownerId, id, false);
         verifyVersion(a, ifMatch);
         apply(a, input);
-        return ApplicationView.from(repository.saveAndFlush(a));
+        return persist(a);
     }
 
     // Retain the row for undo while hiding it from normal reads.
@@ -82,7 +84,7 @@ public class ApplicationService {
         InternshipApplication a = owned(ownerId, id, false);
         verifyVersion(a, ifMatch);
         a.deleted = true; a.updatedAt = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
-        return ApplicationView.from(repository.saveAndFlush(a));
+        return persist(a);
     }
 
     // Make a previously deleted record visible again without losing its details.
@@ -90,7 +92,13 @@ public class ApplicationService {
         InternshipApplication a = owned(ownerId, id, true);
         verifyVersion(a, ifMatch);
         a.deleted = false; a.updatedAt = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
-        return ApplicationView.from(repository.saveAndFlush(a));
+        return persist(a);
+    }
+
+    private ApplicationView persist(InternshipApplication a) {
+        repository.saveAndFlush(a);
+        reminders.reconcile(a.ownerId);
+        return ApplicationView.from(a);
     }
 
     private InternshipApplication owned(UUID ownerId, UUID id, boolean deleted) {

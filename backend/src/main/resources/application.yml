@@ -50,6 +50,11 @@ server:
 # Allow demo signup locally; the production profile changes this default.
 campus:
   registration-enabled: ${REGISTRATION_ENABLED:true}
+  reminders:
+    worker-enabled: ${REMINDER_WORKER_ENABLED:true}
+    worker-delay: ${REMINDER_WORKER_DELAY:30000}
+    mail-enabled: ${REMINDER_MAIL_ENABLED:false}
+    mail-from: ${REMINDER_MAIL_FROM:}
   password:
     mail-enabled: ${PASSWORD_MAIL_ENABLED:false}
     public-origin: ${PASSWORD_PUBLIC_ORIGIN:http://127.0.0.1:8080}

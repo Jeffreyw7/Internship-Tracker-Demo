@@ -1,5 +1,29 @@
 # Validation record
 
+## Automated reminders validation — October 2, 2026
+
+Implemented on `Autonamted-Reminders-Feature`. Validated with Java 21.0.12.1 (Java 17 source target), Spring Boot 3.5.16, Maven wrapper and Node 25.2.0. Accounts and source records were synthetic. Browser/HTTP/restart tests used a separate loopback backend on port 18082 and a dedicated temporary H2 database; reminder mail was disabled. Delivery integration tests used a fake SMTP boundary.
+
+| Check | Result |
+| --- | --- |
+| Complete Java suite and bundled JAR (`backend/mvnw.cmd -Pwith-ui verify`) | 60 passed, no failures/errors/skips |
+| Client tests (`npm test`) | 21 passed |
+| Strict TypeScript + Vite production build | Passed |
+| Flyway V1/V2/V3 and Hibernate startup validation | Passed |
+| Real bundled HTTP reminder smoke | Passed |
+| Abrupt JVM restart with file-backed H2 | Preferences, occurrence IDs and snooze times persisted |
+| Desktop and 390px mobile browser checks | Settings, fixed-offset timezone, snooze, dismissal and application links passed; no horizontal overflow |
+| Reminder link for an application created outside the cached workspace | Correct application drawer opened after refresh |
+| Independent read-only code review | Six delivery/timing findings corrected; navigation finding also corrected |
+
+Backend coverage includes opt-in defaults, session/CSRF protection, version conflicts, ownership, malformed timezone/time/range rejection, sample and closed-status exclusion, all three source categories, date edits/deletion, persistent snooze/dismiss, duplicate occurrence prevention, parallel reads, independent mail claim exclusivity, expiry revalidation outside a 100-owner page, lease recovery, temporary/permanent/exhausted SMTP failures, empty digest days, late arrivals, retry-preserving preference edits, DST gap/overlap scheduling and multiple jobs for 101 same-day deadlines.
+
+Review regressions reproduced empty-window late delivery, lost digest retry, stale expiry mail and the 100-item omission before fixes. Digest release now uses the actual zoned cutoff and records empty processing windows without sending empty mail. Compatible preference edits keep eligible retries. Every claimed mail job reconciles its owner, larger digests use multiple jobs, and acknowledgement obtains the same owner lock as settings/actions. Browser tests reproduced successful `UTC+03:00` rendering using the tested offset formatter; unsupported legacy browser timezone support has a labelled UTC fallback.
+
+SMTP acceptance after a crash remains at-least-once, and in-flight mail cannot be recalled. Production provider credentials/delivery, PostgreSQL execution, load/retention policy and hosted multi-instance deployment were not verified. Reminder SMTP remains disabled until explicitly configured; see README.md. The review's lock-order finding was resolved by consistent owner/job/occurrence serialization; the exact original deadlock interleaving was not reproduced experimentally.
+
+Screenshots and synthetic account/server metadata are under ignored `test-results/`. `node tests/reminder_http_smoke.mjs` expects a dedicated temporary backend at `http://127.0.0.1:18082`; optional `--resume` verifies saved state after restart and `--add-source` creates a synthetic second-tab application for browser verification. Never point this helper at a normal user database. The backend and browser test session were stopped after verification.
+
 ## Password lifecycle validation — October 2, 2026
 
 Validated with Java 21.0.12.1, Node 25.2.0, Maven wrapper and Spring Boot 3.5.16. Tests use synthetic accounts, isolated temporary/file-backed or in-memory H2 databases, and a loopback SMTP sink; no normal application data or production mail was used.

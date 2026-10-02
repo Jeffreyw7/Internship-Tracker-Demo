@@ -81,6 +81,46 @@ Updates, deletes and restores require `If-Match: "0"` (or the current numeric ve
 
 A successful DELETE response includes the incremented version. Use that version to restore the same ID. Undoing an ordinary edit instead submits the previous field values with the version returned by the edit. Both paths reject intervening changes instead of silently overwriting them.
 
+## Automated reminders
+
+All reminder routes require an authenticated session. Writes also require CSRF and the current numeric or quoted `If-Match` version. Missing versions return 428, stale versions 409, and a reminder belonging to another owner or no longer active returns 404.
+
+| Method | Route | Result |
+| --- | --- | --- |
+| GET | `/api/reminders` | `{preferences, emailAvailable, reminders, readyCount}` |
+| PUT | `/api/reminders/preferences` | Updated overview; `If-Match` uses `preferences.version` |
+| POST | `/api/reminders/{id}/snooze` | Updated reminder; `If-Match` uses reminder `version` |
+| POST | `/api/reminders/{id}/dismiss` | Dismissed reminder; `If-Match` uses reminder `version` |
+
+Preference request (do not submit `version` in JSON):
+
+```json
+{
+  "enabled": true,
+  "interviewsEnabled": true,
+  "deadlinesEnabled": true,
+  "followUpsEnabled": true,
+  "interviewLeadDays": 1,
+  "deadlineLeadDays": 3,
+  "followUpLeadDays": 0,
+  "timezone": "America/New_York",
+  "reminderTime": "09:00",
+  "deliveryMode": "DAILY_DIGEST",
+  "digestTime": "10:00",
+  "emailEnabled": false
+}
+```
+
+All fields are required. Lead times accept 0–30 days; times use HH:mm and timezone must be a valid Java timezone ID. `deliveryMode` is `IMMEDIATE` or `DAILY_DIGEST`. Email opt-in requires host email availability; otherwise the API returns 400. Default settings disable reminders and email, enable all categories, use lead times 1/3/0 days and 09:00 UTC. Saving category/lead-time settings preserves the digest day marker; changing timezone, delivery mode or digest time resets it.
+
+Snooze request: `{"minutes":60}`; range 15–10080 minutes. Dismiss needs no body. Snooze calculates a new UTC due instant from the server clock, persists it across reconciliation and permits another email when due. Digest mode releases that occurrence at the next daily digest. Dismissal suppresses that occurrence permanently; a changed source date creates a new occurrence.
+
+Reminder responses contain `id`, `applicationId`, `kind` (`INTERVIEW`, `DEADLINE`, `FOLLOW_UP`), `company`, `role`, `label`, `eventDate`, UTC `dueAt`, `state`, `snoozed`, `version`, and `emailStatus`. The overview lists up to 200 active items in due-time order, states `PENDING` or `READY`. `readyCount` counts all READY items, including those outside the displayed limit. Email statuses: `NONE`, `PENDING`, `SENDING`, `SENT`, `CANCELLED`, `FAILED`.
+
+Deadlines apply only to Saved applications; interviews and follow-ups apply to Applied/Interviewing applications. Completed stages, removed dates, closed applications, deleted records and samples do not generate reminders. Overdue follow-ups remain eligible, while expired interview/deadline dates cancel reminders. Application mutations reconcile reminder eligibility in the same transaction.
+
+Daily digests release items due through that day's local digest cutoff, once per local day; items arriving or becoming due afterward wait for the next day. Empty processing windows still close that day's digest, without sending mail. Email jobs contain at most 100 occurrences; larger digests create additional jobs in the same release. Compatible category/lead-time edits retain pending email retries. The scheduler processes 100 owners per tick and up to 25 mail jobs, rechecking each mail job's owner before delivery. No exactly-once SMTP guarantee or automatic retention purge is provided.
+
 ## Errors
 
 Errors use `{ "message": "Human-readable explanation" }`:

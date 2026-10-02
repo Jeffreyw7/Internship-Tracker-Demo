@@ -20,5 +20,51 @@
 /* Stack the authentication layout on smaller screens. */
 @media(max-width:800px){.auth-shell{grid-template-columns:minmax(260px,440px);gap:24px;padding:30px 20px}.auth-story .brand{margin-bottom:25px}.auth-story h1{font-size:31px;margin:10px 0}.auth-story .auth-note{margin-top:16px}.auth-story>p{font-size:12px}.auth-card{padding:26px}.auth-story h1 br{display:none}}
 
+/* Reminder center uses native dialog focus containment and the workspace's existing palette. */
+.reminder-launcher{display:inline-flex;align-items:center;gap:5px}
+.reminder-dialog{width:min(960px,calc(100vw - 36px));max-height:90vh;margin:auto;padding:0;color:#29483e;background:#fafcf9;border:1px solid #dce6d8;border-radius:18px;box-shadow:0 24px 100px #163b3933;overflow:hidden}
+.reminder-dialog::backdrop{background:#163b3966;backdrop-filter:blur(3px)}
+.reminder-header{display:flex;align-items:center;justify-content:space-between;padding:24px 28px;background:#fff;border-bottom:1px solid #e3eadf}
+.reminder-header .eyebrow{display:flex;align-items:center;gap:7px;font-size:10px}
+.reminder-header h2{margin:8px 0 0;font-size:25px;letter-spacing:-.6px}
+.reminder-body{padding:24px 28px;overflow-y:auto;max-height:calc(90vh - 108px)}
+.reminder-settings{padding:20px;background:white;border:1px solid #e2e9df;border-radius:12px}
+.reminder-settings fieldset{border:0;margin:0;padding:0;min-width:0}
+.reminder-settings legend{font-size:16px;font-weight:700;padding:0;margin-bottom:7px}
+.reminder-settings fieldset>p{font-size:12px;line-height:1.7;color:#6b7f66;margin:0 0 14px}
+.reminder-settings .reminder-check{display:flex;align-items:center;gap:9px;font-size:12px;line-height:1.5;margin:12px 0}
+.reminder-settings .reminder-check input{width:16px;height:16px;margin:0;accent-color:#17695c;flex:none}
+.reminder-category-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:14px 0}
+.reminder-category{padding:10px 14px;background:#f6f8f4;border-radius:8px;border:1px solid #e5ebdf}
+.reminder-category .reminder-check{min-height:36px;margin:0 0 8px}
+.reminder-category>label:last-child{font-size:11px}
+.reminder-category input[type=number]{max-width:95px;padding:7px 10px}
+.reminder-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.reminder-form-grid input,.reminder-form-grid select{font-size:13px}
+.reminder-browser-zone{margin:10px 0;font-size:11px}
+.reminder-settings-actions{display:flex;align-items:center;gap:16px;margin-top:15px}
+.reminder-help{font-size:11px;line-height:1.6;color:#6b7f66}
+.reminder-message{font-size:12px;padding:10px 12px;border-radius:7px;background:#e8f2e5;color:#275344}
+.reminder-list{margin-top:26px}
+.reminder-list-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:12px}
+.reminder-list h3{font-size:15px;display:flex;align-items:center;gap:8px;margin:16px 0}
+.reminder-list-heading label{display:flex;align-items:center;gap:8px;font-size:11px;color:#6b7f66}
+.reminder-list-heading select{padding:7px 9px;border:1px solid #dce6d8;background:white;border-radius:6px;color:#29483e}
+.reminder-list ul{list-style:none;padding:0;margin:0}
+.reminder-item{display:flex;align-items:flex-start;gap:12px;padding:16px 0;border-top:1px solid #e2e9df}
+.reminder-item-icon{display:flex;align-items:center;justify-content:center;background:#e9f1e6;color:#397258;border-radius:9px;padding:10px;flex:none}
+.reminder-item-content{min-width:0;flex:1}
+.reminder-kind{display:block;text-transform:uppercase;font-size:9px;font-weight:700;letter-spacing:.7px;color:#718365;margin-bottom:6px}
+.reminder-application{display:block;text-align:left;color:#29483e;font-size:13px;font-weight:600;padding:0;white-space:normal;overflow-wrap:anywhere}
+.reminder-application:hover{text-decoration:underline}
+.reminder-item-content p{font-size:12px;margin:6px 0;color:#667c60;overflow-wrap:anywhere}
+.reminder-item-content small{display:block;font-size:11px;line-height:1.8;color:#7b8d71}
+.reminder-item-content .reminder-mail-failed{color:#a44538}
+.reminder-item-actions{display:flex;align-items:center;gap:12px;flex:none}
+.reminder-item-actions .button{font-size:11px;padding:7px 10px}
+.reminder-item-actions .text-button{font-size:11px}
+.reminder-empty{padding:17px;border:1px dashed #d6e0cf;border-radius:8px;font-size:12px;color:#6b7f66}
+@media(max-width:700px){.reminder-dialog{width:calc(100vw - 20px);max-height:95vh}.reminder-header{padding:18px}.reminder-header h2{font-size:21px}.reminder-body{padding:16px;max-height:calc(95vh - 96px)}.reminder-settings{padding:15px}.reminder-category-grid{grid-template-columns:1fr}.reminder-category{display:grid;grid-template-columns:1fr 95px;align-items:center;gap:10px}.reminder-category .reminder-check{margin:0}.reminder-form-grid{grid-template-columns:1fr}.reminder-list-heading{align-items:flex-start;flex-direction:column;gap:0}.reminder-item{flex-wrap:wrap}.reminder-item-actions{margin-left:50px}.reminder-item-content{width:calc(100% - 55px)}.reminder-launcher{font-size:10px}.topbar-right{flex-wrap:wrap;gap:10px}}
+@media(max-width:700px){.reminder-item{display:grid;grid-template-columns:38px minmax(0,1fr);gap:12px}.reminder-item-content{width:auto}.reminder-item-actions{grid-column:2;margin-left:0}}
 /* Focused account-security forms share the authentication card. */
 .password-shell{grid-template-columns:minmax(260px,480px);gap:0}.password-shell .auth-switch{display:block}.auth-card p[role=status]{color:#17695c;line-height:1.6}.topbar-right{flex-wrap:wrap}
