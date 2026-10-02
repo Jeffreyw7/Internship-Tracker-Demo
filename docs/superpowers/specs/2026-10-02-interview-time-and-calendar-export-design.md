@@ -89,7 +89,7 @@ Example stage write inside the existing application request:
 }
 ```
 
-Responses return offset date-time strings calculated from the stored instants in the stored zone, so response values can be reused in a write without losing offset information. Optional absent timestamp/zone/text response fields use empty strings, matching the existing frontend convention; absent request timestamps and zone use null. Missing new fields in older request JSON are accepted as empty, with the replacement semantics below.
+Responses return offset date-time strings calculated from the stored instants in the stored zone, so response values can be reused in a write without losing offset information. Optional absent timestamp/zone/text response fields use empty strings, matching the existing frontend convention; absent request timestamps and zone use null. Older request JSON may omit new properties; handle that absence distinctly from explicit clearing as specified below.
 
 Client payload mapping must whitelist these fields and exclude transient local editor values and server-owned metadata. Separate local date/time draft inputs from the persisted stage values. Validate a complete three-field schedule or no schedule; both endpoints are required together, and end must be strictly after start. Completed and planned stages may also retain a full schedule. Scheduled stages still require a date when their times are unknown. No guessed duration or midnight start is written.
 
