@@ -1,12 +1,31 @@
 # Campus API
 
+## Password recovery and change
+
+All routes require the current CSRF header and same-origin session cookie; obtain a token from `GET /api/auth/csrf`. Disabled mail returns 503 `PASSWORD_MAIL_UNAVAILABLE`.
+
+| POST route | Access | JSON fields | Success |
+| --- | --- | --- | --- |
+| `/api/auth/password-reset/request` | Public | `email` | 202 `PASSWORD_RESET_REQUEST_ACCEPTED` |
+| `/api/auth/password-reset/confirm` | Public | `token`, `newPassword` | 200 `PASSWORD_RESET_COMPLETED` |
+| `/api/auth/password-change/request` | Signed in | `currentPassword` | 202 `PASSWORD_CHANGE_REQUEST_ACCEPTED` |
+| `/api/auth/password-change/confirm` | Initiating session/account | `token`, `newPassword` | 200 `PASSWORD_CHANGE_COMPLETED` |
+
+Success bodies contain `status` and `message`. Unknown and recipient-suppressed recovery addresses receive the same 202 as existing addresses. Issuance does not change credentials. RESET expires after 30 minutes, CHANGE after 15; opening a link does not consume it. Tokens have 43 base64url characters, are single-use and purpose/account bound. The browser clears the URL fragment and holds the token in memory; reload requires reopening the email.
+
+Confirmation enforces signup password policy and atomically replaces credentials, consumes/revokes challenges, increments credential version, and enqueues notification. Old sessions fail their next protected request. The current browser session ends too, including if another account was signed in during recovery; other accounts' passwords and other sessions are unaffected. Sign in normally afterward.
+
+Errors include `code`: 400 `PASSWORD_CHALLENGE_INVALID` for expired/used/wrong-purpose/account/session tokens, 400 `PASSWORD_POLICY_FAILED`, 400 `CURRENT_PASSWORD_INVALID`, 429 `RATE_LIMITED` with Retry-After, and 503 `PASSWORD_SERVICE_UNAVAILABLE`. Invalid fields/unknown JSON are 400, bodies over 4096 bytes are 413, missing authentication is 401, and invalid CSRF is 403. Responses are not cacheable. Failed writes are never replayed; for a lost confirmation response, try sign-in or request fresh recovery.
+
+This checkout has no signup verification state, so all registered accounts are recovery-eligible. This feature verifies possession of a fresh password email link without adding signup verification.
+
 All routes are under `/api`. The production JAR serves React and the API from the same origin. During development, Vite proxies these routes to Java. Cross-origin access is not enabled.
 
 ## Authentication
 
 1. `GET /api/auth/csrf` returns `{ "token": "…", "headerName": "X-CSRF-TOKEN" }` and establishes a session.
 2. Include that header and the session cookie on every POST, PUT or DELETE.
-3. `POST /api/auth/register` accepts JSON: `displayName`, `email`, `password` (10–72 characters, at most 72 UTF-8 bytes), and `includeSamples` (boolean). Registration does not sign in automatically; the React client signs in after success.
+3. `POST /api/auth/register` accepts JSON: `displayName`, `email`, `password` (12–72 characters with uppercase/lowercase/number/symbol, at most 72 UTF-8 bytes), and `includeSamples` (boolean). Registration does not sign in automatically; the React client signs in after success.
 4. `POST /api/auth/login` accepts **form-urlencoded** `email` and `password`. It returns the signed-in user's `id`, `displayName` and `email`.
 5. Fetch `/api/auth/csrf` again after login because Spring Security rotates the session and clears the pre-login CSRF token.
 6. `GET /api/auth/me` returns the signed-in profile. `POST /api/auth/logout` invalidates the session.

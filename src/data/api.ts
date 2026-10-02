@@ -2,7 +2,8 @@
 // Centralizes same-origin API requests, session handling, CSRF tokens, and user-facing errors.
 export class ApiError extends Error {
   readonly status: number;
-  constructor(status: number, message: string) { super(message); this.name='ApiError'; this.status=status; }
+  readonly code?: string;
+  constructor(status: number, message: string, code?: string) { super(message); this.name='ApiError'; this.status=status; this.code=code; }
 }
 // Keep the CSRF token in memory only; the browser manages the HttpOnly session cookie.
 let csrf: { token: string; headerName: string } | null = null;
@@ -27,9 +28,12 @@ export async function request<T>(path:string, init:RequestInit={}):Promise<T> {
   catch {throw new ApiError(0,'Cannot reach the Java server. Check the connection and try again.');}
   if(!response.ok) {
     const data=await response.json().catch(()=>({}));
-    if(response.status===401 && path!=='/auth/login' && path!=='/auth/me' && typeof window!=='undefined') window.dispatchEvent(new Event('campus:session-expired'));
+    if(response.status===401) {
+      csrf=null;
+      if(path!=='/auth/login' && path!=='/auth/me' && typeof window!=='undefined') window.dispatchEvent(new Event('campus:session-expired'));
+    }
     // Do not automatically replay writes; the server may already have committed the change.
-    throw new ApiError(response.status,data.message ?? `Request failed (${response.status}). Please try again.`);
+    throw new ApiError(response.status,data.message ?? `Request failed (${response.status}). Please try again.`,data.code);
   }
   // Handle successful responses with no JSON body, such as logout.
   if(response.status===204) return undefined as T;
@@ -39,6 +43,19 @@ export async function request<T>(path:string, init:RequestInit={}):Promise<T> {
 // Serialize JSON consistently with its content-type header.
 export const jsonBody=(value:unknown)=>({headers:{'Content-Type':'application/json'},body:JSON.stringify(value)});
 export interface User {id:string;displayName:string;email:string}
+interface PasswordResult {status:string;message:string}
+export const passwordApi={
+  requestReset:(email:string)=>request<PasswordResult>('/auth/password-reset/request',{method:'POST',...jsonBody({email:email.trim()})}),
+  requestChange:(currentPassword:string)=>request<PasswordResult>('/auth/password-change/request',{method:'POST',...jsonBody({currentPassword})}),
+  async confirmReset(token:string,newPassword:string){
+    try{return await request<PasswordResult>('/auth/password-reset/confirm',{method:'POST',...jsonBody({token,newPassword})});}
+    finally{csrf=null;}
+  },
+  async confirmChange(token:string,newPassword:string){
+    try{return await request<PasswordResult>('/auth/password-change/confirm',{method:'POST',...jsonBody({token,newPassword})});}
+    finally{csrf=null;}
+  },
+};
 // Expose profile lookup and account actions to the authentication screen.
 export const authApi={
   me:()=>request<User>('/auth/me'),

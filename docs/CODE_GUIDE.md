@@ -1,5 +1,15 @@
 # Code purpose guide
 
+## Password lifecycle
+
+`PasswordController` owns validated routes, limits, initiating-session binding and local session teardown. `PasswordService` locks account then challenge, validates purpose/email/version/binding, and changes credentials transactionally. Recovery queries only the account ID before locking to avoid stale managed account state during concurrent confirmation. Change issuance serializes transaction completion and session-binding replacement. `CredentialVersionFilter` compares the database credential version with the login principal before authorization.
+
+`PasswordChallengeRepository` persists token digests and lifecycle state. `AuthRateLimiter` uses HMAC identifiers and independently committed database buckets; an insertion conflict rolls back separately before bounded increments. Flyway V2 adds the schema without changing V1. `PasswordRequestSizeFilter` bounds password JSON before deserialization, including chunked requests.
+
+The `mail` package separates encrypted enqueueing, AES-GCM payload protection, SMTP templates, and leased delivery. SMTP runs outside database transactions. The worker rechecks eligibility, cancels expired/revoked jobs, erases terminal secrets, and cleans metadata after seven days. Duplicate mail after a worker crash still uses single-use tokens.
+
+`AuthGate` owns recovery/security/completion navigation. Focused forms call typed `passwordApi` adapters through shared transport. `passwordLink.ts` clears fragments before session lookup; tokens/passwords stay in memory. Confirmation clears cached CSRF even on an uncertain result and is never replayed automatically.
+
 The source files contain comments above the main classes, functions, and logical sections. This guide covers the schema and configuration formats that are best kept separate from inline annotations.
 
 ## Request flow

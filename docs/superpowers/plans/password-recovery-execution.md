@@ -1,0 +1,22 @@
+# Password recovery execution record
+
+- Working branch: `password-recovery-feature`; implementation uses the current feature checkout.
+- User approved design and plan and requested implementation in this session.
+- Ruling: build password-specific mail/outbox/limiter infrastructure because this checkout has none; use migration V2 and retain current signup contracts. All accounts are recovery-eligible.
+- Ruling: reset completion also ends the browser's current local session when it belongs to another account. The emailed account alone receives a password change/version increment; returning to sign in keeps browser/server identity consistent.
+- Initial RED: unknown-email reset and invalid-token confirmation returned 401 because routes were missing.
+- First GREEN: four endpoint tests passed.
+- Lifecycle RED: MockMvc sessions were not invalidated because servletPath was empty; changed filter path detection to request URI minus context path.
+- Lifecycle GREEN: full suite passed 26 tests, including concurrency, rollback, encryption, and two-session invalidation.
+- Frontend RED: password link parser/adapters were missing. GREEN: 13 tests and strict TypeScript/Vite build passed.
+- SMTP permanent rejection RED: worker incorrectly returned job to PENDING. Added explicit permanent failure classification and payload erasure.
+- Independent review identified and verified corrections for stale account state during issuance, same-session binding replacement races, pending-login navigation busy state, and CSRF retention after an uncertain confirmation.
+- Security diff scan reviewed all 37 changed source-like files. The original draft submission failed schema validation, so no manifest existed; the corrected draft was accepted and the original scan sealed successfully. Its immutable pre-fix report retains one medium availability finding (global mail quota consumed by requests without delivery).
+- Quota regression RED: two unknown requests consumed a synthetic two-email quota, preventing a known account's recovery. GREEN: recipient attempt limits remain durable; global quota is reserved only after account/recipient eligibility. Unknown and throttled requests no longer consume it; actual delivery cap still holds. Independent reviewer approved the fix.
+- Added worker coverage for exclusive concurrent claims, expired lease recovery after simulated SMTP acknowledgement loss, transient retry/exhaustion and terminal payload erasure, and expired challenge cancellation.
+- Added fail-closed credential-version tests for missing accounts and database lookup failures. Validation/CSRF error checks confirmed Spring Security already emits no-store headers; no additional filter change was needed.
+- Real restart smoke RED: abrupt Windows JVM termination lost recently acknowledged writes under H2's delayed-write default. Logs showed insertion before shutdown but the reopened file lacked the challenge/job. Set WRITE_DELAY=0 in local H2 URLs; both restart smoke scripts then passed, including encrypted pending-mail delivery after restart.
+- Final backend verification: 40 tests passed and executable with-ui JAR built. Frontend: 15 tests passed and TypeScript/Vite build succeeded. Test cases were consolidated in PasswordIntegrationTest and CredentialVersionFilterTest instead of creating a separate class for every plan task.
+- Final token-lifetime regression RED/GREEN: clear the initial module-held token on link replacement, dismissal or completion while preserving StrictMode initialization. Independent reviewer approved the change; final frontend bundle rebuilt.
+- Real browser verification: desktop 1264px and mobile 390px recovery/security/completion screens; recovery email and new-password login; initiating-session change with an intentionally lost successful response; no replay; new-password login with all 10 samples retained; fragments removed; invalid link and keyboard return; stale-login/navigation regression passed. Synthetic SMTP only.
+- PostgreSQL, production SMTP, multi-instance shared sessions and hosted deployment were unavailable and remain unverified. See VALIDATION.md for reproducible checks and limits. No commit, push, deployment or external messages were made.

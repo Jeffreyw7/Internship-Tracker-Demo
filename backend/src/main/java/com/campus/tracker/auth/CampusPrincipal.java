@@ -8,11 +8,12 @@ import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
-public record CampusPrincipal(UUID id, String displayName, String email, String passwordHash) implements UserDetails {
+public record CampusPrincipal(UUID id, String displayName, String email, String passwordHash, long credentialVersion) implements UserDetails {
     // Copy the database account into the UserDetails shape required by authentication.
     public static CampusPrincipal from(CampusUser user) {
-        return new CampusPrincipal(user.getId(), user.getDisplayName(), user.getEmail(), user.getPasswordHash());
+        return new CampusPrincipal(user.getId(), user.getDisplayName(), user.getEmail(), user.getPasswordHash(), user.getCredentialVersion());
     }
+    @Override public String toString(){return "CampusPrincipal[id="+id+",credentials=REDACTED]";}
     // All accounts currently share the ordinary user role.
     @Override public Collection<? extends GrantedAuthority> getAuthorities() { return List.of(new SimpleGrantedAuthority("ROLE_USER")); }
     // Supply the stored hash to the authentication provider for password verification.

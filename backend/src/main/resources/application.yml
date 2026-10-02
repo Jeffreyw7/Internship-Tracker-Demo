@@ -4,7 +4,7 @@ spring:
     name: campus-tracker
 # Keep local accounts in a file; H2_PASSWORD can override the default empty database password.
   datasource:
-    url: jdbc:h2:file:./data/campus;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    url: jdbc:h2:file:./data/campus;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;WRITE_DELAY=0
     username: sa
     password: ${H2_PASSWORD:}
 # Let Flyway own schema changes; Hibernate checks mappings rather than changing tables.
@@ -20,6 +20,18 @@ spring:
   jackson:
     deserialization:
       fail-on-unknown-properties: true
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS:true}
+      mail.smtp.starttls.required: ${SMTP_STARTTLS:true}
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
 # Bind locally by default and configure the server-side session and cookie policy.
 server:
   address: ${SERVER_ADDRESS:127.0.0.1}
@@ -38,3 +50,10 @@ server:
 # Allow demo signup locally; the production profile changes this default.
 campus:
   registration-enabled: ${REGISTRATION_ENABLED:true}
+  password:
+    mail-enabled: ${PASSWORD_MAIL_ENABLED:false}
+    public-origin: ${PASSWORD_PUBLIC_ORIGIN:http://127.0.0.1:8080}
+    mail-from: ${PASSWORD_MAIL_FROM:}
+    encryption-key: ${PASSWORD_ENCRYPTION_KEY:}
+    encryption-key-id: ${PASSWORD_ENCRYPTION_KEY_ID:v1}
+    rate-limit-secret: ${PASSWORD_RATE_LIMIT_SECRET:}

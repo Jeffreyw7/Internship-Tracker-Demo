@@ -10,4 +10,11 @@ public interface UserRepository extends JpaRepository<CampusUser, UUID> {
     Optional<CampusUser> findByEmail(String email);
     // Check for an existing normalized email before attempting registration.
     boolean existsByEmail(String email);
+    @org.springframework.data.jpa.repository.Query("select u.id from CampusUser u where u.email = :email")
+    Optional<UUID> findIdByEmail(@org.springframework.data.repository.query.Param("email") String email);
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select u from CampusUser u where u.id = :id")
+    Optional<CampusUser> findByIdForUpdate(@org.springframework.data.repository.query.Param("id") UUID id);
+    @org.springframework.data.jpa.repository.Query("select u.credentialVersion from CampusUser u where u.id = :id")
+    Optional<Long> credentialVersion(@org.springframework.data.repository.query.Param("id") UUID id);
 }

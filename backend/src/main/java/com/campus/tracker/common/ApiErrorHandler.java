@@ -17,7 +17,11 @@ import java.util.Map;
 public class ApiErrorHandler {
     // Preserve deliberate service errors such as missing records or rejected registration.
     @ExceptionHandler(ApiException.class)
-    ResponseEntity<?> api(ApiException e) { return ResponseEntity.status(e.getStatus()).body(Map.of("message", e.getMessage())); }
+    ResponseEntity<?> api(ApiException e) {
+        var response=ResponseEntity.status(e.getStatus()).header("Cache-Control","no-store");
+        if(e.getRetryAfter()!=null) response.header("Retry-After",e.getRetryAfter().toString());
+        return response.body(e.getCode()==null?Map.of("message",e.getMessage()):Map.of("message",e.getMessage(),"code",e.getCode()));
+    }
 
     // Report the first invalid request field using its validation message.
     @ExceptionHandler(MethodArgumentNotValidException.class)

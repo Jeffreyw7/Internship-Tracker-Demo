@@ -14,6 +14,8 @@ public class CampusUser {
     @Column(name = "display_name", nullable = false, length = 80) private String displayName;
     @Column(name = "password_hash", nullable = false, length = 100) private String passwordHash;
     @Column(name = "created_at", nullable = false) private Instant createdAt;
+    @Column(name = "credential_version", nullable = false) private long credentialVersion;
+    @Column(name = "password_changed_at") private Instant passwordChangedAt;
 
     // Provide the no-argument constructor JPA needs when loading database rows.
     protected CampusUser() {}
@@ -27,4 +29,8 @@ public class CampusUser {
     public String getEmail() { return email; }
     public String getDisplayName() { return displayName; }
     public String getPasswordHash() { return passwordHash; }
+    public long getCredentialVersion() { return credentialVersion; }
+    public void replacePassword(String hash, Instant changedAt) {
+        passwordHash = hash; passwordChangedAt = changedAt; credentialVersion++;
+    }
 }

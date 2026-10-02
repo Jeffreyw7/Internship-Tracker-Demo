@@ -124,7 +124,33 @@ The API uses server-side pagination, optional search/status filters, bounded pag
 
 The UI currently fetches the user's paginated history into memory to keep its existing cross-view filtering and summaries immediate. For very large histories, connect the table directly to server-side queries and add separate aggregate/activity endpoints. The API boundary already supports that change; this project has not been load-tested.
 
-Sessions are in memory for this single-instance version. A multi-instance deployment needs shared sessions (for example Spring Session/Redis) or sticky routing, plus PostgreSQL, HTTPS, rate limiting and database backups. Password reset and email verification should be added before opening public self-service registration.
+Sessions are in memory for this single-instance version. A multi-instance deployment needs shared sessions (for example Spring Session/Redis) or sticky routing, plus PostgreSQL, HTTPS and database backups. Password recovery and email-confirmed changes are available after configuring SMTP below. Signup email verification remains a separate feature.
+
+## Password recovery and account security
+
+Use **Forgot password?** on login for a 30-minute recovery link. **Account security** in the workspace verifies your current password and sends a 15-minute change link; open it in the initiating browser. Confirmation ends the account's sessions and returns to normal sign-in. Application data is retained.
+
+Password mail defaults to disabled. Configure these environment variables on the Java host:
+
+| Variable | Setting |
+| --- | --- |
+| `PASSWORD_MAIL_ENABLED` | `true` |
+| `PASSWORD_PUBLIC_ORIGIN` | HTTPS application origin; HTTP is permitted on loopback |
+| `PASSWORD_MAIL_FROM` | Authorized SMTP sender address |
+| `PASSWORD_ENCRYPTION_KEY` | Base64-encoded, securely generated 32-byte AES key |
+| `PASSWORD_ENCRYPTION_KEY_ID` | Key identifier, default `v1` |
+| `PASSWORD_RATE_LIMIT_SECRET` | Independently generated secret of at least 32 UTF-8 bytes |
+| `SMTP_HOST`, `SMTP_PORT` | Provider hostname and port; default port 587 |
+| `SMTP_USERNAME`, `SMTP_PASSWORD` | Provider credentials |
+| `SMTP_AUTH`, `SMTP_STARTTLS` | Both default `true`; STARTTLS is required when enabled |
+
+Keep secrets outside Git and stable across restarts. The key ID must match queued encrypted messages; drain the queue before replacing the single configured encryption key. An old-key ring is not implemented. For a local SMTP sink only, set `SMTP_AUTH=false` and `SMTP_STARTTLS=false`.
+
+Challenges are hashed and delivery jobs encrypted. SMTP failures retry until link expiry or delivery exhaustion; password changes enqueue a notification. A database credential version rejects old sessions on their next API request; already authorized requests are not cancelled. Local file-backed H2 disables delayed writes (`WRITE_DELAY=0`) so acknowledged challenge/outbox writes survive abrupt JVM restarts; retain that setting if overriding the H2 URL.
+
+Properties `campus.password.reset-ttl`, `change-ttl`, and `limits.*` control lifetimes/limits. Defaults: requests 5/minute and 30/hour/IP; recipient mail 1/minute, 5/hour, 10/day; global challenge mail 1000/day; confirmations 10/minute/IP and 10/15 minutes/token. Unknown-account and recipient-suppressed requests count toward attempt limits but do not consume the global delivery quota. Forwarded headers are not enabled; reverse-proxy deployments must configure trustworthy client addressing. No deployment or SMTP account is provisioned automatically.
+
+After bundling, run `node tests/password_http_smoke.mjs` for real HTTP/SMTP/restart verification with synthetic accounts and a temporary database. `python tests/http_smoke.py` also checks CRUD and password flows. Both resolve Java's real executable to avoid Windows Oracle launcher shims leaving the JVM running during restart checks.
 
 See [docs/API.md](docs/API.md) for request examples and the endpoint contract.
 

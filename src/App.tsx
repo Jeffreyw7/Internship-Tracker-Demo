@@ -14,7 +14,7 @@ type Undo={kind:'delete';deleted:Application}|{kind:'update';before:Application;
 type Toast={message:string;undo?:Undo};
 // Quote CSV fields and prefix recognized formula-leading characters to reduce spreadsheet formula execution.
 function csvCell(v:string){return '"'+(/^[=+\-@\t\r]/.test(v)?"'":'')+v.replaceAll('"','""')+'"';}
-export default function App({user,onLogout}:{user:User;onLogout:()=>Promise<void>}) {
+export default function App({user,onLogout,onSecurity}:{user:User;onLogout:()=>Promise<void>;onSecurity:()=>void}) {
   // Read server-backed data and mutation handlers from the shared hook.
   const {apps,error,ready,busy,save,remove,restoreDeleted,refresh}=useApplications();
   // Track navigation and display controls separately from application records.
@@ -67,7 +67,7 @@ export default function App({user,onLogout}:{user:User;onLogout:()=>Promise<void
       <div className="sidebar-bottom"><div className="little-note"><Sparkles size={18}/><strong>Big things start small.</strong><p>One application. One conversation.<br/>One step closer.</p><span className="note-line"/></div><div className="profile"><span className="avatar">{user.displayName.split(/\s+/).slice(0,2).map(n=>n[0]).join('').toUpperCase()}</span><div><strong>{user.displayName}</strong><small>Personal workspace</small></div><LockKeyhole size={14}/></div></div>
     </aside>
     {/* Show the current view title and account controls above the workspace. */}
-    <div className="main-shell"><header className="topbar"><div className="breadcrumbs"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={()=>setMobileNav(true)}><Menu size={20}/></button><span>Workspace</span><ChevronRight size={13}/><strong>{view==='applications'?'Applications':view==='interviews'?'Interviews':'Follow-ups'}</strong></div><div className="topbar-right"><span className="private-pill"><LockKeyhole size={12}/> Private workspace</span><button className="text-button" disabled={busy} onClick={signOut}>Sign out</button><span className="topbar-date">{new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span></div></header>
+    <div className="main-shell"><header className="topbar"><div className="breadcrumbs"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={()=>setMobileNav(true)}><Menu size={20}/></button><span>Workspace</span><ChevronRight size={13}/><strong>{view==='applications'?'Applications':view==='interviews'?'Interviews':'Follow-ups'}</strong></div><div className="topbar-right"><span className="private-pill"><LockKeyhole size={12}/> Private workspace</span><button className="text-button" disabled={busy} onClick={onSecurity}>Account security</button><button className="text-button" disabled={busy} onClick={signOut}>Sign out</button><span className="topbar-date">{new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span></div></header>
       <main><section className="welcome"><div><div className="eyebrow"><span/> THE NEXT STEP IS YOURS</div><h1>{heading}</h1><p>Keep your opportunities organized. Focus on what comes next.</p></div><button className="button primary add-main" disabled={!ready||busy} onClick={()=>setDrawer({id:null})}><Plus size={17}/> Add application</button></section>
         {error&&<div className="error-box" role="alert">{error} <button className="text-button" disabled={busy} onClick={()=>void refresh()}>Retry connection</button></div>}
         {/* Use summary cards as shortcuts into the corresponding application filters. */}

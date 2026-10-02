@@ -28,14 +28,17 @@ public class SecurityConfig {
     }
 
     // Apply security checks before requests reach the REST controllers.
-    @Bean SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper json) throws Exception {
+    @Bean SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper json, UserRepository users) throws Exception {
         return http
+                .addFilterBefore(new PasswordRequestSizeFilter(), org.springframework.security.web.csrf.CsrfFilter.class)
+                .addFilterBefore(new CredentialVersionFilter(users), org.springframework.security.web.access.intercept.AuthorizationFilter.class)
                 // Store CSRF tokens in the session so writes require both the token and session cookie.
                 .csrf(csrf -> csrf.csrfTokenRepository(new HttpSessionCsrfTokenRepository()))
                 // Allow account setup and health checks; require a signed-in user for other API routes.
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.GET, "/api/auth/csrf", "/api/health").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login",
+                                "/api/auth/password-reset/request", "/api/auth/password-reset/confirm").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll())
                 .requestCache(cache -> cache.disable())

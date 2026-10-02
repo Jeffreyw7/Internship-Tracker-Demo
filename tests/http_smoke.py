@@ -16,11 +16,55 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import socketserver
+import threading
+import queue
+import os
+
+# An isolated loopback SMTP sink captures only synthetic test mail.
+mailbox = queue.Queue()
+class SmtpSink(socketserver.StreamRequestHandler):
+    def handle(self):
+        self.wfile.write(b'220 test-smtp ready\r\n')
+        while line := self.rfile.readline():
+            command = line.upper()
+            if command.startswith((b'EHLO', b'HELO')):
+                self.wfile.write(b'250 localhost\r\n')
+            elif command.startswith(b'DATA'):
+                self.wfile.write(b'354 send data\r\n')
+                message = bytearray()
+                while (body := self.rfile.readline()) not in (b'.\r\n', b''):
+                    message.extend(body)
+                mailbox.put(message.decode('utf-8', errors='replace'))
+                self.wfile.write(b'250 accepted\r\n')
+            elif command.startswith(b'QUIT'):
+                self.wfile.write(b'221 goodbye\r\n')
+                break
+            else:
+                self.wfile.write(b'250 ok\r\n')
+
+smtp = socketserver.ThreadingTCPServer(('127.0.0.1', 0), SmtpSink)
+smtp.daemon_threads = True
+threading.Thread(target=smtp.serve_forever, daemon=True).start()
+
+def mail_token(purpose):
+    from email.parser import Parser
+    from email.policy import default
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        message = Parser(policy=default).parsestr(mailbox.get(timeout=15)).get_content()
+        match = re.search(r'#password-' + purpose + r'=([A-Za-z0-9_-]{43})', message)
+        if match:
+            return match.group(1)
+    raise AssertionError('Password mail did not arrive')
 
 # Locate the bundled application and choose an unused loopback port for this test.
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 JAR = ROOT / 'backend/target/campus-tracker-2.0.0.jar'
 assert JAR.exists(), 'Build the with-ui JAR before running this test.'
+java_settings = subprocess.run(['java', '-XshowSettings:properties', '-version'], capture_output=True, text=True, check=True)
+java_home = re.search(r'java\.home\s*=\s*(.+)', java_settings.stderr).group(1).strip()
+JAVA = str(pathlib.Path(java_home) / 'bin' / ('java.exe' if os.name == 'nt' else 'java'))
 with socket.socket() as sock:
     sock.bind(('127.0.0.1', 0))
     port = sock.getsockname()[1]
@@ -31,7 +75,7 @@ client = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.req
 
 
 # Send JSON or form data, assert the status, and decode JSON only when appropriate.
-def call(path, method='GET', data=None, headers=None, expected=200, form=False):
+def call(path, method='GET', data=None, headers=None, expected=200, form=False, http_client=None):
     headers = dict(headers or {})
     if data is not None:
         body = (urllib.parse.urlencode(data) if form else json.dumps(data)).encode()
@@ -40,7 +84,7 @@ def call(path, method='GET', data=None, headers=None, expected=200, form=False):
         body = None
     request = urllib.request.Request(base + path, data=body, headers=headers, method=method)
     try:
-        response = client.open(request, timeout=5)
+        response = (http_client or client).open(request, timeout=5)
     except urllib.error.HTTPError as error:
         response = error
     raw = response.read()
@@ -68,9 +112,18 @@ def stop(process):
 with tempfile.TemporaryDirectory(prefix='campus-http-test-') as temp:
     log_path = pathlib.Path(temp) / 'server.log'
     with log_path.open('w') as log:
-        command = ['java', '-jar', str(JAR), f'--server.port={port}', '--server.address=127.0.0.1',
-                   f'--spring.datasource.url=jdbc:h2:file:{temp}/campus;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE',
+        command = [JAVA, '-jar', str(JAR), f'--server.port={port}', '--server.address=127.0.0.1',
+                   f'--spring.datasource.url=jdbc:h2:file:{temp}/campus;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;WRITE_DELAY=0',
                    '--campus.registration-enabled=true', '--server.servlet.session.cookie.secure=false']
+        command += ['--campus.password.mail-enabled=true', '--campus.password.worker-delay=100',
+                    f'--campus.password.public-origin={base}', '--campus.password.mail-from=campus@example.test',
+                    '--campus.password.encryption-key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+                    '--campus.password.rate-limit-secret=synthetic-test-secret-at-least-32-bytes',
+                    '--campus.password.limits.email-minute=100',
+                    '--spring.mail.host=127.0.0.1', f'--spring.mail.port={smtp.server_address[1]}',
+                    '--spring.mail.properties.mail.smtp.auth=false',
+                    '--spring.mail.properties.mail.smtp.starttls.enable=false',
+                    '--spring.mail.properties.mail.smtp.starttls.required=false']
 
 # Launch the JAR and wait for its health endpoint, reporting startup logs on failure.
         def start():
@@ -116,6 +169,8 @@ with tempfile.TemporaryDirectory(prefix='campus-http-test-') as temp:
             call(path, expected=404)
             restored = call(path + '/restore', 'POST', headers={**headers, 'If-Match': str(deleted['version'])})
             assert restored['notes'] == draft['notes']
+            call('/api/auth/password-reset/request', 'POST', {'email': identity['email']}, csrf(), expected=202)
+            reset_token = mail_token('reset')
         finally:
             stop(process)
 
@@ -123,13 +178,36 @@ with tempfile.TemporaryDirectory(prefix='campus-http-test-') as temp:
         try:
 # After restarting the JVM, verify sessions expired while stored application data survived.
             call('/api/auth/me', expected=401)
+            new_password = 'Recovered-test-456!'
+            call('/api/auth/password-reset/confirm', 'POST', {'token': reset_token, 'newPassword': new_password}, csrf())
+            call('/api/auth/password-reset/confirm', 'POST', {'token': reset_token, 'newPassword': new_password}, csrf(), expected=400)
+            call('/api/auth/login', 'POST', identity, csrf(), expected=401, form=True)
+            identity['password'] = new_password
             call('/api/auth/login', 'POST', identity, csrf(), form=True)
             persisted = call(path)
             assert persisted['notes'] == 'Survives a complete JVM restart'
+            assert call('/api/applications')['totalElements'] == 11
+            other = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+            other_csrf = call('/api/auth/csrf', http_client=other)
+            other_headers = {other_csrf['headerName']: other_csrf['token']}
+            call('/api/auth/login', 'POST', identity, other_headers, form=True, http_client=other)
+            other_csrf = call('/api/auth/csrf', http_client=other)
+            other_headers = {other_csrf['headerName']: other_csrf['token']}
+            call('/api/auth/password-change/request', 'POST', {'currentPassword': identity['password']}, csrf(), expected=202)
+            change_token = mail_token('change')
+            change = {'token': change_token, 'newPassword': 'Changed-test-789!'}
+            call('/api/auth/password-change/confirm', 'POST', change, other_headers, expected=400, http_client=other)
+            call('/api/auth/password-change/confirm', 'POST', change, csrf())
+            call('/api/auth/me', expected=401)
+            call('/api/auth/me', expected=401, http_client=other)
+            identity['password'] = change['newPassword']
+            call('/api/auth/login', 'POST', identity, csrf(), form=True)
             assert call('/api/applications')['totalElements'] == 11
             call('/api/auth/logout', 'POST', headers=csrf(), expected=204)
             call('/api/applications', expected=401)
         finally:
             stop(process)
 
-print('PASS: real HTTP page/assets, authentication, CRUD, CSRF, conflict, delete/undo, logout, and H2 restart persistence.')
+smtp.shutdown()
+smtp.server_close()
+print('PASS: bundled UI, CRUD, encrypted mail delivery, password recovery across restart, email-confirmed change, replay rejection, session revocation, and H2 persistence.')
