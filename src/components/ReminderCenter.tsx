@@ -82,7 +82,7 @@ export default function ReminderCenter({ onClose, onOpenApplication }: { onClose
         <button className="reminder-application" disabled={busy} onClick={() => onOpenApplication(item.applicationId)}>{item.company} · {item.role}</button>
         <p>{item.label} · {eventDate(item.eventDate)}</p>
         <small>{item.state === 'READY' ? 'Ready since ' : 'Eligible from '}{formatReminderTime(item.dueAt, data!.preferences.timezone)}</small>
-        {data!.preferences.deliveryMode === 'DAILY_DIGEST' && item.state === 'PENDING' && <small>Joins the next daily digest at {data!.preferences.digestTime}.</small>}
+        {data!.preferences.deliveryMode === 'DAILY_DIGEST' && item.state === 'PENDING' && <small>Daily digest time: {data!.preferences.digestTime}.</small>}
         {item.emailStatus !== 'NONE' && <small className={item.emailStatus === 'FAILED' ? 'reminder-mail-failed' : ''}>Email: {item.emailStatus === 'FAILED' ? 'Delivery failed; reminder remains available here' : item.emailStatus.toLowerCase()}</small>}
       </div>
       <div className="reminder-item-actions"><button className="button secondary" disabled={busy} onClick={() => void act(item, 'snooze')}>Snooze</button>
@@ -113,7 +113,7 @@ export default function ReminderCenter({ onClose, onOpenApplication }: { onClose
             </div>
             <button type="button" className="text-button reminder-browser-zone" onClick={() => edit('timezone', browserZone)}>Use browser timezone ({browserZone})</button>
             <label className="reminder-check"><input type="checkbox" disabled={!data.emailAvailable && !draft.emailEnabled} checked={draft.emailEnabled} onChange={e => edit('emailEnabled', e.target.checked)} /> Also send to my account email</label>
-            <p className="reminder-help">{data.emailAvailable ? 'Email follows the same timing and digest settings.' : 'Email delivery is unavailable on this server. Reminders appear here.'} Sample applications do not generate reminders.</p>
+            <p className="reminder-help">{data.emailAvailable ? 'Email follows the same timing and digest settings.' : 'Email delivery is unavailable on this server. Reminders appear here.'} Same-day interviews and deadlines notify when due after the digest cutoff. Sample applications do not generate reminders.</p>
             <div className="reminder-settings-actions"><button className="button primary" disabled={!dirty || busy}>{busy ? 'Saving…' : 'Save settings'}</button>
               {dirty && <button type="button" className="text-button" onClick={reloadSettings}>Reload saved settings</button>}</div>
           </fieldset>

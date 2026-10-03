@@ -1,5 +1,25 @@
 # Validation record
 
+## Automated reminder review fixes - October 2, 2026
+
+Fixed three additional review findings on `Autonamted-Reminders-Feature`: same-day interviews/deadlines due after the digest cutoff could expire without notification; overview initialization could introduce a user/preference lock cycle; and a delayed reminder link could replace a newer application drawer. Regression tests reproduced each failure before the corresponding fix.
+
+| Check | Result |
+| --- | --- |
+| Complete Java suite (`backend/mvnw.cmd test`) | 66 passed, no failures/errors/skips |
+| Client tests (`npm test`) | 25 passed |
+| Strict TypeScript + Vite production build (`npm run build`) | Passed |
+| Bundled executable JAR (`backend/mvnw.cmd -Pwith-ui -DskipTests package`) | Passed after the frontend build |
+| Real bundled reminder HTTP smoke | Authentication, settings, source types, snooze, dismissal, rescheduling and digest settings passed |
+| Restart with file-backed H2 | Preferences, occurrence IDs and snooze times persisted |
+| Independent read-only review of the fixes | No material remaining issue found in the three fixes |
+
+Six added backend regressions cover account-timezone same-day delivery, sources created after the digest, future-event deferral, in-app delivery without email, overview while the user row is locked, and concurrent first-overview initialization. Four added client regressions exercise delayed application links, closing/reopening the reminder center, reversed refresh completion order, and normal successful navigation. The first three client cases failed before the navigation guard.
+
+Validation used Java 21.0.12.1 (Java 17 source target), Node 25.2.0 and the Maven wrapper. HTTP/restart checks used a separate loopback backend, synthetic accounts and a temporary file-backed H2 database with email and the background worker disabled. The temporary backend was stopped and its database removed afterward. Scheduled delivery is covered by backend integration tests with a controlled clock and fake SMTP boundary.
+
+PostgreSQL was unavailable: the lock change was reviewed against PostgreSQL foreign-key lock behavior, while contention and atomic initialization were tested on H2 in PostgreSQL mode. Browser visual checks were not repeated for these fixes. Python was unavailable, so the existing Node reminder HTTP helper performed the smoke/restart checks.
+
 ## Automated reminders validation — October 2, 2026
 
 Implemented on `Autonamted-Reminders-Feature`. Validated with Java 21.0.12.1 (Java 17 source target), Spring Boot 3.5.16, Maven wrapper and Node 25.2.0. Accounts and source records were synthetic. Browser/HTTP/restart tests used a separate loopback backend on port 18082 and a dedicated temporary H2 database; reminder mail was disabled. Delivery integration tests used a fake SMTP boundary.

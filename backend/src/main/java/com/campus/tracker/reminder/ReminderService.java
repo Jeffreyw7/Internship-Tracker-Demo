@@ -67,20 +67,35 @@ public class ReminderService {
     public void processOwner(UUID owner) {
         var p=lock(owner);reconcile(owner,p);
         if (!p.enabled()) return;
-        var local=clock.instant().atZone(ZoneId.of(p.timezone()));
+        var instant=clock.instant();var local=instant.atZone(ZoneId.of(p.timezone()));
         boolean digest=p.deliveryMode()==DeliveryMode.DAILY_DIGEST;
-        var cutoff=digest ? ReminderTiming.due(local.toLocalDate(),0,p.digestTime(),p.timezone()) : clock.instant();
+        var cutoff=digest ? ReminderTiming.due(local.toLocalDate(),0,p.digestTime(),p.timezone()) : instant;
         LocalDate last=jdbc.queryForObject("SELECT last_digest_date FROM reminder_preferences WHERE owner_id=?",(r,i)->r.getObject(1,LocalDate.class),owner);
-        if (digest && (clock.instant().isBefore(cutoff) || local.toLocalDate().equals(last))) return;
-        jdbc.update("UPDATE reminders SET state='READY',version=version+1 WHERE owner_id=? AND state='PENDING' AND due_at<=?",owner,Timestamp.from(cutoff));
-        List<UUID> ids=p.emailEnabled() && config.mailEnabled()
-            ? jdbc.queryForList("SELECT id FROM reminders WHERE owner_id=? AND state='READY' AND due_at<=? AND email_sent_at IS NULL AND delivery_id IS NULL ORDER BY due_at,id"+(digest?"":" LIMIT 100"),UUID.class,owner,Timestamp.from(cutoff))
-            : List.of();
-        // Even an empty processing window closes the day; late arrivals wait for tomorrow.
-        if (digest) jdbc.update("UPDATE reminder_preferences SET last_digest_date=? WHERE owner_id=?",local.toLocalDate(),owner);
-        if (ids.isEmpty()) return;
-        if (digest) for (int start=0;start<ids.size();start+=100) assign(owner,ids.subList(start,Math.min(start+100,ids.size())),p.deliveryMode());
-        else for (var id:ids) assign(owner,List.of(id),p.deliveryMode());
+        if (digest && instant.isBefore(cutoff)) return;
+        if (!digest || !local.toLocalDate().equals(last)) {
+            jdbc.update("UPDATE reminders SET state='READY',version=version+1 WHERE owner_id=? AND state='PENDING' AND due_at<=?",owner,Timestamp.from(cutoff));
+            List<UUID> ids=p.emailEnabled() && config.mailEnabled()
+                ? jdbc.queryForList("SELECT id FROM reminders WHERE owner_id=? AND state='READY' AND due_at<=? AND email_sent_at IS NULL AND delivery_id IS NULL ORDER BY due_at,id"+(digest?"":" LIMIT 100"),UUID.class,owner,Timestamp.from(cutoff))
+                : List.of();
+            // Empty windows also close the digest day; ordinary late arrivals wait for tomorrow.
+            if (digest) jdbc.update("UPDATE reminder_preferences SET last_digest_date=? WHERE owner_id=?",local.toLocalDate(),owner);
+            if (digest) for (int start=0;start<ids.size();start+=100) assign(owner,ids.subList(start,Math.min(start+100,ids.size())),p.deliveryMode());
+            else for (var id:ids) assign(owner,List.of(id),p.deliveryMode());
+        }
+        if (digest) {
+            // These sources expire at midnight, so a later digest would never deliver them.
+            jdbc.update("""
+                UPDATE reminders SET state='READY',version=version+1 WHERE owner_id=? AND state='PENDING'
+                AND kind IN ('INTERVIEW','DEADLINE') AND event_date=? AND due_at<=?
+                """,owner,local.toLocalDate(),Timestamp.from(instant));
+            if (p.emailEnabled() && config.mailEnabled()) {
+                var ids=jdbc.queryForList("""
+                    SELECT id FROM reminders WHERE owner_id=? AND state='READY' AND kind IN ('INTERVIEW','DEADLINE')
+                    AND event_date=? AND due_at<=? AND email_sent_at IS NULL AND delivery_id IS NULL ORDER BY due_at,id LIMIT 100
+                    """,UUID.class,owner,local.toLocalDate(),Timestamp.from(instant));
+                for (var id:ids) assign(owner,List.of(id),DeliveryMode.IMMEDIATE);
+            }
+        }
     }
     @Transactional(readOnly=true)
     public List<UUID> ownersAfter(UUID after) {
@@ -94,10 +109,11 @@ public class ReminderService {
         for (var id:ids) jdbc.update("UPDATE reminders SET delivery_id=? WHERE id=?",job,id);
     }
     private void ensurePreferences(UUID owner) {
-        // Lock the existing account before first insert to avoid racing two initial overview requests.
-        jdbc.queryForObject("SELECT id FROM campus_users WHERE id=? FOR UPDATE",UUID.class,owner);
-        if (jdbc.queryForObject("SELECT COUNT(*) FROM reminder_preferences WHERE owner_id=?",Integer.class,owner)==0)
-            jdbc.update("INSERT INTO reminder_preferences(owner_id) VALUES(?)",owner);
+        if (jdbc.queryForObject("SELECT COUNT(*) FROM reminder_preferences WHERE owner_id=?",Integer.class,owner)>0) return;
+        if (jdbc.queryForObject("SELECT COUNT(*) FROM campus_users WHERE id=?",Integer.class,owner)==0)
+            throw new ApiException(HttpStatus.NOT_FOUND,"Reminder not found.");
+        // Atomic initialization avoids a user-row lock conflicting with workers' foreign-key checks.
+        jdbc.update("INSERT INTO reminder_preferences(owner_id) VALUES(?) ON CONFLICT DO NOTHING",owner);
     }
     private PreferenceView lock(UUID owner) {
         var rows=jdbc.query("SELECT * FROM reminder_preferences WHERE owner_id=? FOR UPDATE",ReminderService::preference,owner);

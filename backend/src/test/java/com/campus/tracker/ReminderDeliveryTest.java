@@ -58,6 +58,83 @@ class ReminderDeliveryTest {
     int jobs(String status) { return jdbc.queryForObject("SELECT COUNT(*) FROM reminder_deliveries WHERE owner_id=? AND status=?",Integer.class,owner,status); }
     void process() { reminders.processOwner(owner); }
 
+    void expiringSources(String date) {
+        var now=Timestamp.from(clock.instant());var deadline=UUID.randomUUID();var interview=UUID.randomUUID();
+        jdbc.update("INSERT INTO applications(id,owner_id,company,role,location,status,deadline,notes,created_at,updated_at) VALUES(?,?,'Deadline Labs','Intern','','SAVED',?,'',?,?)",
+            deadline,owner,LocalDate.parse(date),now,now);
+        jdbc.update("INSERT INTO applications(id,owner_id,company,role,location,status,applied_date,notes,created_at,updated_at) VALUES(?,?,'Interview Labs','Intern','','INTERVIEWING',?,'',?,?)",
+            interview,owner,LocalDate.parse("2026-10-01"),now,now);
+        jdbc.update("INSERT INTO interview_stages(id,application_id,position,name,stage_date,state) VALUES(?,?,0,'Technical interview',?,'SCHEDULED')",
+            UUID.randomUUID(),interview,LocalDate.parse(date));
+        reminders.reconcile(owner);
+    }
+
+    @Test void sameDayEventsDueAfterDigestNotifyBeforeExpiryInAccountTimezone() {
+        reminders.savePreferences(owner,"0",new Preferences(true,true,true,true,0,0,0,"America/New_York","13:00",DeliveryMode.DAILY_DIGEST,"09:00",true));
+        expiringSources("2026-10-02");source("2026-10-02");
+        at("2026-10-02T13:00:00Z");worker.runOnce();assertThat(jobs("SENT")).isZero();
+        at("2026-10-02T16:59:00Z");worker.runOnce();assertThat(reminders.overview(owner).readyCount()).isZero();
+        at("2026-10-02T17:00:00Z");worker.runOnce();worker.runOnce();
+        assertThat(jobs("SENT")).isEqualTo(2);
+        assertThat(reminders.overview(owner).reminders().stream().filter(r->!r.kind().equals("FOLLOW_UP")))
+            .allSatisfy(r->{assertThat(r.state()).isEqualTo("READY");assertThat(r.emailStatus()).isEqualTo("SENT");});
+        assertThat(reminders.overview(owner).reminders().stream().filter(r->r.kind().equals("FOLLOW_UP")))
+            .allSatisfy(r->assertThat(r.state()).isEqualTo("PENDING"));
+        at("2026-10-03T13:00:00Z");worker.runOnce();assertThat(jobs("SENT")).isEqualTo(3);
+    }
+
+    @Test void sameDayEventsCreatedAfterDigestNotifyWithoutWaitingUntilTomorrow() {
+        enable(DeliveryMode.DAILY_DIGEST,"UTC","09:00");
+        at("2026-10-02T09:00:00Z");worker.runOnce();
+        at("2026-10-02T10:00:00Z");expiringSources("2026-10-02");worker.runOnce();
+        assertThat(jobs("SENT")).isEqualTo(2);
+        assertThat(reminders.overview(owner).readyCount()).isEqualTo(2);
+    }
+
+    @Test void futureEventsDueAfterDigestStillWaitForNextDigest() {
+        reminders.savePreferences(owner,"0",new Preferences(true,true,true,true,1,1,0,"UTC","13:00",DeliveryMode.DAILY_DIGEST,"09:00",true));
+        expiringSources("2026-10-03");at("2026-10-02T09:00:00Z");worker.runOnce();
+        at("2026-10-02T13:00:00Z");worker.runOnce();assertThat(jobs("SENT")).isZero();
+        at("2026-10-03T09:00:00Z");worker.runOnce();assertThat(jobs("SENT")).isEqualTo(1);
+        assertThat(reminders.overview(owner).readyCount()).isEqualTo(2);
+    }
+
+    @Test void sameDayFallbackMakesInAppRemindersReadyWithoutEmailOptIn() {
+        reminders.savePreferences(owner,"0",new Preferences(true,true,true,true,0,0,0,"UTC","13:00",DeliveryMode.DAILY_DIGEST,"09:00",false));
+        expiringSources("2026-10-02");at("2026-10-02T09:00:00Z");worker.runOnce();
+        at("2026-10-02T13:00:00Z");worker.runOnce();
+        assertThat(reminders.overview(owner).readyCount()).isEqualTo(2);
+        assertThat(jobs("PENDING")).isZero();assertThat(jobs("SENT")).isZero();verifyNoInteractions(sender);
+    }
+
+    @Test void existingPreferencesOverviewDoesNotWaitForUserRowLock() throws Exception {
+        var locked=new CountDownLatch(1);var release=new CountDownLatch(1);var executor=Executors.newFixedThreadPool(2);
+        Future<?> locker=null;
+        try {
+            locker=executor.submit(()->new org.springframework.transaction.support.TransactionTemplate(manager).executeWithoutResult(s->{
+                jdbc.queryForObject("SELECT id FROM campus_users WHERE id=? FOR UPDATE",UUID.class,owner);locked.countDown();
+                try { if (!release.await(10,TimeUnit.SECONDS)) throw new AssertionError("User lock was not released"); }
+                catch (InterruptedException e) { Thread.currentThread().interrupt();throw new AssertionError(e); }
+            }));
+            assertThat(locked.await(5,TimeUnit.SECONDS)).isTrue();
+            var overview=executor.submit(()->reminders.overview(owner));
+            assertThat(overview.get(1,TimeUnit.SECONDS).preferences().enabled()).isFalse();
+        } finally {
+            release.countDown();if (locker!=null) locker.get(5,TimeUnit.SECONDS);executor.shutdownNow();
+        }
+    }
+
+    @Test void parallelFirstOverviewsCreateOnlyOnePreferencesRow() throws Exception {
+        var first=users.saveAndFlush(new CampusUser("first-"+UUID.randomUUID()+"@example.test","Delivery Test","test-hash")).getId();
+        var executor=Executors.newFixedThreadPool(4);
+        try {
+            var requests=new java.util.ArrayList<Future<Overview>>();
+            for (int i=0;i<8;i++) requests.add(executor.submit(()->reminders.overview(first)));
+            for (var request:requests) assertThat(request.get(10,TimeUnit.SECONDS).preferences().enabled()).isFalse();
+        } finally { executor.shutdownNow(); }
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM reminder_preferences WHERE owner_id=?",Integer.class,first)).isEqualTo(1);
+    }
+
     @Test void immediateDeliveryIsDeduplicatedAcrossTicks() {
         enable(DeliveryMode.IMMEDIATE,"UTC","09:00");source("2026-10-02");at("2026-10-02T10:00:00Z");
         worker.runOnce();worker.runOnce();
