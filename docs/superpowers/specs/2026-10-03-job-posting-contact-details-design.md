@@ -1,7 +1,7 @@
 # Job posting and contact details system design
 
 Date: 2026-10-03
-Status: Proposed architecture; product implementation has not started.
+Status: Implemented on `design/job-posting-contact-details`. See `VALIDATION.md` for October 3 verification results and limits.
 
 ## Purpose and scope
 
@@ -151,4 +151,4 @@ Implementation acceptance checks:
 8. Check draft retention on errors, version changes during reads, CSV escaping, and complete JSON archive output.
 9. Run `npm test`, `npm run build`, and `backend/mvnw.cmd test`; perform an H2/PostgreSQL migration check and a browser review of save, refresh, history, restart, and undo. Record results in `VALIDATION.md`.
 
-These are future implementation checks. This document was reviewed against the current source; no product code was changed and no implementation tests were run.
+These checks defined the implementation acceptance criteria. The original design was written before product changes; implementation and verification results are now recorded in `VALIDATION.md`.

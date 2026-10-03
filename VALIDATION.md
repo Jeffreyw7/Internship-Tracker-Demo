@@ -1,5 +1,31 @@
 # Validation record
 
+## Job posting and contact details — October 3, 2026
+
+Implemented on `design/job-posting-contact-details`, using the approved architecture and implementation plan. Checks used synthetic accounts, isolated H2 databases and a separate loopback PostgreSQL 18.6 test instance on port 15435. The normal application databases and installed PostgreSQL service were not used.
+
+| Check | Result |
+| --- | --- |
+| Complete Java suite, with temporary PostgreSQL migration configuration | 74 passed; zero failures, errors, or skips |
+| Client/domain/API/component tests (`npm test`) | 32 passed |
+| Strict TypeScript and Vite build (`npm run build`) | Passed |
+| Bundled executable JAR (`backend/mvnw.cmd -Pwith-ui -DskipTests package`) | Passed |
+| Upgrade existing V3 rows on H2 and PostgreSQL | Passed: accounts/application notes, soft-deleted state, versions, interview stages and reminder preferences retained; empty posting defaults applied |
+| Real HTTP tests on file-backed H2 and PostgreSQL | Passed: real CSRF/session auth, capture/history, old-client metadata preservation, optimistic conflicts, delete/undo, ownership isolation, restart persistence |
+| Simultaneous snapshot writers and failure after snapshot insertion | Passed: one concurrent writer wins; failure rolls back parent metadata, version and new snapshot |
+| Desktop and 390px browser review | Passed: existing values load, description/recruiter edits persist, original history remains, pasted HTML renders as text, compensation decimals/units display correctly |
+| Browser failure/retry and concurrent-edit flows | Passed: failed description read disables description edits while allowing metadata-only saves; retry retains other draft fields; stale save retains the draft and offers explicit reload |
+| Archive generation in browser | Passed: actual generated JSON Blob includes all three captured revisions, original Unicode/line breaks, and exact `25.10` compensation |
+| Browser filesystem download capture | Limited: headless browser canceled existing CSV, new JSON, and an independent data-URL download probe, even with an explicit directory; file saving was not verified in this automation environment |
+
+The posting tests were run failing before implementation. Full suite verification caught and corrected the returned JPA version after creating a first snapshot. The concurrency test was adjusted to use explicit executor shutdown for the project's Java 17 target.
+
+Independent code review found no material bugs. One minor is deferred: a stale workspace can display old scalar metadata beside a newer description until the workspace is refreshed; editor initialization and writes still check versions and cannot overwrite newer data. Browser interactions cover description failure/retry/conflict behavior; automated component tests currently use static rendering.
+
+PostgreSQL migration/HTTP checks passed, but the installed Flyway version warns that PostgreSQL 18 is newer than its tested support range (through 17). No dependency upgrade was included. Capture/history is manual, with one primary recruiter/referral source and no snapshot purge endpoint; existing soft-delete retention continues.
+
+`node tests/posting_http_smoke.mjs` builds no product dependencies and starts/stops its own temporary bundled backend. Run it after bundling; optional `--serve` keeps the synthetic instance open until Ctrl+C. For a disposable PostgreSQL database, set `POSTING_SMOKE_POSTGRES_URL` and `POSTING_TEST_POSTGRES_USER`. `PostingMigrationTest` additionally uses `POSTING_TEST_POSTGRES_URL`; its PostgreSQL case skips when this variable is absent. Logs, screenshots, synthetic account state, and browser probes are ignored under `test-results/job-posting/`.
+
 ## Automated reminder review fixes - October 2, 2026
 
 Fixed three additional review findings on `Autonamted-Reminders-Feature`: same-day interviews/deadlines due after the digest cutoff could expire without notification; overview initialization could introduce a user/preference lock cycle; and a delayed reminder link could replace a newer application drawer. Regression tests reproduced each failure before the corresponding fix.

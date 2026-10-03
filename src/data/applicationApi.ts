@@ -1,6 +1,7 @@
 // Adapts editable frontend drafts and versioned API calls to persisted application records.
 import { type Application, type ApplicationDraft, validateDraft } from '../domain/application.ts';
 import { request, jsonBody } from './api.ts';
+import {postingPayload} from '../domain/postingDetails.ts';
 // Match the server\'s paginated response envelope.
 interface ApplicationPage {content:Application[];totalElements:number;totalPages:number;page:number;size:number}
 // Whitelist editable fields and convert empty date inputs to JSON null.
@@ -8,9 +9,11 @@ export function toPayload(a:ApplicationDraft) {
   const error=validateDraft(a);if(error)throw new Error(error);
   return {company:a.company.trim(),role:a.role.trim(),location:a.location.trim(),status:a.status,
     appliedDate:a.appliedDate||null,deadline:a.deadline||null,followUpDate:a.followUpDate||null,notes:a.notes,
-    stages:a.stages.map(s=>({id:s.id||null,name:s.name.trim(),date:s.date||null,state:s.state}))};
+    stages:a.stages.map(s=>({id:s.id||null,name:s.name.trim(),date:s.date||null,state:s.state})),
+    ...(a.postingDetails?{postingDetails:postingPayload(a.postingDetails)}:{})};
 }
 export const applicationApi={
+  get:(id:string)=>request<Application>(`/applications/${id}`),
   async list():Promise<Application[]> {
     // Cache personal history for instant cross-view filtering; the REST API supports paginated server queries.
     const first=await request<ApplicationPage>('/applications?size=100&page=0');

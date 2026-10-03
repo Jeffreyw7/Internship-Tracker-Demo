@@ -79,7 +79,15 @@ The following features are planned for later updates:
 - Dark mode
 - A friendlier user interface
 
-## Automated reminders
+## Job posting and contact archive
+
+In an application's editor, save the posting URL, paste its description, add the primary recruiter and referral source, and record compensation with currency and pay period. Saved descriptions come from the database, so they remain available after the original posting disappears. Changing a description captures another version; clearing it keeps earlier versions in **Description history**. Soft deletion and undo retain the archive.
+
+**Export CSV** includes current posting/contact/compensation fields as a summary. **Download description archive** in application details exports the application metadata and all saved descriptions as JSON. Description reads load only for the opened application. There is no automatic posting scraper or conversion between hourly and annual amounts.
+
+See [the posting archive design](docs/superpowers/specs/2026-10-03-job-posting-contact-details-design.md) and [API contract](docs/API.md#job-posting-and-description-history). After bundling, `node tests/posting_http_smoke.mjs` verifies real HTTP behavior and backend restart persistence using a temporary H2 database; `--serve` leaves the synthetic instance available for browser checks.
+
+## Automated reminder configuration
 
 Open **Reminders** in the workspace and enable reminders, then **Save settings**. Choose category toggles, lead times (0–30 days), a timezone and local reminder time. Interviews currently store dates only; reminder time is a notification time. Defaults are one day before interviews, three days before saved application deadlines, and on the follow-up date. Reminder preferences default to disabled.
 

@@ -1,5 +1,53 @@
 # Campus API
 
+## Job posting and description history
+
+Application POST/PUT accepts an optional `postingDetails` object. Omitting it preserves saved posting data on updates and initializes defaults on creation. Explicit null and incomplete objects return 400. All fields below except `descriptionSnapshot` must be present when the object is supplied:
+
+```json
+{
+  "postingDetails": {
+    "postingUrl": "https://company.example/jobs/intern",
+    "recruiterName": "Alex Chen",
+    "recruiterRole": "Recruiter",
+    "recruiterEmail": "alex@company.example",
+    "recruiterPhone": "+1 212 555 0100",
+    "recruiterProfileUrl": "",
+    "referralChannel": "EMPLOYEE",
+    "referralSource": "Engineering team",
+    "referrerName": "Sam",
+    "referrerContact": "sam@company.example",
+    "compensationMin": "25.10",
+    "compensationMax": "35.50",
+    "compensationCurrency": "USD",
+    "compensationPeriod": "HOUR",
+    "compensationStatus": "PAID",
+    "compensationOriginalText": "Housing included",
+    "descriptionSnapshot": "Paste the original posting description here."
+  }
+}
+```
+
+Referral channels: `UNKNOWN`, `JOB_BOARD`, `COMPANY_WEBSITE`, `CAREER_FAIR`, `EMPLOYEE`, `PROFESSOR`, `OTHER`. Pay status: `UNKNOWN`, `PAID`, `UNPAID`. Period: null, `HOUR`, `MONTH`, `YEAR`, or `TOTAL_INTERNSHIP`. Missing amounts use null. Amounts require paid status, a supported three-letter currency, and a period; they are nonnegative decimal amounts up to `999999999999.99` with at most two decimal places. Minimum cannot exceed maximum. Responses serialize amounts as decimal strings or null.
+
+Text limits: URLs 2048; recruiter/referrer names and recruiter role 120; recruiter email and referrer contact 254; phone 50; referral source 200; currency 3; compensation wording 1000; description 100,000 UTF-16 code units. Posting and recruiter profile links must be absolute HTTP/HTTPS URLs without embedded credentials or control characters. The server never fetches them. Descriptions are plain text with their whitespace retained.
+
+`descriptionSnapshot` is write-only. Omitting it preserves the current description. Changed text appends an immutable revision; unchanged text adds no revision. An empty first description captures nothing. An empty description after capture clears the current display by appending an empty revision, retaining earlier versions. Explicit null is invalid. Responses include current scalar `postingDetails` plus server-owned `descriptionRevision`; descriptions/history are excluded from application lists and cannot be supplied as response metadata on writes.
+
+All routes below require a session and an owned, non-deleted application. Wrong-parent snapshots and missing/other-owner/deleted records return 404. Reads return `Cache-Control: no-store` and do not change versions.
+
+| GET route (under `/api`) | Response |
+| --- | --- |
+| `/applications/{id}/posting-description` | `{ "applicationVersion": 3, "snapshot": null }` before capture, otherwise the full current snapshot |
+| `/applications/{id}/posting-descriptions?page=0&size=20` | `{content,totalElements,totalPages,page,size}`; newest first; page size 1–50; metadata only |
+| `/applications/{id}/posting-descriptions/{snapshotId}` | Full snapshot belonging to that application |
+
+Snapshot metadata is `{id,revision,sourceUrl,capturedAt,captureMethod}`. Full snapshots additionally contain `descriptionText`; capture method is `MANUAL`. Source URL is recorded at capture time. Current recruiter and compensation fields are not historical snapshots.
+
+Use the existing application save routes, CSRF token and `If-Match` header for writes. Posting-only and description-only edits advance the application version. Parent and snapshot changes roll back together on failure. A stale version returns 409; omitted `If-Match` returns 428. Older client requests and follow-up/stage actions that omit posting fields preserve them.
+
+The browser exports current scalar fields in the application CSV summary. The per-application JSON archive contains `{exportedAt,application,snapshots}`, assembled from these owner-scoped reads with parent-version checks before and after collection. Failed reads produce no partial archive.
+
 ## Password recovery and change
 
 All routes require the current CSRF header and same-origin session cookie; obtain a token from `GET /api/auth/csrf`. Disabled mail returns 503 `PASSWORD_MAIL_UNAVAILABLE`.

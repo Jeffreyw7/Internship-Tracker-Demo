@@ -1,4 +1,5 @@
 // Defines frontend application data, date helpers, validation, and the derived activity feed.
+import {blankPostingDetails,validatePostingDraft,type PostingDetails,type PostingDraft} from './postingDetails.ts';
 export const STATUSES = ['Saved', 'Applied', 'Interviewing', 'Offer', 'Rejected', 'Withdrawn'] as const;
 export type Status = typeof STATUSES[number];
 export type StageState = 'Planned' | 'Scheduled' | 'Completed';
@@ -9,9 +10,10 @@ export interface Application {
   appliedDate: string; deadline: string; followUpDate: string; notes: string;
   stages: InterviewStage[]; createdAt: string; updatedAt: string;
   version: number; sample: boolean; deleted: boolean;
+  postingDetails?:PostingDetails;
 }
 // Restrict editor drafts to fields users may change.
-export type ApplicationDraft = Omit<Application, 'id' | 'createdAt' | 'updatedAt' | 'version' | 'sample' | 'deleted'>;
+export type ApplicationDraft = Omit<Application, 'id' | 'createdAt' | 'updatedAt' | 'version' | 'sample' | 'deleted' | 'postingDetails'> & {postingDetails?:PostingDraft};
 // Rejected and withdrawn applications no longer contribute scheduled activities.
 export const isClosed = (a: Application) => ['Rejected', 'Withdrawn'].includes(a.status);
 // Build local calendar dates without converting them to UTC.
@@ -26,7 +28,7 @@ export function dayDistance(date: string) { const d=new Date(date+'T12:00:00'); 
 // Turn dates into concise labels for upcoming and overdue activities.
 export function relativeDate(date: string) { const n=dayDistance(date); return n===0?'Today':n===1?'Tomorrow':n<0?`${Math.abs(n)}d overdue`:formatDate(date); }
 // Initialize an unsent saved opportunity with no dates or interview stages.
-export function blankDraft(): ApplicationDraft { return {company:'',role:'',location:'',status:'Saved',appliedDate:'',deadline:'',followUpDate:'',notes:'',stages:[]}; }
+export function blankDraft(): ApplicationDraft { return {company:'',role:'',location:'',status:'Saved',appliedDate:'',deadline:'',followUpDate:'',notes:'',stages:[],postingDetails:blankPostingDetails()}; }
 // Catch common form errors before sending the draft to the server.
 export function validateDraft(a: ApplicationDraft): string | null {
   if (!a.company.trim()) return 'Add a company name.';
@@ -35,7 +37,7 @@ export function validateDraft(a: ApplicationDraft): string | null {
   if (a.appliedDate && a.appliedDate > today()) return 'The application date cannot be in the future.';
   if (a.stages.some(s=>!s.name.trim())) return 'Give each interview stage a name.';
   if (a.stages.some(s=>s.state==='Scheduled' && !s.date)) return 'Choose a date for each scheduled interview.';
-  return null;
+  return a.postingDetails?validatePostingDraft(a.postingDetails):null;
 }
 // Unify interviews, follow-ups, and submission deadlines for shared UI displays.
 export interface Activity { id:string; application:Application; kind:'Interview'|'Follow-up'|'Deadline'; label:string; date:string; stageId?:string }

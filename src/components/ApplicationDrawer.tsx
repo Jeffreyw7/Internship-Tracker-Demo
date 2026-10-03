@@ -3,6 +3,13 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowUpRight, BriefcaseBusiness, CalendarDays, Check, Circle, MapPin, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { blankDraft, formatDate, STATUSES, today, type Application, type ApplicationDraft, type InterviewStage } from '../domain/application';
 import { CompanyMark, StatusBadge } from './Shared';
+import {PostingFields} from './PostingFields';
+import {PostingDetailsPanel} from './PostingDetailsPanel';
+import {blankPostingDetails} from '../domain/postingDetails';
+import {usePostingDescription} from '../hooks/usePostingDescription';
+import {postingApi} from '../data/postingApi';
+import {applicationApi} from '../data/applicationApi';
+import {ApiError} from '../data/api';
 // Receive persistence callbacks from the workspace rather than calling the API directly.
 interface Props { application:Application|null; isNew:boolean; onClose:()=>void; onSave:(draft:ApplicationDraft,id?:string,version?:number)=>Promise<void>; onDelete:(app:Application)=>Promise<void> }
 export function ApplicationDrawer({application,isNew,onClose,onSave,onDelete}:Props) {
@@ -13,6 +20,13 @@ export function ApplicationDrawer({application,isNew,onClose,onSave,onDelete}:Pr
   const [error,setError]=useState('');
   const [confirmDelete,setConfirmDelete]=useState(false);
   const [saving,setSaving]=useState(false);
+  const description=usePostingDescription(application?.id,application?.version);
+  const [descriptionBase,setDescriptionBase]=useState('');
+  const [descriptionAvailable,setDescriptionAvailable]=useState(isNew);
+  const [descriptionError,setDescriptionError]=useState('');
+  const [conflict,setConflict]=useState(false);
+  const editorGeneration=useRef(0);
+  useEffect(()=>()=>{editorGeneration.current++;},[]);
   // Remember the version opened for editing to detect concurrent changes.
   const originalVersion=useRef(application?.version);
   const deleteConfirmation=useRef<HTMLDivElement>(null);
@@ -27,7 +41,28 @@ export function ApplicationDrawer({application,isNew,onClose,onSave,onDelete}:Pr
   // Patch an interview stage by its stable local ID.
   function updateStage(id:string,patch:Partial<InterviewStage>) {update('stages',draft.stages.map(s=>s.id===id?{...s,...patch}:s));}
   // Prevent duplicate saves and pass the editor\'s original version to the parent.
-  async function submit(e:FormEvent) {e.preventDefault();if(saving)return;setSaving(true);setError('');try {await onSave(draft,application?.id,originalVersion.current);}catch(err){setError(err instanceof Error?err.message:'Changes could not be saved. Please try again.');}finally{setSaving(false);}}
+  async function submit(e:FormEvent) {e.preventDefault();if(saving)return;setSaving(true);setError('');try {await onSave(draft,application?.id,originalVersion.current);}catch(err){setConflict(err instanceof ApiError&&err.status===409);setError(err instanceof Error?err.message:'Changes could not be saved. Please try again.');}finally{setSaving(false);}}
+  async function loadEditorDescription() {
+    if(!application)return;
+    const active=++editorGeneration.current;
+    try {
+      const current=await postingApi.current(application.id);
+      if(active!==editorGeneration.current)return;
+      if(current.applicationVersion!==originalVersion.current) {setConflict(true);throw new Error('This application changed. Reload the saved version before editing its description.');}
+      setDescriptionBase(current.snapshot?.descriptionText??'');setDescriptionAvailable(true);setDescriptionError('');
+    }catch(e){if(active===editorGeneration.current){setDescriptionAvailable(false);setDescriptionError(e instanceof Error?e.message:'Could not load description.');}}
+  }
+  async function beginEditing() {
+    if(!application||saving)return;
+    setSaving(true);setError('');setConflict(false);
+    try {
+      const latest=await applicationApi.get(application.id);
+      setDraft({...structuredClone(latest),postingDetails:structuredClone(latest.postingDetails??blankPostingDetails())});
+      originalVersion.current=latest.version;setDescriptionAvailable(false);setDescriptionBase('');setEditing(true);
+      await loadEditorDescription();
+    }catch(e){setError(e instanceof Error?e.message:'Could not load application.');}
+    finally{setSaving(false);}
+  }
   // Request deletion and keep the dialog open if the server rejects it.
   async function deleteRecord(){if(!application||saving)return;setSaving(true);setError('');try{await onDelete(application);}catch(e){setError(e instanceof Error?e.message:'Could not delete this application.');}finally{setSaving(false);}}
   const a=application;
@@ -44,6 +79,10 @@ export function ApplicationDrawer({application,isNew,onClose,onSave,onDelete}:Pr
             <label>Role <span className="required">*</span><input required maxLength={180} placeholder="e.g. Software Engineer Intern" value={draft.role} onChange={e=>update('role',e.target.value)}/></label>
             <div className="form-grid"><label>Location<input maxLength={120} placeholder="New York, NY or Remote" value={draft.location} onChange={e=>update('location',e.target.value)}/></label><label>Status<select value={draft.status} onChange={e=>update('status',e.target.value as ApplicationDraft['status'])}>{STATUSES.map(s=><option key={s}>{s}</option>)}</select></label></div>
           </div>
+          <PostingFields value={draft.postingDetails??blankPostingDetails()} onChange={value=>{
+            if(value.descriptionSnapshot===descriptionBase)delete value.descriptionSnapshot;
+            update('postingDetails',value);
+          }} descriptionValue={draft.postingDetails?.descriptionSnapshot??descriptionBase} descriptionAvailable={descriptionAvailable} descriptionError={descriptionError} onRetry={()=>void loadEditorDescription()}/>
           {/* Capture application, deadline, and follow-up dates without sending reminders. */}
           <div className="form-section"><h3><CalendarDays size={16}/> Dates to remember</h3><div className="form-grid">
             <label>Application date{draft.status!=='Saved'&&<span className="required"> *</span>}<input type="date" required={draft.status!=='Saved'} max={today()} value={draft.appliedDate} onChange={e=>update('appliedDate',e.target.value)}/></label>
@@ -57,8 +96,10 @@ export function ApplicationDrawer({application,isNew,onClose,onSave,onDelete}:Pr
           {/* Keep free-form preparation notes within the server-supported length limit. */}
           <div className="form-section"><h3><Pencil size={16}/> Notes</h3><label className="sr-only" htmlFor="notes">Notes</label><textarea id="notes" rows={5} maxLength={10000} value={draft.notes} placeholder="Contacts, prep notes, things to ask, or anything worth remembering…" onChange={e=>update('notes',e.target.value)}/></div>
           {error&&<div ref={saveError} tabIndex={-1} className="error-box" role="alert">{error}</div>}
+          {conflict&&<button type="button" className="button secondary" disabled={saving} onClick={()=>void beginEditing()}>Reload saved version (discard draft)</button>}
         </div><footer className="drawer-footer"><button type="button" className="button secondary" disabled={saving} onClick={()=>{if(isNew)onClose();else{setEditing(false);setDraft(structuredClone(application!));originalVersion.current=application!.version;setError('');}}}>Cancel</button><button className="button primary" disabled={saving} type="submit"><Check size={16}/>{saving?'Saving…':isNew?'Add application':'Save changes'}</button></footer>
       </form>:a&&<><div className="drawer-body" inert={saving}><div className="detail-intro"><CompanyMark company={a.company} large/><StatusBadge status={a.status}/></div><h2 id="drawer-title">{a.company}</h2><p className="detail-role">{a.role}</p><p className="location"><MapPin size={14}/>{a.location||'Location not set'}</p>
+        <PostingDetailsPanel applicationId={a.id} value={a.postingDetails??blankPostingDetails()} current={description.current} loading={description.loading} error={description.error} onRetry={description.retry}/>
         <div className="detail-dates"><div><span>Applied</span><strong>{formatDate(a.appliedDate)}</strong></div><div><span>Deadline</span><strong>{formatDate(a.deadline)}</strong></div><div><span>Follow-up</span><strong>{formatDate(a.followUpDate)}</strong></div></div>
         <div className="form-section"><div className="section-heading"><h3>Interview journey</h3><span className="mini-count">{a.stages.filter(s=>s.state==='Completed').length} / {a.stages.length} complete</span></div>
           {a.stages.length?<div className="timeline">{a.stages.map((s,i)=><div className={'timeline-stage '+s.state.toLowerCase()} key={s.id}><div className="timeline-marker">{s.state==='Completed'?<Check size={13}/>:i+1}</div><div><strong>{s.name}</strong><p>{s.date?formatDate(s.date)+' · ':''}{s.state}</p></div></div>)}</div>:<p className="form-empty">Your interview journey starts here. Add stages when you hear back.</p>}
@@ -66,7 +107,7 @@ export function ApplicationDrawer({application,isNew,onClose,onSave,onDelete}:Pr
         {error&&<div ref={saveError} tabIndex={-1} className="error-box" role="alert">{error}</div>}<p className="updated">Last updated {new Date(a.updatedAt).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</p>
         {/* Require an explicit confirmation before requesting a soft deletion. */}
         {confirmDelete&&<div ref={deleteConfirmation} tabIndex={-1} className="delete-confirm"><strong>Delete this application?</strong><p>You can undo this immediately after deleting.</p><div><button className="button secondary" onClick={()=>setConfirmDelete(false)}>Keep application</button><button className="button danger" disabled={saving} onClick={deleteRecord}>Delete application</button></div></div>}
-      </div><footer className="drawer-footer"><button className="text-button danger-text" disabled={saving} onClick={()=>setConfirmDelete(true)}><Trash2 size={16}/> Delete</button><button className="button primary" disabled={saving} onClick={()=>{setDraft(structuredClone(a));originalVersion.current=a.version;setEditing(true);setError('');}}><Pencil size={15}/> Edit application <ArrowUpRight size={15}/></button></footer></>}
+      </div><footer className="drawer-footer"><button className="text-button danger-text" disabled={saving} onClick={()=>setConfirmDelete(true)}><Trash2 size={16}/> Delete</button><button className="button primary" disabled={saving} onClick={()=>void beginEditing()}><Pencil size={15}/> Edit application <ArrowUpRight size={15}/></button></footer></>}
     </div>
   </dialog>;
 }

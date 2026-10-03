@@ -8,13 +8,13 @@ import ReminderCenter from './components/ReminderCenter';
 import { CompanyButton, CompanyMark, StatusBadge } from './components/Shared';
 import {filterApplications, matchesQuery, type Tab} from './domain/selectors';
 import type {User} from './data/api';
+import {applicationCsv} from './domain/applicationExport';
 // Limit navigation to the three workspace views.
 type View='applications'|'interviews'|'followups';
 // Retain the server version and previous data needed to safely undo each supported change.
 type Undo={kind:'delete';deleted:Application}|{kind:'update';before:Application;version:number};
 type Toast={message:string;undo?:Undo};
 // Quote CSV fields and prefix recognized formula-leading characters to reduce spreadsheet formula execution.
-function csvCell(v:string){return '"'+(/^[=+\-@\t\r]/.test(v)?"'":'')+v.replaceAll('"','""')+'"';}
 export default function App({user,onLogout,onSecurity}:{user:User;onLogout:()=>Promise<void>;onSecurity:()=>void}) {
   // Read server-backed data and mutation handlers from the shared hook.
   const {apps,error,ready,busy,save,remove,restoreDeleted,refresh}=useApplications();
@@ -65,7 +65,7 @@ export default function App({user,onLogout,onSecurity}:{user:User;onLogout:()=>P
   // Display logout failures without discarding the current workspace.
   async function signOut(){try{await onLogout();}catch(e){setToast({message:e instanceof Error?e.message:'Could not sign out.'});}}
   // Export all loaded applications, add a UTF-8 BOM, and release the temporary download URL.
-  function exportCSV(){const header=['Company','Role','Location','Status','Application date','Deadline','Follow-up date','Interview stages','Notes'];const rows=apps.map(a=>[a.company,a.role,a.location,a.status,a.appliedDate,a.deadline,a.followUpDate,a.stages.map(s=>`${s.name} | ${s.state} | ${s.date}`).join('; '),a.notes]);const blob=new Blob(['\uFEFF'+[header,...rows].map(row=>row.map(csvCell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='campus-applications-'+today()+'.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);setToast({message:'Your application CSV is ready.'});}
+  function exportCSV(){const blob=new Blob([applicationCsv(apps)],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='campus-applications-'+today()+'.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);setToast({message:'Your application summary CSV is ready.'});}
   // Resolve the drawer selection against current records so the detail view stays up to date.
   const selected=drawer?.id?apps.find(a=>a.id===drawer.id):null;
   const heading=view==='applications'?'Your next chapter starts here.':view==='interviews'?'Turn conversations into opportunities.':'A little follow-up goes a long way.';

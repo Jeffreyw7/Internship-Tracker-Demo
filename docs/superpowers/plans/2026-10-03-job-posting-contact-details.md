@@ -33,9 +33,9 @@
 
 **Interfaces:** Optional `postingDetails` input uses presence-aware JSON, full scalar metadata, and optional `descriptionSnapshot`. Application responses include `postingDetails.descriptionRevision`. Read APIs return current `{applicationVersion,snapshot}`, paginated history metadata, and a full snapshot.
 
-- [ ] Write and run integration tests for capture/history, omission/null, validation, ownership, stale writes, deletion/undo, and absence of text in lists; expect failure before implementation.
-- [ ] Implement migration, metadata parsing/validation, transactional revision capture, and secured reads.
-- [ ] Run the Java suite; expect zero failures. Commit backend changes and record evidence.
+- [x] Write and run integration tests for capture/history, omission/null, validation, ownership, stale writes, deletion/undo, and absence of text in lists; expect failure before implementation.
+- [x] Implement migration, metadata parsing/validation, transactional revision capture, and secured reads.
+- [x] Run the Java suite; expect zero failures. Commit backend changes and record evidence.
 
 ## Task 2: Client domain, transport, and export
 
@@ -43,9 +43,9 @@
 
 **Interfaces:** `PostingDetails`, `PostingDraft`, `blankPostingDetails()`, `postingPayload()`, `validatePostingDraft()`, `postingApi.current/history/snapshot/archive`, and `applicationCsv(apps)`.
 
-- [ ] Write and run tests for safe payload mapping, untouched descriptions, exact decimals, paged archives, version changes, partial-read failures, and CSV escaping; expect failure before implementation.
-- [ ] Add types and explicit mapping, existing transport reuse, bounded export retries, and CSV metadata columns.
-- [ ] Run `npm test` and `npm run build`; expect zero failures. Commit client model/API changes and record evidence.
+- [x] Write and run tests for safe payload mapping, untouched descriptions, exact decimals, paged archives, version changes, partial-read failures, and CSV escaping; expect failure before implementation.
+- [x] Add types and explicit mapping, existing transport reuse, bounded export retries, and CSV metadata columns.
+- [x] Run `npm test` and `npm run build`; expect zero failures. Commit client model/API changes and record evidence.
 
 ## Task 3: Editor and saved details
 
@@ -53,15 +53,15 @@
 
 **Interfaces:** The drawer remains the owner of the draft; posting components accept typed values/callbacks. Description reads expose loading/error/retry/current state and do not overwrite an active draft. History shows capture/source metadata and supports individual JSON archive download.
 
-- [ ] Add meaningful component-rendering checks for plain-text display, empty-capture messaging, complete posting fields, and error/retry behavior.
-- [ ] Implement safe description loading, explicit editing initialization, archive/history controls, and retention copy.
-- [ ] Run the client suite and build; verify the complete drawer in the browser with synthetic data. Commit UI changes and record evidence.
+- [x] Add meaningful component-rendering checks for plain-text display, empty-capture messaging, complete posting fields, and error/retry behavior.
+- [x] Implement safe description loading, explicit editing initialization, archive/history controls, and retention copy.
+- [x] Run the client suite and build; verify the complete drawer in the browser with synthetic data. Commit UI changes and record evidence.
 
 ## Task 4: Verification and documentation
 
 **Files:** Extend HTTP smoke coverage for restart persistence, migration and secured posting reads; update `docs/API.md`, `README.md`, and `VALIDATION.md`.
 
-- [ ] Run `npm test`, `npm run build`, and the Java suite, plus HTTP/browser verification against a temporary database.
-- [ ] Verify migration compatibility and PostgreSQL if a runtime is available; record any unavailable check accurately.
-- [ ] Review the complete branch against the spec, address material findings, and record results.
-- [ ] Commit verified implementation and documentation; leave the branch ready for review without merging or publishing.
+- [x] Run `npm test`, `npm run build`, and the Java suite, plus HTTP/browser verification against a temporary database.
+- [x] Verify migration compatibility and PostgreSQL if a runtime is available; record any unavailable check accurately.
+- [x] Review the complete branch against the spec, address material findings, and record results.
+- [x] Commit verified implementation and documentation; leave the branch ready for review without merging or publishing.

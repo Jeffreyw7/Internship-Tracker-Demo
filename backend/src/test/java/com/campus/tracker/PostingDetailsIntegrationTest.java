@@ -9,9 +9,14 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import com.campus.tracker.reminder.ReminderService;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import java.util.*;
+import java.util.concurrent.*;
+import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -21,6 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class PostingDetailsIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
+    @MockitoSpyBean ReminderService reminders;
     MockHttpSession account() throws Exception {
         String email = "posting-" + UUID.randomUUID() + "@example.test";
         mvc.perform(post("/api/auth/register").with(csrf()).contentType(MediaType.APPLICATION_JSON)
@@ -130,5 +136,33 @@ class PostingDetailsIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(d))).andExpect(status().isConflict());
         mvc.perform(get(path(app)+"/posting-descriptions").session(s)).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(2));
         mvc.perform(get(path(app)).session(s)).andExpect(status().isOk()).andExpect(jsonPath("$.company").value("Archive Labs"));
+    }
+    @Test void simultaneousSnapshotWritersCommitOnlyOneRevision() throws Exception {
+        var s=account();var app=create(s,posting());
+        var ready=new CountDownLatch(2);var start=new CountDownLatch(1);
+        var pool=Executors.newFixedThreadPool(2);
+        try {
+            List<Future<Integer>> results=new ArrayList<>();
+            for(String text:List.of("Concurrent A","Concurrent B"))results.add(pool.submit(()->{
+                var d=draft();var p=posting();p.put("descriptionSnapshot",text);d.put("postingDetails",p);
+                ready.countDown();assertThat(start.await(10,TimeUnit.SECONDS)).isTrue();
+                return mvc.perform(put(path(app)).session(s).with(csrf()).header("If-Match",app.get("version").asLong())
+                        .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(d))).andReturn().getResponse().getStatus();
+            }));
+            assertThat(ready.await(10,TimeUnit.SECONDS)).isTrue();start.countDown();
+            assertThat(List.of(results.get(0).get(20,TimeUnit.SECONDS),results.get(1).get(20,TimeUnit.SECONDS))).containsExactlyInAnyOrder(200,409);
+        } finally {pool.shutdownNow();}
+        mvc.perform(get(path(app)+"/posting-descriptions").session(s)).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(2));
+    }
+    @Test void failureAfterSnapshotInsertionRollsBackParentAndSnapshot() throws Exception {
+        var s=account();var app=create(s,posting());var d=draft();var p=posting();
+        p.put("descriptionSnapshot","Must roll back");d.put("postingDetails",p);d.put("company","Must roll back");
+        doThrow(new IllegalStateException("synthetic after-snapshot failure")).when(reminders).reconcile(any(UUID.class));
+        assertThatThrownBy(()->mvc.perform(put(path(app)).session(s).with(csrf()).header("If-Match",app.get("version").asLong())
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(d))))
+                .hasRootCauseMessage("synthetic after-snapshot failure");
+        mvc.perform(get(path(app)).session(s)).andExpect(status().isOk()).andExpect(jsonPath("$.company").value("Archive Labs"))
+                .andExpect(jsonPath("$.version").value(app.get("version").asInt())).andExpect(jsonPath("$.postingDetails.descriptionRevision").value(1));
+        mvc.perform(get(path(app)+"/posting-descriptions").session(s)).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1));
     }
 }

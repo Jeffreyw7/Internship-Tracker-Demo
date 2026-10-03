@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import ts from 'typescript';
 import * as application from '../src/domain/application.ts';
 import * as selectors from '../src/domain/selectors.ts';
+import * as applicationExport from '../src/domain/applicationExport.ts';
 
 const source = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8');
 const compiled = ts.transpileModule(source, {
@@ -31,6 +32,7 @@ function workspace() {
     'react': hooks, 'react/jsx-runtime': { jsx, jsxs: jsx },
     'lucide-react': new Proxy({}, { get: (_, name) => String(name) }),
     './domain/application': application, './domain/selectors': selectors,
+    './domain/applicationExport': applicationExport,
     './hooks/useApplications': { useApplications: () => ({ apps, error: '', ready: true, busy: false,
       refresh: () => new Promise(resolve => { requests.push(resolve); }) }) },
     './components/ApplicationDrawer': { ApplicationDrawer: 'ApplicationDrawer' },
