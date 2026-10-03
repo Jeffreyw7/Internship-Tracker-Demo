@@ -2,6 +2,7 @@
 package com.campus.tracker.application;
 
 import jakarta.validation.Valid;
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.constraints.*;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -22,20 +23,26 @@ public final class ApplicationDtos {
             @PastOrPresent LocalDate appliedDate,
             LocalDate deadline, LocalDate followUpDate,
             @NotNull @Size(max = 10000) String notes,
-            @NotNull @Size(max = 30) List<@NotNull @Valid StageRequest> stages) {}
+            @NotNull @Size(max = 30) List<@NotNull @Valid StageRequest> stages,
+            JsonNode postingDetails) {
+        public ApplicationRequest(String company, String role, String location, ApplicationStatus status,
+                LocalDate appliedDate, LocalDate deadline, LocalDate followUpDate, String notes, List<StageRequest> stages) {
+            this(company,role,location,status,appliedDate,deadline,followUpDate,notes,stages,null);
+        }
+    }
     // Serialize stage dates as date strings, using an empty string when no date is set.
     public record StageView(UUID id, String name, String date, StageState state) {}
     // Return application details and version metadata needed by the UI and optimistic updates.
     public record ApplicationView(UUID id, String company, String role, String location, ApplicationStatus status,
                                   String appliedDate, String deadline, String followUpDate, String notes,
                                   List<StageView> stages, Instant createdAt, Instant updatedAt, long version,
-                                  boolean sample, boolean deleted) {
+                                  boolean sample, boolean deleted, PostingDetails.View postingDetails) {
         // Map persistence entities to API data without exposing JPA relationships directly.
         static ApplicationView from(InternshipApplication a) {
             return new ApplicationView(a.id, a.company, a.role, a.location, a.status, date(a.appliedDate),
                     date(a.deadline), date(a.followUpDate), a.notes, a.stages.stream()
                     .map(s -> new StageView(s.id, s.name, date(s.date), s.state)).toList(),
-                    a.createdAt, a.updatedAt, a.version, a.sample, a.deleted);
+                    a.createdAt, a.updatedAt, a.version, a.sample, a.deleted, a.postingDetails.view(a.descriptionRevision));
         }
     }
     // Include paging totals alongside the current page of applications.

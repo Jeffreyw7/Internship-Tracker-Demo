@@ -24,6 +24,8 @@ public class InternshipApplication {
     LocalDate deadline;
     @Column(name = "follow_up_date") LocalDate followUpDate;
     @Column(nullable = false, length = 10000) String notes;
+    @Embedded PostingDetails postingDetails = new PostingDetails();
+    @Column(name = "posting_description_revision", nullable = false) int descriptionRevision;
     // Track illustrative data and soft deletion independently from the application status.
     @Column(nullable = false) boolean sample;
     @Column(nullable = false) boolean deleted;

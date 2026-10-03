@@ -20,8 +20,12 @@ import static com.campus.tracker.application.ApplicationDtos.*;
 public class ApplicationService {
     private final ApplicationRepository repository;
     private final ReminderService reminders;
+    private final PostingDescriptionService descriptions;
+    private final jakarta.validation.Validator validator;
     // Receive the repository used by all reads and writes.
-    public ApplicationService(ApplicationRepository repository, ReminderService reminders) { this.repository = repository; this.reminders=reminders; }
+    public ApplicationService(ApplicationRepository repository, ReminderService reminders, PostingDescriptionService descriptions, jakarta.validation.Validator validator) {
+        this.repository=repository; this.reminders=reminders; this.descriptions=descriptions; this.validator=validator;
+    }
 
     // Build an owner-scoped search and return one page of response objects.
     @Transactional(readOnly = true)
@@ -67,16 +71,16 @@ public class ApplicationService {
     ApplicationView create(UUID ownerId, ApplicationRequest input, boolean sample) {
         InternshipApplication a = new InternshipApplication(ownerId);
         a.sample = sample;
-        apply(a, input);
-        return persist(a);
+        String description=apply(a, input);
+        return persist(a, description);
     }
 
     // Update the owned record only if its version still matches the editor.
     public ApplicationView update(UUID ownerId, UUID id, String ifMatch, ApplicationRequest input) {
         InternshipApplication a = owned(ownerId, id, false);
         verifyVersion(a, ifMatch);
-        apply(a, input);
-        return persist(a);
+        String description=apply(a, input);
+        return persist(a, description);
     }
 
     // Retain the row for undo while hiding it from normal reads.
@@ -96,9 +100,28 @@ public class ApplicationService {
     }
 
     private ApplicationView persist(InternshipApplication a) {
-        repository.saveAndFlush(a);
+        return persist(a,null);
+    }
+
+    private ApplicationView persist(InternshipApplication a,String description) {
+        // Flush the parent first: enforce its version and create its foreign-key target.
+        a=repository.saveAndFlush(a);
+        if(descriptions.capture(a,description)) repository.saveAndFlush(a);
         reminders.reconcile(a.ownerId);
         return ApplicationView.from(a);
+    }
+
+    @Transactional(readOnly=true)
+    public PostingDescriptionService.Current currentDescription(UUID ownerId,UUID id) {
+        return descriptions.current(owned(ownerId,id,false));
+    }
+    @Transactional(readOnly=true)
+    public PostingDescriptionService.History descriptionHistory(UUID ownerId,UUID id,int page,int size) {
+        owned(ownerId,id,false); return descriptions.history(id,page,size);
+    }
+    @Transactional(readOnly=true)
+    public PostingDescriptionService.Snapshot descriptionSnapshot(UUID ownerId,UUID id,UUID snapshotId) {
+        owned(ownerId,id,false); return descriptions.get(id,snapshotId);
     }
 
     private InternshipApplication owned(UUID ownerId, UUID id, boolean deleted) {
@@ -120,7 +143,8 @@ public class ApplicationService {
     }
 
     // Enforce date and interview rules before copying editable fields into the entity.
-    private void apply(InternshipApplication a, ApplicationRequest input) {
+    private String apply(InternshipApplication a, ApplicationRequest input) {
+        var posting=PostingDetailsInput.parse(input.postingDetails(),validator);
         if (input.status() != ApplicationStatus.SAVED && input.appliedDate() == null)
             throw new ApiException(HttpStatus.BAD_REQUEST, "Add the date you applied.");
         if (input.appliedDate() != null && input.appliedDate().isAfter(LocalDate.now()))
@@ -151,5 +175,7 @@ public class ApplicationService {
         a.stages.removeIf(s -> !next.contains(s));
         next.forEach(s -> { if (!a.stages.contains(s)) a.stages.add(s); });
         a.stages.sort(Comparator.comparingInt(s -> s.position));
+        if(posting!=null) a.postingDetails=posting.details();
+        return posting==null?null:posting.description();
     }
 }
