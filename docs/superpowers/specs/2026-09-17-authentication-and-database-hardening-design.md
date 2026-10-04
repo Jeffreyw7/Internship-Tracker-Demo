@@ -1,7 +1,7 @@
-﻿# Authentication abuse controls and database privileges: approved design
+# Authentication abuse controls and database privileges: approved design
 
 Date: 2026-09-17
-Status: Design approved; documentation only. Implementation and verification remain outstanding.
+Status: Implemented and locally verified. Docker deployment verification remains outstanding; see ../../../VALIDATION.md.
 Scope: Authentication abuse controls and PostgreSQL privilege separation for Campus Internship Tracker.
 
 ## Decision
@@ -62,7 +62,7 @@ Configuration values must be positive and internally valid. Tune the work cap to
 
 ### Enforcement boundaries
 
-- An early security filter applies peer-IP limits to the exact login, registration, and CSRF endpoint matchers before CSRF can create state. Invalid-CSRF traffic therefore consumes the relevant IP budget.
+- An early security filter applies peer-IP limits before CSRF can create state. The shared CSRF budget covers token GET/HEAD and all anonymous unsafe requests, including unmapped paths and incorrect methods. Login and registration also consume their own IP budgets.
 - A login guard after CSRF and before UsernamePasswordAuthenticationFilter applies the email limit and tries to acquire a shared work permit.
 - Registration acquires the same work permit in AuthController after validated JSON binding and before invoking the transactional AccountService. Do not consume the JSON body in a servlet filter.
 - Hold permits only through authentication/registration work and always release using try/finally or AutoCloseable.
@@ -177,4 +177,3 @@ Run existing Java and frontend suites after focused tests. Do not claim PostgreS
 ## Implementation plan
 
 See [the implementation plan](../plans/2026-09-17-authentication-and-database-hardening.md).
-

@@ -1,6 +1,6 @@
-﻿# Authentication and Database Hardening Implementation Plan
+# Authentication and Database Hardening Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking. Respect the user's current scope: this turn authorizes documentation, not automatic execution of this plan.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking. The user subsequently authorized implementation; see the implementation record below.
 
 **Goal:** Bound authentication abuse and eliminate privileged database credentials from the running web application.
 
@@ -10,7 +10,7 @@
 
 **Spec:** [Approved design](../specs/2026-09-17-authentication-and-database-hardening-design.md).
 
-**Status:** Planned only. No security implementation or new test results are represented by this document.
+**Status:** Implemented and locally verified; see the implementation record below for results and outstanding Docker checks.
 
 ## Global Constraints
 
@@ -260,3 +260,21 @@ Keep the existing loopback application binding. Do not silently turn the local C
 
 This plan and the linked design document describe approved future work. Source implementation, new tests, database role changes and deployment are not performed by documenting them.
 
+
+## Implementation record — September 17, 2026
+
+The subsequent user instruction authorized implementation. Code now implements workstreams A and B on security/auth-db-hardening. The original checkbox list above is retained as the planning artifact; this table records actual completion and remaining evidence.
+
+| Deliverable | Status |
+| --- | --- |
+| A1: bounded buckets and shared work permits | Implemented; unit tests passed |
+| A2: security-chain and registration enforcement | Implemented; integration tests passed |
+| A3: client throttling handling | Implemented; 12 client tests and build passed |
+| B1: migration runner, provisioning, upgrade and grants | Implemented; fresh and legacy PostgreSQL scenarios passed |
+| B2: deployment wiring and application compatibility | Implemented; restricted-role HTTP workflows passed; Docker startup gating not executed |
+
+Review correction: the shared CSRF budget must cover every anonymous unsafe request, not just exact token/login/registration paths, because CsrfFilter may allocate sessions before returning 403. A failing regression established this bypass and passes with the corrected boundary.
+
+Implementation verification also corrected an unsupported Flyway logger value and Windows test-process lifecycle issues. See [VALIDATION.md](../../../VALIDATION.md) for exact commands and outcomes. Docker execution, production load tuning, and a work-utilization metrics dashboard remain outside verified completion. Rejection totals are logged.
+
+No live database was changed or deployed. The user's existing working changes were preserved.

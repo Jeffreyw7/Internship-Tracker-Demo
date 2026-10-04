@@ -22,6 +22,7 @@ spring:
       fail-on-unknown-properties: true
 # Bind locally by default and configure the server-side session and cookie policy.
 server:
+  forward-headers-strategy: NONE
   address: ${SERVER_ADDRESS:127.0.0.1}
   port: ${PORT:8080}
   servlet:
@@ -38,3 +39,18 @@ server:
 # Allow demo signup locally; the production profile changes this default.
 campus:
   registration-enabled: ${REGISTRATION_ENABLED:true}
+  auth-abuse:
+    maximum-keys: 10000
+    maximum-active: 2
+    login-ip:
+      capacity: 20
+      refill-period: 1m
+    login-email:
+      capacity: 10
+      refill-period: 10m
+    registration-ip:
+      capacity: 3
+      refill-period: 1h
+    csrf-ip:
+      capacity: 60
+      refill-period: 1m

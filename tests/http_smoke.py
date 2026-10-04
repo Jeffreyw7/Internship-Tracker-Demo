@@ -7,6 +7,7 @@ Uses a temporary H2 database and test account; does not touch user data.
 import datetime
 import http.cookiejar
 import json
+import os
 import pathlib
 import re
 import socket
@@ -16,6 +17,16 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+
+# Oracle's Windows PATH launcher can spawn another JVM; terminating the launcher
+# would leave the test server running. Resolve the actual runtime before starting it.
+java_settings = subprocess.run(['java', '-XshowSettings:properties', '-version'],
+                               check=True, capture_output=True, text=True)
+java_home = re.search(r'^\s*java\.home\s*=\s*(.+)$',
+                      java_settings.stdout + java_settings.stderr, re.MULTILINE)
+assert java_home, 'Cannot determine the Java runtime directory.'
+JAVA = pathlib.Path(java_home.group(1).strip()) / 'bin' / ('java.exe' if os.name == 'nt' else 'java')
+assert JAVA.is_file(), f'Java runtime executable is missing: {JAVA}'
 
 # Locate the bundled application and choose an unused loopback port for this test.
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -54,7 +65,7 @@ def csrf():
     return {token['headerName']: token['token']}
 
 
-# Shut down the test JVM, escalating to a kill only if graceful termination times out.
+# Stop the test JVM; Windows terminate() is abrupt, so the test database writes synchronously.
 def stop(process):
     process.terminate()
     try:
@@ -62,14 +73,22 @@ def stop(process):
     except subprocess.TimeoutExpired:
         process.kill()
         process.wait(timeout=5)
+    for _ in range(50):
+        try:
+            with socket.create_connection(('127.0.0.1', port), timeout=0.2):
+                pass
+        except OSError:
+            return
+        time.sleep(0.1)
+    raise RuntimeError('Test JVM is still listening after shutdown; restart was not verified.')
 
 
 # Keep all database files and logs isolated from the user\'s saved applications.
 with tempfile.TemporaryDirectory(prefix='campus-http-test-') as temp:
     log_path = pathlib.Path(temp) / 'server.log'
     with log_path.open('w') as log:
-        command = ['java', '-jar', str(JAR), f'--server.port={port}', '--server.address=127.0.0.1',
-                   f'--spring.datasource.url=jdbc:h2:file:{temp}/campus;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE',
+        command = [str(JAVA), '-jar', str(JAR), f'--server.port={port}', '--server.address=127.0.0.1',
+                   f'--spring.datasource.url=jdbc:h2:file:{temp}/campus;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;WRITE_DELAY=0',
                    '--campus.registration-enabled=true', '--server.servlet.session.cookie.secure=false']
 
 # Launch the JAR and wait for its health endpoint, reporting startup logs on failure.

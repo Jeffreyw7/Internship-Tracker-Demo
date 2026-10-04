@@ -74,3 +74,11 @@ Errors use `{ "message": "Human-readable explanation" }`:
 - **428**: a version header is required.
 
 `GET /api/health` is a public, minimal process-health response. It does not expose database contents or infrastructure details.
+
+## Authentication throttling
+
+Login, registration, and CSRF/session-creating requests are rate-limited. Limits are process-local and reset on restart. A throttled request returns **429**, a positive integer `Retry-After` header (seconds), and the usual `{"message":"..."}` body. Clients must not automatically replay writes.
+
+The CSRF budget also applies to anonymous unsafe requests on unrelated paths, because Spring may create a session before returning 403. Login rejects missing, duplicate, or oversized email parameters with 400 before password verification. Existing-account passwords are not subjected to registration complexity rules.
+
+See [authentication security](AUTHENTICATION-SECURITY.md) for defaults, proxy configuration, and limits.

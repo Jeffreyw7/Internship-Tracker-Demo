@@ -85,7 +85,7 @@ The following features are planned for later updates:
 
 H2 is the default for a self-contained local project. To use local PostgreSQL with Docker:
 
-1. Copy `.env.example` to `.env` and replace the placeholder database password.
+1. Copy `.env.example` to `.env` and replace all three database password placeholders with distinct secrets.
 2. Run `docker compose up --build`.
 3. Open http://localhost:8080 and create an account.
 
@@ -96,14 +96,14 @@ For an existing PostgreSQL instance, select `SPRING_PROFILES_ACTIVE=prod` and se
 | Variable | Value |
 | --- | --- |
 | `DATABASE_URL` | A JDBC URL, such as `jdbc:postgresql://localhost:5432/campus` |
-| `DATABASE_USERNAME` | Database user |
+| `DATABASE_USERNAME` | Restricted runtime user (campus_runtime) |
 | `DATABASE_PASSWORD` | Database password |
 | `REGISTRATION_ENABLED` | `true` for account setup; production defaults to `false` |
 | `COOKIE_SECURE` | `true` with HTTPS; `false` only for local HTTP |
 | `SERVER_ADDRESS` | Defaults to `127.0.0.1`; containers use `0.0.0.0` |
 | `PORT` | Defaults to `8080` |
 
-Flyway creates the schema; Hibernate validates it. No passwords are included in the source. The production profile requires database credentials instead of silently falling back to H2. Keep environment files out of Git.
+The separate migration job runs Flyway; the production web process only validates the schema with Hibernate. No passwords are included in the source. The production profile requires database credentials instead of silently falling back to H2. Keep environment files out of Git.
 
 ## Architecture
 
@@ -149,3 +149,11 @@ This ZIP is the Java edition for local development or a JVM/container host. **Th
 
 - [Spring Boot 3.5 system requirements](https://docs.spring.io/spring-boot/3.5/system-requirements.html)
 - [Spring Boot 3.5.16 release](https://spring.io/blog/2026/06/25/spring-boot-3-5-16-available-now/)
+
+## Authentication and database hardening
+
+Authentication now has bounded peer-IP/account limits, a shared limit on active password/account-creation work, and a budget for anonymous CSRF session allocation. Throttled requests return HTTP 429 with Retry-After. See [authentication controls](docs/AUTHENTICATION-SECURITY.md) for configuration and operational limits.
+
+The PostgreSQL Compose stack now separates provisioning, migrations, and runtime access. Set all three distinct password values in .env.example. The web container receives only campus_runtime credentials; a one-shot migration service must finish successfully before it starts. For external PostgreSQL deployments, run MigrationMain separately with campus_migrator credentials before starting the production web application; production no longer runs Flyway inside the web process.
+
+**Existing PostgreSQL volumes require the explicit upgrade procedure.** Updating environment variables does not alter existing roles or passwords. Preserve the volume, test a backup restore, and follow [database deployment and upgrade instructions](docs/DATABASE-SECURITY.md).
