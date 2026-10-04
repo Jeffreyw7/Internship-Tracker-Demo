@@ -1,18 +1,23 @@
 package com.campus.tracker;
 
+import com.campus.tracker.application.ApplicationRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.OptimisticLockException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.test.util.ReflectionTestUtils;
 import com.campus.tracker.reminder.ReminderService;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.util.*;
 import java.util.concurrent.*;
 import static org.mockito.Mockito.*;
@@ -22,10 +27,11 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest @AutoConfigureMockMvc @ActiveProfiles("test")
+@SpringBootTest(properties="campus.reminders.worker-enabled=false") @AutoConfigureMockMvc @ActiveProfiles("test")
 class PostingDetailsIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
+    @MockitoSpyBean ApplicationRepository applications;
     @MockitoSpyBean ReminderService reminders;
     MockHttpSession account() throws Exception {
         String email = "posting-" + UUID.randomUUID() + "@example.test";
@@ -137,22 +143,107 @@ class PostingDetailsIntegrationTest {
         mvc.perform(get(path(app)+"/posting-descriptions").session(s)).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(2));
         mvc.perform(get(path(app)).session(s)).andExpect(status().isOk()).andExpect(jsonPath("$.company").value("Archive Labs"));
     }
+    String numericDraft(String field, String literal) throws Exception {
+        var p=posting();p.put(field,"raw-amount");
+        p.put(field.equals("compensationMin")?"compensationMax":"compensationMin",null);
+        var d=draft();d.put("company","Numeric amount");d.put("postingDetails",p);
+        // Insert the original numeric token, without first rounding it through a double or JsonNode.
+        return json.writeValueAsString(d).replace("\"raw-amount\"",literal);
+    }
+    @Test void numericCompensationCannotRoundPastValidationOnEitherWriteRoute() throws Exception {
+        var s=account();var app=create(s,posting());
+        for(String field:List.of("compensationMin","compensationMax")) {
+            for(String literal:List.of("25.10000000000000000001","25.1000","-1e-1000",
+                    "999999999999.99001","1e1000","-1e-2147483647")) {
+                String input=numericDraft(field,literal);
+                mvc.perform(post("/api/applications").session(s).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(input)).andExpect(status().isBadRequest());
+                mvc.perform(put(path(app)).session(s).with(csrf()).header("If-Match",app.get("version").asLong())
+                        .contentType(MediaType.APPLICATION_JSON).content(input)).andExpect(status().isBadRequest());
+            }
+        }
+        assertThat(body(mvc.perform(get(path(app)).session(s)).andExpect(status().isOk()).andReturn())).isEqualTo(app);
+        mvc.perform(get(path(app)+"/posting-descriptions").session(s)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1));
+        mvc.perform(get("/api/applications").session(s)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1));
+    }
+    @Test void numericCompensationStillAcceptsExactDecimalsExponentsIntegersAndNull() throws Exception {
+        var s=account();
+        Map<String,Object> cases=new LinkedHashMap<>();
+        cases.put("25.10","25.10");cases.put("2.51e1","25.10");cases.put("25","25.00");cases.put("null",null);
+        for(String field:List.of("compensationMin","compensationMax")) {
+            for(var example:cases.entrySet()) {
+                String input=numericDraft(field,example.getKey());
+                var app=body(mvc.perform(post("/api/applications").session(s).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(input)).andExpect(status().isCreated()).andReturn());
+                var saved=body(mvc.perform(put(path(app)).session(s).with(csrf()).header("If-Match",app.get("version").asLong())
+                        .contentType(MediaType.APPLICATION_JSON).content(input)).andExpect(status().isOk()).andReturn());
+                JsonNode amount=saved.at("/postingDetails/"+field);
+                if(example.getValue()==null)assertThat(amount.isNull()).isTrue();
+                else assertThat(amount.asText()).isEqualTo(example.getValue());
+            }
+        }
+    }
     @Test void simultaneousSnapshotWritersCommitOnlyOneRevision() throws Exception {
         var s=account();var app=create(s,posting());
-        var ready=new CountDownLatch(2);var start=new CountDownLatch(1);
+        UUID applicationId=UUID.fromString(app.get("id").asText());
+        long originalVersion=app.get("version").asLong();
+        var parentsRead=new CountDownLatch(2);var releaseWrites=new CountDownLatch(1);
+        var loadedParents=new ConcurrentLinkedQueue<Object>();
+        // Retain the spy's real delegate, including Spring Data's repository proxy.
+        var realRepository=mockingDetails(applications).getMockCreationSettings().getDefaultAnswer();
+        doAnswer(invocation->{
+            var found=(Optional<?>)realRepository.answer(invocation);
+            Object parent=found.orElseThrow();
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
+            assertThat(ReflectionTestUtils.getField(parent,"version")).isEqualTo(originalVersion);
+            loadedParents.add(parent);
+            parentsRead.countDown();
+            // Both real transaction reads must finish before either request can save.
+            assertThat(releaseWrites.await(10,TimeUnit.SECONDS)).as("release both original-version readers").isTrue();
+            return found;
+        }).when(applications).findByIdAndOwnerIdAndDeleted(eq(applicationId),any(UUID.class),eq(false));
         var pool=Executors.newFixedThreadPool(2);
+        List<MvcResult> responses;
         try {
-            List<Future<Integer>> results=new ArrayList<>();
+            List<Future<MvcResult>> results=new ArrayList<>();
             for(String text:List.of("Concurrent A","Concurrent B"))results.add(pool.submit(()->{
-                var d=draft();var p=posting();p.put("descriptionSnapshot",text);d.put("postingDetails",p);
-                ready.countDown();assertThat(start.await(10,TimeUnit.SECONDS)).isTrue();
-                return mvc.perform(put(path(app)).session(s).with(csrf()).header("If-Match",app.get("version").asLong())
-                        .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(d))).andReturn().getResponse().getStatus();
+                var d=draft();var p=posting();p.put("descriptionSnapshot",text);d.put("postingDetails",p);d.put("company",text);
+                return mvc.perform(put(path(app)).session(s).with(csrf()).header("If-Match",originalVersion)
+                        .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(d))).andReturn();
             }));
-            assertThat(ready.await(10,TimeUnit.SECONDS)).isTrue();start.countDown();
-            assertThat(List.of(results.get(0).get(20,TimeUnit.SECONDS),results.get(1).get(20,TimeUnit.SECONDS))).containsExactlyInAnyOrder(200,409);
-        } finally {pool.shutdownNow();}
-        mvc.perform(get(path(app)+"/posting-descriptions").session(s)).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(2));
+            assertThat(parentsRead.await(10,TimeUnit.SECONDS)).as("both transactions read the original parent").isTrue();
+            var parents=List.copyOf(loadedParents);
+            assertThat(parents).hasSize(2);
+            assertThat(parents.get(0)).isNotSameAs(parents.get(1));
+            releaseWrites.countDown();
+            responses=List.of(results.get(0).get(20,TimeUnit.SECONDS),results.get(1).get(20,TimeUnit.SECONDS));
+        } finally {
+            releaseWrites.countDown();pool.shutdownNow();
+            try {assertThat(pool.awaitTermination(10,TimeUnit.SECONDS)).isTrue();}
+            finally {reset(applications);}
+        }
+        assertThat(responses).extracting(result->result.getResponse().getStatus()).containsExactlyInAnyOrder(200,409);
+        var winner=responses.stream().filter(result->result.getResponse().getStatus()==200).findFirst().orElseThrow();
+        var loser=responses.stream().filter(result->result.getResponse().getStatus()==409).findFirst().orElseThrow();
+        // An early If-Match rejection or unique-revision collision must not satisfy this test.
+        assertThat(loser.getResolvedException()).isInstanceOfAny(ObjectOptimisticLockingFailureException.class,OptimisticLockException.class);
+        JsonNode saved=body(winner);
+        String winningText=responses.get(0)==winner?"Concurrent A":"Concurrent B";
+        assertThat(saved.get("company").asText()).isEqualTo(winningText);
+        assertThat(saved.get("version").asLong()).isGreaterThan(originalVersion);
+        mvc.perform(get(path(app)).session(s)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.company").value(winningText)).andExpect(jsonPath("$.version").value(saved.get("version").asInt()))
+                .andExpect(jsonPath("$.postingDetails.descriptionRevision").value(2));
+        mvc.perform(get(path(app)+"/posting-description").session(s)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.applicationVersion").value(saved.get("version").asInt()))
+                .andExpect(jsonPath("$.snapshot.revision").value(2)).andExpect(jsonPath("$.snapshot.descriptionText").value(winningText));
+        var history=body(mvc.perform(get(path(app)+"/posting-descriptions").session(s)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(2)).andExpect(jsonPath("$.content[0].revision").value(2))
+                .andExpect(jsonPath("$.content[1].revision").value(1)).andReturn());
+        mvc.perform(get(path(app)+"/posting-descriptions/"+history.at("/content/1/id").asText()).session(s))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.descriptionText").value(posting().get("descriptionSnapshot")));
     }
     @Test void failureAfterSnapshotInsertionRollsBackParentAndSnapshot() throws Exception {
         var s=account();var app=create(s,posting());var d=draft();var p=posting();

@@ -11,6 +11,7 @@ import java.util.*;
 
 /** JsonNode keeps omitted fields distinct from explicit null, including on older clients. */
 final class PostingDetailsInput {
+    private static final int MAX_AMOUNT_CHARACTERS=64;
     private static final Set<String> FIELDS=Set.of("postingUrl","recruiterName","recruiterRole","recruiterEmail",
             "recruiterPhone","recruiterProfileUrl","referralChannel","referralSource","referrerName","referrerContact",
             "compensationMin","compensationMax","compensationCurrency","compensationPeriod","compensationStatus","compensationOriginalText");
@@ -59,8 +60,11 @@ final class PostingDetailsInput {
     private static BigDecimal amount(JsonNode value) {
         if(value.isNull()) return null;
         if(!value.isTextual() && !value.isNumber()) throw bad("Compensation must be a decimal amount or null.");
+        String input=value.asText();
+        // Bound conversion work before BigDecimal parses attacker-controlled digit or exponent strings.
+        if(input.length()>MAX_AMOUNT_CHARACTERS) throw bad("Compensation amount must use at most 64 characters.");
         try {
-            BigDecimal number=new BigDecimal(value.asText());
+            BigDecimal number=new BigDecimal(input);
             if(number.signum()<0 || number.scale()>2 || number.compareTo(new BigDecimal("999999999999.99"))>0) throw bad("Compensation needs a nonnegative amount with at most two decimal places.");
             return number.setScale(2);
         } catch(NumberFormatException|ArithmeticException e) {throw bad("Enter a valid compensation amount.");}

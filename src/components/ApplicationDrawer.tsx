@@ -11,8 +11,8 @@ import {postingApi} from '../data/postingApi';
 import {applicationApi} from '../data/applicationApi';
 import {ApiError} from '../data/api';
 // Receive persistence callbacks from the workspace rather than calling the API directly.
-interface Props { application:Application|null; isNew:boolean; onClose:()=>void; onSave:(draft:ApplicationDraft,id?:string,version?:number)=>Promise<void>; onDelete:(app:Application)=>Promise<void> }
-export function ApplicationDrawer({application,isNew,onClose,onSave,onDelete}:Props) {
+interface Props { application:Application|null; isNew:boolean; onClose:()=>void; onSave:(draft:ApplicationDraft,id?:string,version?:number)=>Promise<void>; onDelete:(app:Application)=>Promise<void>; onRefresh:()=>Promise<void> }
+export function ApplicationDrawer({application,isNew,onClose,onSave,onDelete,onRefresh}:Props) {
   const dialog=useRef<HTMLDialogElement>(null);
   const [editing,setEditing]=useState(isNew);
   // Clone the record so typing does not mutate the displayed application before saving.
@@ -20,7 +20,7 @@ export function ApplicationDrawer({application,isNew,onClose,onSave,onDelete}:Pr
   const [error,setError]=useState('');
   const [confirmDelete,setConfirmDelete]=useState(false);
   const [saving,setSaving]=useState(false);
-  const description=usePostingDescription(application?.id,application?.version);
+  const description=usePostingDescription(application?.id,application?.version,onRefresh);
   const [descriptionBase,setDescriptionBase]=useState('');
   const [descriptionAvailable,setDescriptionAvailable]=useState(isNew);
   const [descriptionError,setDescriptionError]=useState('');
@@ -42,9 +42,8 @@ export function ApplicationDrawer({application,isNew,onClose,onSave,onDelete}:Pr
   function updateStage(id:string,patch:Partial<InterviewStage>) {update('stages',draft.stages.map(s=>s.id===id?{...s,...patch}:s));}
   // Prevent duplicate saves and pass the editor\'s original version to the parent.
   async function submit(e:FormEvent) {e.preventDefault();if(saving)return;setSaving(true);setError('');try {await onSave(draft,application?.id,originalVersion.current);}catch(err){setConflict(err instanceof ApiError&&err.status===409);setError(err instanceof Error?err.message:'Changes could not be saved. Please try again.');}finally{setSaving(false);}}
-  async function loadEditorDescription() {
+  async function loadEditorDescription(active=++editorGeneration.current) {
     if(!application)return;
-    const active=++editorGeneration.current;
     try {
       const current=await postingApi.current(application.id);
       if(active!==editorGeneration.current)return;
@@ -54,14 +53,16 @@ export function ApplicationDrawer({application,isNew,onClose,onSave,onDelete}:Pr
   }
   async function beginEditing() {
     if(!application||saving)return;
+    const active=++editorGeneration.current;
     setSaving(true);setError('');setConflict(false);
     try {
       const latest=await applicationApi.get(application.id);
+      if(active!==editorGeneration.current)return;
       setDraft({...structuredClone(latest),postingDetails:structuredClone(latest.postingDetails??blankPostingDetails())});
       originalVersion.current=latest.version;setDescriptionAvailable(false);setDescriptionBase('');setEditing(true);
-      await loadEditorDescription();
-    }catch(e){setError(e instanceof Error?e.message:'Could not load application.');}
-    finally{setSaving(false);}
+      await loadEditorDescription(active);
+    }catch(e){if(active===editorGeneration.current)setError(e instanceof Error?e.message:'Could not load application.');}
+    finally{if(active===editorGeneration.current)setSaving(false);}
   }
   // Request deletion and keep the dialog open if the server rejects it.
   async function deleteRecord(){if(!application||saving)return;setSaving(true);setError('');try{await onDelete(application);}catch(e){setError(e instanceof Error?e.message:'Could not delete this application.');}finally{setSaving(false);}}

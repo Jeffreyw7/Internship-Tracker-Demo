@@ -6,6 +6,7 @@ import net from 'node:net';
 import {spawn,spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const root=path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+fs.mkdirSync(path.join(root,'test-results/job-posting'),{recursive:true});
 const temp=fs.mkdtempSync(path.join(root,'test-results/job-posting/http-'));
 const javaHome=spawnSync('java',['-XshowSettings:properties','-version'],{encoding:'utf8',windowsHide:true}).stderr.match(/java\.home\s*=\s*(.+)/)?.[1]?.trim();
 assert.ok(javaHome,'Java runtime is available');
@@ -37,7 +38,7 @@ class Client {
     if(method!=='GET'){const token=await this.http('/auth/csrf');headers[token.headerName]=token.token;headers.Cookie=this.cookie;}
     if(version!==undefined)headers['If-Match']=String(version);
     if(value!==undefined)headers['Content-Type']=value instanceof URLSearchParams?'application/x-www-form-urlencoded':'application/json';
-    const response=await fetch(origin+'/api'+route,{method,headers,body:value===undefined?undefined:value instanceof URLSearchParams?value:JSON.stringify(value),signal:AbortSignal.timeout(10000)});
+    const response=await fetch(origin+'/api'+route,{method,headers,body:value===undefined?undefined:value instanceof URLSearchParams||typeof value==='string'?value:JSON.stringify(value),signal:AbortSignal.timeout(10000)});
     for(const c of response.headers.getSetCookie())if(c.startsWith('JSESSIONID='))this.cookie=c.split(';')[0];
     const data=await response.json();assert.equal(response.status,expected,`${method} ${route}: ${JSON.stringify(data)}`);return data;
   }
@@ -54,6 +55,17 @@ try{
   const draft={company:'Posting Preview Labs',role:'Java Intern',location:'Remote',status:'Saved',appliedDate:null,deadline:null,followUpDate:null,notes:'Synthetic archive verification',stages:[],postingDetails};
   let app=await client.http('/applications','POST',draft,201);const route='/applications/'+app.id;
   const original=await client.http(route+'/posting-description');assert.equal(original.snapshot.descriptionText,postingDetails.descriptionSnapshot);
+  // Exercise both write routes through the real JSON/controller boundary, without timing-based assertions.
+  await client.http('/applications','POST',{...draft,postingDetails:{...postingDetails,compensationMin:'0'.repeat(60)+'25.10'}},400);
+  const oversized=await client.http(route,'PUT',{...draft,postingDetails:{...postingDetails,compensationMax:'9'.repeat(1000000)}},400,app.version);
+  assert.match(oversized.message,/64 characters/);
+  for(const field of ['compensationMin','compensationMax'])for(const literal of ['25.10000000000000000001','-1e-1000']){
+    const input=JSON.stringify({...draft,postingDetails:{...postingDetails,compensationMin:null,compensationMax:null,[field]:'raw-amount'}})
+      .replace('"raw-amount"',literal);
+    await client.http('/applications','POST',input,400);
+    await client.http(route,'PUT',input,400,app.version);
+  }
+  const afterRejected=await client.http(route);assert.deepEqual(afterRejected,app);
   const oldVersion=app.version;postingDetails.descriptionSnapshot='Updated Java internship description';
   app=await client.http(route,'PUT',draft,200,app.version);
   await client.http(route,'PUT',draft,409,oldVersion);
@@ -70,7 +82,7 @@ try{
   const other=new Client();const otherAccount={...account,email:`other-${Date.now()}@example.test`};await other.http('/auth/register','POST',otherAccount,201);await other.login(otherAccount);
   await other.http(route+'/posting-descriptions','GET',undefined,404);
   fs.writeFileSync(path.join(root,process.argv.includes('--serve')?'test-results/job-posting/browser-account.json':'test-results/job-posting/http-account.json'),JSON.stringify({origin,...account,applicationId:app.id},null,2));
-  console.log(`Posting HTTP smoke passed (${process.env.POSTING_SMOKE_POSTGRES_URL?'PostgreSQL':'file-backed H2'}): real CSRF/auth, version conflicts, history, legacy update, delete/undo, backend restart, and ownership isolation.`);
+  console.log(`Posting HTTP smoke passed (${process.env.POSTING_SMOKE_POSTGRES_URL?'PostgreSQL':'file-backed H2'}): real CSRF/auth, bounded and exact compensation validation, version conflicts, history, legacy update, delete/undo, backend restart, and ownership isolation.`);
   if(process.argv.includes('--serve')){
     console.log('Synthetic browser server ready at '+origin);
     await new Promise(resolve=>{process.once('SIGINT',resolve);process.once('SIGTERM',resolve);});

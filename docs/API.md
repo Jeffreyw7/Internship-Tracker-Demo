@@ -28,7 +28,7 @@ Application POST/PUT accepts an optional `postingDetails` object. Omitting it pr
 }
 ```
 
-Referral channels: `UNKNOWN`, `JOB_BOARD`, `COMPANY_WEBSITE`, `CAREER_FAIR`, `EMPLOYEE`, `PROFESSOR`, `OTHER`. Pay status: `UNKNOWN`, `PAID`, `UNPAID`. Period: null, `HOUR`, `MONTH`, `YEAR`, or `TOTAL_INTERNSHIP`. Missing amounts use null. Amounts require paid status, a supported three-letter currency, and a period; they are nonnegative decimal amounts up to `999999999999.99` with at most two decimal places. Minimum cannot exceed maximum. Responses serialize amounts as decimal strings or null.
+Referral channels: `UNKNOWN`, `JOB_BOARD`, `COMPANY_WEBSITE`, `CAREER_FAIR`, `EMPLOYEE`, `PROFESSOR`, `OTHER`. Pay status: `UNKNOWN`, `PAID`, `UNPAID`. Period: null, `HOUR`, `MONTH`, `YEAR`, or `TOTAL_INTERNSHIP`. Missing amounts use null. Amounts require paid status, a supported three-letter currency, and a period; they are nonnegative decimal amounts up to `999999999999.99` with at most two decimal places. Quoted amounts are limited to 64 characters before decimal parsing, including any sign or exponent. JSON numbers retain their exact decimal precision and scale during validation; excess decimal places are rejected rather than rounded. Minimum cannot exceed maximum. Responses serialize amounts as decimal strings or null.
 
 Text limits: URLs 2048; recruiter/referrer names and recruiter role 120; recruiter email and referrer contact 254; phone 50; referral source 200; currency 3; compensation wording 1000; description 100,000 UTF-16 code units. Posting and recruiter profile links must be absolute HTTP/HTTPS URLs without embedded credentials or control characters. The server never fetches them. Descriptions are plain text with their whitespace retained.
 

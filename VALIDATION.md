@@ -1,5 +1,31 @@
 # Validation record
 
+## Job posting review fixes — October 3, 2026
+
+Completed the six requested agent reviews and fixed the confirmed findings on `design/job-posting-contact-details`. The final read-only review found no remaining concrete regression in the fixes. Checks used synthetic accounts, isolated H2 databases, Java 21.0.12.1 with the Java 17 source target, and Node 25.2.0.
+
+| Review point | Result |
+| --- | --- |
+| Security | Fixed unbounded quoted compensation conversion: both amount fields reject representations over 64 characters before `BigDecimal` parsing. Unit and real HTTP checks reject oversized digits, redundant leading zeros and exponent strings. |
+| Code quality | Reproduced and fixed numeric JSON rounding before validation. Spring's existing mapper now retains exact decimal value and scale. Raw POST/PUT regressions reject excess decimal places, tiny negative values and range overflow for both endpoints; legitimate numbers remain accepted. |
+| Bugs | A saved description is shown only beside the matching application ID/version. A mismatch refreshes the shared contacts/pay data and remains retryable. Closing an editor during its parent read prevents an obsolete description request. |
+| Race | Confirmed mutations invalidate overlapping refreshes, including late read failures; a successful write restores cache readiness. The database test now forces two separate transactions to read the same original parent before either writes, then verifies one optimistic-lock conflict and exactly one committed revision. |
+| Test flakiness | The HTTP helper creates its ignored output parent before its temporary directory, so a fresh checkout can run it. Concurrency tests coordinate with latches and release workers/reset the repository spy in cleanup. |
+| Maintainability | Added 23 client regressions covering real hooks, drawer handlers and HTTP payloads, with one shared test-only lifecycle helper and no new dependencies. The API contract documents the amount bound and exact numeric validation. |
+
+| Verification | Result |
+| --- | --- |
+| Focused posting parser/API tests | 13 passed; zero failures/errors/skips |
+| Complete client suite (`npm.cmd test`) | 55 passed; zero failures/skips |
+| Strict TypeScript and Vite build (`npm.cmd run build`) | Passed |
+| Complete Java suite and bundled JAR (Maven `-Pwith-ui verify`, offline with cached dependencies) | 80 passed; zero failures/errors; one optional PostgreSQL migration test skipped |
+| Real bundled API/restart check (`node tests/posting_http_smoke.mjs`) | Passed on file-backed H2: real CSRF/session auth, bounded/exact compensation validation, unchanged state after rejected writes, history, optimistic conflicts, legacy update, delete/undo, restart persistence and ownership isolation |
+| Final diff whitespace check | Passed |
+
+The amount bound regression failed before its guard. The numeric precision regression sent raw `25.10000000000000000001` and initially received 201 rather than 400; it passes after exact JSON parsing. Valid quoted signs, leading zeros, exponents, negative zero and the 64-character boundary remain covered, as do valid numeric decimals, exponents, integers and null. The live API rejects a million-digit quoted amount before conversion and rejects numeric precision/negative-value bypasses on both write routes without changing the original record. There are no database migrations in these fixes.
+
+Description pairing, obsolete editor continuation and overlapping cache refresh regressions also failed before the corresponding fixes. The interaction tests execute real product handlers/hooks and serializers with controlled HTTP responses in a simulated hook host; they do not verify browser layout, native dialog behavior or React scheduling. Those browser checks were performed for the original implementation below and were not repeated for this repair. PostgreSQL execution was not repeated because the optional test database was not configured. The temporary HTTP backend was stopped after verification.
+
 ## Job posting and contact details — October 3, 2026
 
 Implemented on `design/job-posting-contact-details`, using the approved architecture and implementation plan. Checks used synthetic accounts, isolated H2 databases and a separate loopback PostgreSQL 18.6 test instance on port 15435. The normal application databases and installed PostgreSQL service were not used.
@@ -20,7 +46,7 @@ Implemented on `design/job-posting-contact-details`, using the approved architec
 
 The posting tests were run failing before implementation. Full suite verification caught and corrected the returned JPA version after creating a first snapshot. The concurrency test was adjusted to use explicit executor shutdown for the project's Java 17 target.
 
-Independent code review found no material bugs. One minor is deferred: a stale workspace can display old scalar metadata beside a newer description until the workspace is refreshed; editor initialization and writes still check versions and cannot overwrite newer data. Browser interactions cover description failure/retry/conflict behavior; automated component tests currently use static rendering.
+The original validation included browser interactions for description failure/retry/conflict behavior and static component tests. Subsequent reviews found compensation parsing, mixed-version display, overlapping cache refresh and fresh-checkout smoke setup issues. These are corrected and have automated regressions in the review-fix record above.
 
 PostgreSQL migration/HTTP checks passed, but the installed Flyway version warns that PostgreSQL 18 is newer than its tested support range (through 17). No dependency upgrade was included. Capture/history is manual, with one primary recruiter/referral source and no snapshot purge endpoint; existing soft-delete retention continues.
 

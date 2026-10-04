@@ -2,17 +2,27 @@ import {useEffect,useState} from 'react';
 import {postingApi,type CurrentDescription} from '../data/postingApi';
 
 /** Description text belongs to the open drawer, never the full workspace dataset. */
-export function usePostingDescription(id:string|undefined,version:number|undefined) {
+export function usePostingDescription(id:string|undefined,version:number|undefined,refresh:()=>Promise<void>) {
   const [attempt,setAttempt]=useState(0);
-  const [result,setResult]=useState<{current:CurrentDescription|null;loading:boolean;error:string}>({current:null,loading:!!id,error:''});
+  const [result,setResult]=useState<{id:string|undefined;version:number|undefined;current:CurrentDescription|null;loading:boolean;error:string}>({id,version,current:null,loading:!!id,error:''});
   useEffect(()=>{
-    if(!id){setResult({current:null,loading:false,error:''});return;}
+    const pending={id,version,current:null,loading:!!id,error:''};
+    setResult(pending);
+    if(!id)return;
     const controller=new AbortController();
-    setResult({current:null,loading:true,error:''});
-    postingApi.current(id,controller.signal).then(current=>{
-      if(!controller.signal.aborted)setResult({current,loading:false,error:''});
-    }).catch(error=>{if(!controller.signal.aborted)setResult({current:null,loading:false,error:error instanceof Error?error.message:'Could not load the saved description.'});});
+    postingApi.current(id,controller.signal).then(async current=>{
+      if(controller.signal.aborted)return;
+      if(current.applicationVersion!==version) {
+        // Refresh the shared record before pairing its contacts/pay with this description.
+        setResult({...pending,loading:false,error:'This application changed. Refreshing saved details. Retry if the description remains unavailable.'});
+        await refresh();
+        return;
+      }
+      setResult({...pending,current,loading:false});
+    }).catch(error=>{if(!controller.signal.aborted)setResult({...pending,loading:false,error:error instanceof Error?error.message:'Could not load the saved description.'});});
     return()=>controller.abort();
-  },[id,version,attempt]);
-  return {...result,retry:()=>setAttempt(n=>n+1)};
+  },[id,version,attempt,refresh]);
+  // A prop change renders before effect cleanup; never expose the previous record in that frame.
+  const visible=result.id===id&&result.version===version?result:{current:null,loading:!!id,error:''};
+  return {...visible,retry:()=>setAttempt(n=>n+1)};
 }

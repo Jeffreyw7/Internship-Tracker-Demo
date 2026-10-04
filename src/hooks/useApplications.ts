@@ -24,7 +24,12 @@ export function useApplications() {
     if(mutation.current)throw new Error('Please wait for the current change to finish.');
     if(!ready)throw new Error('Refresh your workspace before making changes.');
     mutation.current=true;setBusy(true);epoch.current++;
-    try {const result=await operation();commit(result);setError('');return result;}
+    try {
+      const result=await operation();
+      // A refresh begun during this write may still contain the pre-commit record.
+      epoch.current++;
+      commit(result);setReady(true);setError('');return result;
+    }
     catch(e){if(e instanceof ApiError&&e.status===409)await load();throw e;}
     finally{mutation.current=false;setBusy(false);}
   }

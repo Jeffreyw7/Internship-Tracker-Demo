@@ -105,7 +105,7 @@ export default function App({user,onLogout,onSecurity}:{user:User;onLogout:()=>P
     </div>
     {/* Mount a fresh editor for the selected record or a blank new application. */}
     {remindersOpen&&<ReminderCenter onClose={closeReminders} onOpenApplication={id=>void openReminderApplication(id)}/>}
-    {drawer&&(!drawer.id||selected)&&<ApplicationDrawer key={drawer.id??'new'} application={selected??null} isNew={!drawer.id} onClose={()=>setDrawer(null)} onSave={saveApplication} onDelete={deleteApplication}/>}
+    {drawer&&(!drawer.id||selected)&&<ApplicationDrawer key={drawer.id??'new'} application={selected??null} isNew={!drawer.id} onClose={()=>setDrawer(null)} onSave={saveApplication} onDelete={deleteApplication} onRefresh={refresh}/>}
     {/* Announce action results and expose the version-aware undo operation. */}
     {toast&&<div className="toast" role="status"><CircleCheck size={18}/><span>{toast.message}</span>{toast.undo&&<button disabled={busy} onClick={undoChange}>Undo</button>}<button className="icon-button" aria-label="Dismiss notification" onClick={()=>setToast(null)}><X size={15}/></button></div>}
   </div>;
