@@ -9,7 +9,7 @@ Configure these under `campus.auth-abuse` in application.yml or with Spring envi
 | Setting | Default |
 | --- | --- |
 | maximum-keys | 10,000 shared bucket entries |
-| maximum-active | 2 simultaneous login/registration operations |
+| maximum-active | 2 simultaneous login, registration, verification resend/confirmation operations |
 | login-ip.capacity / refill-period | 20 / 1 minute |
 | login-email.capacity / refill-period | 10 / 10 minutes (one token/minute) |
 | registration-ip.capacity / refill-period | 3 / 1 hour |
@@ -31,7 +31,9 @@ A denied request receives HTTP 429, a positive Retry-After value in seconds, and
 
 The frontend preserves the server message and retry interval, including when the CSRF request is throttled. It displays the wait and never automatically resends a write.
 
-The concurrency guard rejects immediately when full, without queuing or sleeping. A permit is released on success or exception. Registration acquires its permit before entering the account transaction.
+The concurrency guard rejects immediately when full, without queuing or sleeping. A permit is released on success or exception. Registration and verification resend/confirmation acquire their permits before entering service transactions.
+
+Verification also uses persistent fixed-window counters in `auth_rate_limits`. Each conditional increment or insert commits independently of account/token transactions. Concurrent bucket creation retries against the winning row; counter updates enforce the limit across instances without holding a Java monitor. Rejected or rolled-back verification attempts still consume their counters.
 
 ## Boundaries and operations
 

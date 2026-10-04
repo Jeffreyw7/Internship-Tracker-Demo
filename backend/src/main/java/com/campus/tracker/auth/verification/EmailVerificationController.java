@@ -1,6 +1,8 @@
 package com.campus.tracker.auth.verification;
 
 import com.campus.tracker.auth.AuthDtos;
+import com.campus.tracker.auth.abuse.AuthThrottleException;
+import com.campus.tracker.auth.abuse.AuthWorkLimiter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
@@ -19,21 +21,27 @@ import org.springframework.http.HttpStatus;
 public class EmailVerificationController {
     private final EmailVerificationService verification;
     private final AuthRateLimiter rateLimiter;
+    private final AuthWorkLimiter work;
 
-    public EmailVerificationController(EmailVerificationService verification, AuthRateLimiter rateLimiter) {
-        this.verification = verification; this.rateLimiter = rateLimiter;
+    public EmailVerificationController(EmailVerificationService verification, AuthRateLimiter rateLimiter, AuthWorkLimiter work) {
+        this.verification = verification; this.rateLimiter = rateLimiter; this.work = work;
     }
 
     @PostMapping("/resend")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public AuthDtos.Accepted resend(@Valid @RequestBody Resend request, HttpServletRequest http) {
         rateLimiter.requireRequestAllowed(http.getRemoteAddr());
-        return verification.resend(request.email());
+        var permit = work.tryAcquire();
+        if (permit == null) throw new AuthThrottleException(1);
+        // Limit hashing before entering the service transaction, just as registration does.
+        try (permit) { return verification.resend(request.email()); }
     }
 
     @PostMapping("/confirm")
     public AuthDtos.Accepted confirm(@Valid @RequestBody Confirm request, HttpServletRequest http) {
-        return verification.confirm(request.token(), request.password(), http.getRemoteAddr());
+        var permit = work.tryAcquire();
+        if (permit == null) throw new AuthThrottleException(1);
+        try (permit) { return verification.confirm(request.token(), request.password(), http.getRemoteAddr()); }
     }
 
     public record Resend(@NotBlank @Email @Size(max = 254) String email) {

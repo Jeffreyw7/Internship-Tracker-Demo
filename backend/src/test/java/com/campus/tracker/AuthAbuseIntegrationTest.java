@@ -90,6 +90,26 @@ class AuthAbuseIntegrationTest {
             .andExpect(status().isForbidden());
         mvc.perform(login("192.0.2.61", "csrf@example.test")).andExpect(status().isTooManyRequests());
     }
+    @Test void workSaturationBlocksVerificationAndReleasesPermitsAfterErrors() throws Exception {
+        String resend = "{\"email\":\"unknown@example.test\"}";
+        String confirm = "{\"token\":\"%s\",\"password\":\"Wrong-password-123!\"}".formatted("A".repeat(43));
+        try (var permit = work.tryAcquire()) {
+            assertThat(permit).isNotNull();
+            clearInvocations(passwords);
+            mvc.perform(post("/api/auth/email-verification/resend").with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(resend))
+                .andExpect(status().isTooManyRequests()).andExpect(header().exists("Retry-After"));
+            mvc.perform(post("/api/auth/email-verification/confirm").with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(confirm))
+                .andExpect(status().isTooManyRequests());
+            verifyNoInteractions(passwords);
+        }
+        mvc.perform(post("/api/auth/email-verification/confirm").with(csrf())
+            .contentType(MediaType.APPLICATION_JSON).content(confirm)).andExpect(status().isBadRequest());
+        mvc.perform(post("/api/auth/email-verification/resend").with(csrf())
+            .contentType(MediaType.APPLICATION_JSON).content(resend)).andExpect(status().isAccepted());
+        try (var permit = work.tryAcquire()) { assertThat(permit).isNotNull(); }
+    }
     @Test void ambiguousAndOversizedIdentitiesDoNotReachAuthentication() throws Exception {
         clearInvocations(passwords);
         mvc.perform(login("192.0.2.71", "a@example.test").param("email","b@example.test")).andExpect(status().isBadRequest());

@@ -60,6 +60,7 @@ class PostgresPrivilegesIT {
           "--campus.verification.rate-limit-secret=isolated-postgres-verification-secret",
           "--debug=false","--logging.level.root=WARN")) {
    var server=(org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext)context;
+   verifyConcurrentAuth(context);
    String base="http://127.0.0.1:"+server.getWebServer().getPort();
    var cookies=new java.net.CookieManager(null,java.net.CookiePolicy.ACCEPT_ALL);
    var client=java.net.http.HttpClient.newBuilder().cookieHandler(cookies).build();
@@ -99,6 +100,48 @@ class PostgresPrivilegesIT {
    assertThat(restored.get("deleted").asBoolean()).isFalse();
    http(client,base,"POST","/api/auth/logout",null,token,204);
   }
+ }
+ private void verifyConcurrentAuth(org.springframework.context.ConfigurableApplicationContext context) throws Exception {
+  var limiter=context.getBean(com.campus.tracker.auth.verification.AuthRateLimiter.class);
+  var pool=java.util.concurrent.Executors.newFixedThreadPool(12);
+  var start=new java.util.concurrent.CountDownLatch(1);
+  try {
+   var attempts=new java.util.ArrayList<java.util.concurrent.Future<Boolean>>();
+   for(int i=0;i<12;i++) attempts.add(pool.submit(()->{
+    start.await();
+    try {limiter.requireRequestAllowed("192.0.2.150");return true;}
+    catch(com.campus.tracker.common.ApiException denied) {assertThat(denied.getStatus().value()).isEqualTo(429);return false;}
+   }));
+   start.countDown();int accepted=0;
+   for(var attempt:attempts) if(attempt.get(10,java.util.concurrent.TimeUnit.SECONDS)) accepted++;
+   assertThat(accepted).isEqualTo(5);
+
+   var realPasswords=context.getBean(org.springframework.security.crypto.password.PasswordEncoder.class);
+   var barrier=new java.util.concurrent.CyclicBarrier(2);
+   var passwords=new org.springframework.security.crypto.password.PasswordEncoder() {
+    public String encode(CharSequence raw) {
+     try {barrier.await(10,java.util.concurrent.TimeUnit.SECONDS);}catch(Exception e){throw new IllegalStateException(e);}
+     return realPasswords.encode(raw);
+    }
+    public boolean matches(CharSequence raw,String hash) {return realPasswords.matches(raw,hash);}
+   };
+   var users=context.getBean(com.campus.tracker.auth.UserRepository.class);
+   var accounts=new com.campus.tracker.auth.AccountService(users,passwords,
+       context.getBean(com.campus.tracker.application.SampleDataService.class),
+       context.getBean(com.campus.tracker.auth.verification.EmailVerificationService.class),
+       context.getBean(org.springframework.transaction.PlatformTransactionManager.class),true);
+   String email=java.util.UUID.randomUUID()+"@example.test";
+   var input=new com.campus.tracker.auth.AuthDtos.Registration("Concurrent",email,"Concurrent-test-123!",true);
+   var first=pool.submit(()->accounts.register(input));var second=pool.submit(()->accounts.register(input));
+   assertThat(first.get(20,java.util.concurrent.TimeUnit.SECONDS).status()).isEqualTo("VERIFICATION_REQUEST_ACCEPTED");
+   assertThat(second.get(20,java.util.concurrent.TimeUnit.SECONDS).status()).isEqualTo("VERIFICATION_REQUEST_ACCEPTED");
+   var user=users.findByEmail(email).orElseThrow();
+   var jdbc=context.getBean(org.springframework.jdbc.core.JdbcTemplate.class);
+   assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM campus_users WHERE email=?",Long.class,email)).isEqualTo(1);
+   assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM applications WHERE owner_id=?",Long.class,user.getId())).isEqualTo(10);
+   assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM email_outbox WHERE verification_token_id IN "
+       +"(SELECT id FROM email_verification_tokens WHERE user_id=?)",Long.class,user.getId())).isEqualTo(1);
+  } finally {pool.shutdownNow();}
  }
  private java.net.http.HttpResponse<String> http(java.net.http.HttpClient client,String base,String method,
       String path,String body,String token,int status) throws Exception {

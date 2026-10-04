@@ -3,6 +3,7 @@ package com.campus.tracker.auth.verification;
 import com.campus.tracker.common.ApiException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -30,7 +31,9 @@ public class AuthRateLimiter {
         this.jdbc = jdbc; this.clock = clock; this.secret = secret.getBytes(StandardCharsets.UTF_8); this.enabled = enabled;
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    // Each atomic counter statement commits before another bucket is visited. Suspend callers'
+    // transactions so rejected attempts persist and a duplicate insert cannot poison their work.
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void requireRequestAllowed(String remoteAddress) {
         if (!enabled) return;
         boolean allowed = allowed("request-minute", remoteAddress, 5, Duration.ofMinutes(1))
@@ -39,7 +42,7 @@ public class AuthRateLimiter {
                 "Too many requests. Wait before trying again.");
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public boolean reserveEmail(String email) {
         if (!enabled) return true;
         return allowed("email-minute", email, 1, Duration.ofMinutes(1))
@@ -48,7 +51,7 @@ public class AuthRateLimiter {
                 & allowed("mail-global-day", "all", 1000, Duration.ofDays(1));
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void requireConfirmationAllowed(String token, String remoteAddress) {
         if (!enabled) return;
         boolean allowed = allowed("confirm-ip-minute", remoteAddress, 10, Duration.ofMinutes(1))
@@ -57,22 +60,30 @@ public class AuthRateLimiter {
                 "Too many verification attempts. Wait before trying again.");
     }
 
-    // Existing buckets are incremented atomically by the database; insertion is synchronized for this process.
-    private synchronized boolean allowed(String scope, String rawSubject, int maximum, Duration window) {
+    // Database updates enforce the budget across instances without holding a Java monitor.
+    private boolean allowed(String scope, String rawSubject, int maximum, Duration window) {
         Instant now = clock.instant();
         long seconds = window.toSeconds();
         Instant start = Instant.ofEpochSecond((now.getEpochSecond() / seconds) * seconds);
         String subject = hmac(rawSubject == null ? "unknown" : rawSubject);
-        int updated = jdbc.update("UPDATE auth_rate_limits SET attempts=attempts+1 "
-                        + "WHERE scope=? AND subject_hash=? AND window_start=? AND attempts<?",
+        String increment = "UPDATE auth_rate_limits SET attempts=attempts+1 "
+                + "WHERE scope=? AND subject_hash=? AND window_start=? AND attempts<?";
+        int updated = jdbc.update(increment,
                 scope, subject, Timestamp.from(start), maximum);
         if (updated == 1) return true;
         Integer count = jdbc.query("SELECT attempts FROM auth_rate_limits WHERE scope=? AND subject_hash=? AND window_start=?",
                 rs -> rs.next() ? rs.getInt(1) : null, scope, subject, Timestamp.from(start));
-        if (count != null) return false;
-        jdbc.update("INSERT INTO auth_rate_limits(scope,subject_hash,window_start,attempts,expires_at) VALUES (?,?,?,?,?)",
-                scope, subject, Timestamp.from(start), 1, Timestamp.from(start.plus(window).plus(Duration.ofMinutes(1))));
-        return true;
+        if (count != null) return count < maximum
+                && jdbc.update(increment, scope, subject, Timestamp.from(start), maximum) == 1;
+        try {
+            jdbc.update("INSERT INTO auth_rate_limits(scope,subject_hash,window_start,attempts,expires_at) VALUES (?,?,?,?,?)",
+                    scope, subject, Timestamp.from(start), 1, Timestamp.from(start.plus(window).plus(Duration.ofMinutes(1))));
+            return true;
+        } catch (DuplicateKeyException concurrentInsert) {
+            // Another request created this bucket after our read; reserve against its committed row.
+            return jdbc.update(increment,
+                    scope, subject, Timestamp.from(start), maximum) == 1;
+        }
     }
 
     private String hmac(String value) {

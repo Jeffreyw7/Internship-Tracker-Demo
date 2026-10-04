@@ -28,6 +28,13 @@ async function responseError(response:Response, fallback:string):Promise<ApiErro
 }
 // Keep the CSRF token in memory only; the browser manages the HttpOnly session cookie.
 let csrf: { token: string; headerName: string } | null = null;
+// Invalidate expiration side effects from requests belonging to an older login.
+let sessionGeneration = 0;
+// Multi-request operations keep the same account boundary across all their requests.
+export function sessionGuard():()=>boolean {
+  const generation=sessionGeneration;
+  return ()=>generation===sessionGeneration;
+}
 // Fetch the session token and detect when a static server is answering instead of Java.
 export async function refreshCsrf() {
   const response = await fetch('/api/auth/csrf', { credentials:'same-origin', cache:'no-store' });
@@ -38,6 +45,7 @@ export async function refreshCsrf() {
 }
 // Attach CSRF headers to writes and include same-origin session credentials.
 export async function request<T>(path:string, init:RequestInit={}, isCurrent:()=>boolean=()=>true):Promise<T> {
+  const generation = sessionGeneration;
   const method=init.method ?? 'GET';
   const write=!['GET','HEAD','OPTIONS'].includes(method);
   if(write&&!csrf) await refreshCsrf();
@@ -50,7 +58,11 @@ export async function request<T>(path:string, init:RequestInit={}, isCurrent:()=
   if(!response.ok) {
     const error=await responseError(response, `Request failed (${response.status}). Please try again.`);
     // Account-scoped background requests must not expire a newer session after logout/login.
-    if(response.status===401 && path!=='/auth/login' && path!=='/auth/me' && typeof window!=='undefined' && isCurrent()) window.dispatchEvent(new Event('campus:session-expired'));
+    if(response.status===401 && path!=='/auth/login' && path!=='/auth/me' && typeof window!=='undefined'
+        && generation===sessionGeneration && isCurrent()) {
+      sessionGeneration++;csrf=null;
+      window.dispatchEvent(new Event('campus:session-expired'));
+    }
     // Do not automatically replay writes; the server may already have committed the change.
     throw error;
   }
@@ -68,9 +80,10 @@ export const authApi={
   me:()=>request<User>('/auth/me'),
   // Submit credentials in Spring Security\'s expected form format, then refresh the rotated CSRF token.
   async login(email:string,password:string) {
+    sessionGeneration++;
     await refreshCsrf();
     const user=await request<User>('/auth/login',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({email:email.trim(),password})});
-    csrf=null;await refreshCsrf();return user;
+    csrf=null;await refreshCsrf();sessionGeneration++;return user;
   },
   // Accepted registration does not authenticate; mailbox confirmation and login are explicit.
   async register(displayName:string,email:string,password:string,includeSamples:boolean) {
@@ -86,5 +99,5 @@ export const authApi={
     return request<{status:'EMAIL_VERIFIED'}>('/auth/email-verification/confirm',{method:'POST',...jsonBody({token,password})});
   },
   // End the server session and discard the in-memory CSRF token.
-  async logout(){await request<void>('/auth/logout',{method:'POST'});csrf=null;}
+  async logout(){await request<void>('/auth/logout',{method:'POST'});sessionGeneration++;csrf=null;}
 };
