@@ -9,13 +9,18 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
+import jakarta.servlet.http.HttpServletRequest;
+import com.campus.tracker.auth.verification.AuthRateLimiter;
 
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
     private final AccountService accounts;
     private final AuthWorkLimiter work;
-    public AuthController(AccountService accounts, AuthWorkLimiter work) { this.accounts = accounts; this.work = work; }
+    private final AuthRateLimiter rateLimiter;
+    public AuthController(AccountService accounts, AuthWorkLimiter work, AuthRateLimiter rateLimiter) {
+        this.accounts = accounts; this.work = work; this.rateLimiter = rateLimiter;
+    }
 
     // Return the session CSRF token and the header name required for write requests.
     @GetMapping("/csrf")
@@ -27,8 +32,9 @@ public class AuthController {
 
     // Validate incoming JSON before delegating account creation to the service.
     @PostMapping("/register")
-    @ResponseStatus(HttpStatus.CREATED)
-    public AuthDtos.UserView register(@Valid @RequestBody AuthDtos.Registration request) {
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public AuthDtos.Accepted register(@Valid @RequestBody AuthDtos.Registration request, HttpServletRequest http) {
+        rateLimiter.requireRequestAllowed(http.getRemoteAddr());
         var permit = work.tryAcquire();
         if (permit == null) throw new AuthThrottleException(1);
         // Acquire before entering the transactional service so rejected work holds no database connection.

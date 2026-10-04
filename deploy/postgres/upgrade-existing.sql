@@ -20,5 +20,7 @@ ALTER TABLE public.campus_users OWNER TO campus_migrator;
 ALTER TABLE public.applications OWNER TO campus_migrator;
 ALTER TABLE public.interview_stages OWNER TO campus_migrator;
 ALTER TABLE public.flyway_schema_history OWNER TO campus_migrator;
-\ir runtime-grants.sql
+-- Keep runtime access revoked until MigrationMain creates the latest schema and applies grants.
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM campus_runtime;
 COMMIT;

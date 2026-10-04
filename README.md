@@ -1,4 +1,4 @@
-# Campus Internship Tracker — Java + React
+# Campus Internship Tracker â€” Java + React
 
 The complete Java edition of the Campus workspace: a **Java 17 / Spring Boot 3.5.16 REST backend**, a **React + TypeScript frontend**, and a relational database. Application data is stored in the Java database; there is no localStorage fallback.
 
@@ -28,7 +28,7 @@ On **macOS/Linux**:
 ./mvnw -Pwith-ui spring-boot:run
 ```
 
-Open **http://localhost:8080**. Choose **Create an account**, enter your own name, email and password, and leave sample applications checked to explore immediately. No real email is sent or required for this local demo. There are no preconfigured accounts or shared passwords. Each account receives its own optional sample dataset.
+Open **http://localhost:8080**. Choose **Create an account**, enter your own name, email and password, and leave sample applications checked to explore immediately. New accounts must confirm their email before signing in. For local development, verification messages are sent to an SMTP capture server; start one on `127.0.0.1:1025`, or use the Docker Compose setup below. There are no preconfigured accounts or shared passwords. Each account receives its own optional sample dataset.
 
 The default H2 database is saved in `backend/data/` when you run from `backend/`. Stop with Ctrl+C. Your accounts and applications remain after restarting. Browser reloads do not reset data. Sessions end on a backend restart; sign in again.
 
@@ -60,25 +60,24 @@ New accounts require a password with at least 12 characters, including an upperc
 
 ## What works
 
-- Account registration, sign-in and sign-out using Spring Security sessions.
+- Account registration, email verification, sign-in and sign-out using Spring Security sessions. Accounts created before the verification migration remain eligible to sign in.
 - Per-account applications with company, role, location, status, application date, deadline, follow-up date and notes.
 - Add, edit, soft-delete, and undo deletion; interview stage scheduling, completion, reordering through submitted stage order, and removal.
 - Follow-up completion and undo, immediate search and filters, status summaries, sorting, paging, CSV export, and explicit refresh.
 - Database-backed optional sample applications at registration; these are illustrative, not verified vacancies.
 - CSRF-protected writes, HttpOnly session cookies, BCrypt password hashing, request validation, ownership checks on all application operations, and optimistic concurrency checks.
+- Light, Dark, and System appearance, with the signed-in choice saved to the account and refreshed on other devices when they regain focus or while visible.
 
-Follow-ups are displayed in the workspace. They do not send notifications or create calendar events. The app does not include email verification, password reset, admin account management or recruitment integrations.
+Follow-ups are displayed in the workspace. They do not send notifications or create calendar events. The app does not include password reset, admin account management or recruitment integrations.
 
 ## Planned updates
 
 The following features are planned for later updates:
 
-- Email notification system
+- Follow-up email notifications
 - Calendar integration
 - Password reset
-- Email verification
 - Admin account management
-- Dark mode
 - A friendlier user interface
 
 ## Database options
@@ -88,8 +87,9 @@ H2 is the default for a self-contained local project. To use local PostgreSQL wi
 1. Copy `.env.example` to `.env` and replace all three database password placeholders with distinct secrets.
 2. Run `docker compose up --build`.
 3. Open http://localhost:8080 and create an account.
+4. Open the local capture inbox at http://localhost:8025, follow the verification link, and enter the signup password to activate the account.
 
-The Compose stack binds the app only to **127.0.0.1** and does not expose the database port. Its named PostgreSQL volume survives container restarts. Do not run `docker compose down -v` if you want to retain data.
+The Compose stack binds the app and Mailpit inbox only to **127.0.0.1** and does not expose the database port. Its named PostgreSQL volume survives container restarts. The Compose verification keys are synthetic local values; use independent secrets in every hosted environment. Do not run `docker compose down -v` if you want to retain data.
 
 For an existing PostgreSQL instance, select `SPRING_PROFILES_ACTIVE=prod` and set:
 
@@ -102,14 +102,23 @@ For an existing PostgreSQL instance, select `SPRING_PROFILES_ACTIVE=prod` and se
 | `COOKIE_SECURE` | `true` with HTTPS; `false` only for local HTTP |
 | `SERVER_ADDRESS` | Defaults to `127.0.0.1`; containers use `0.0.0.0` |
 | `PORT` | Defaults to `8080` |
+| `PUBLIC_ORIGIN` | Public HTTPS origin used to build verification links, such as `https://tracker.example.edu` |
+| `MAIL_SENDER` | Verified sender address used for verification email |
+| `SMTP_HOST` / `SMTP_PORT` | SMTP relay endpoint; port defaults to `587` |
+| `SMTP_USERNAME` / `SMTP_PASSWORD` | SMTP relay credentials |
+| `SMTP_AUTH` / `SMTP_STARTTLS` | Default to `true` in production; disable only for a trusted local capture server |
+| `OUTBOX_KEY_ID` | Identifier for the active email-outbox encryption key |
+| `OUTBOX_ENCRYPTION_KEY` | Base64-encoded 32-byte AES key; keep this stable while queued mail exists |
+| `VERIFICATION_RATE_LIMIT_SECRET` | Secret of at least 24 characters used to protect rate-limit identifiers |
 
-The separate migration job runs Flyway; the production web process only validates the schema with Hibernate. No passwords are included in the source. The production profile requires database credentials instead of silently falling back to H2. Keep environment files out of Git.
+The separate migration job runs Flyway; the production web process only validates the schema with Hibernate. The production profile requires database, SMTP, HTTPS-origin, outbox-key, and rate-limit settings instead of silently falling back to development values. Keep environment files out of Git. Registration defaults to disabled in production; enable it only after SMTP delivery and monitoring are ready.
 
 ## Architecture
 
 Source comments explain each main code section. See [docs/CODE_GUIDE.md](docs/CODE_GUIDE.md) for the end-to-end request flow, database schema, and build configuration purposes.
 
-- `backend/.../auth`: accounts, password hashing, login identity and CSRF endpoint.
+- `backend/.../auth`: accounts, password hashing, login identity, email-verification tokens and rate limiting, and the CSRF endpoint.
+- `backend/.../mail`: encrypted transactional outbox, retry worker, and SMTP transport.
 - `backend/.../application`: DTOs, JPA entities, repository, owner-scoped service, REST controller and sample-data service.
 - `backend/.../config`: Spring Security setup.
 - `backend/.../common`: consistent API errors and a minimal health endpoint.
@@ -124,7 +133,7 @@ The API uses server-side pagination, optional search/status filters, bounded pag
 
 The UI currently fetches the user's paginated history into memory to keep its existing cross-view filtering and summaries immediate. For very large histories, connect the table directly to server-side queries and add separate aggregate/activity endpoints. The API boundary already supports that change; this project has not been load-tested.
 
-Sessions are in memory for this single-instance version. A multi-instance deployment needs shared sessions (for example Spring Session/Redis) or sticky routing, plus PostgreSQL, HTTPS, rate limiting and database backups. Password reset and email verification should be added before opening public self-service registration.
+Sessions are in memory for this single-instance version. A multi-instance deployment needs shared sessions (for example Spring Session/Redis) or sticky routing, plus PostgreSQL, HTTPS, coordinated worker capacity and database backups. Add password reset before opening public self-service registration.
 
 See [docs/API.md](docs/API.md) for request examples and the endpoint contract.
 
@@ -139,7 +148,9 @@ npm run build
 ./mvnw test
 ```
 
-Client tests verify payload mapping, CSRF/version headers, pagination, conflicts, delete/undo requests and view selectors. Java integration tests exercise real Spring Security, controllers, services, Flyway and H2, including cross-account isolation. See `VALIDATION.md` for the recorded checks and limits.
+Client tests verify verification-link handling, auth payloads, CSRF/version headers, pagination, conflicts, delete/undo requests and view selectors. Java integration tests exercise real Spring Security, controllers, services, Flyway and H2, including verification, outbox delivery, migration behavior and cross-account isolation. See `VALIDATION.md` for the recorded checks and limits.
+
+After creating the bundled JAR, run `npm run test:smoke` from the project root to exercise the packaged UI, SMTP verification, authentication, application writes and restart persistence through real HTTP.
 
 ## Deployment status
 

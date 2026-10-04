@@ -16,9 +16,9 @@ class PostgresPrivilegesIT {
  private void verify(boolean legacy) throws Exception {
   try (var db = new TestDatabase(legacy)) {
    if (legacy) {
-    Flyway.configure().dataSource(db.getJdbcUrl(),db.getUsername(),db.getPassword()).load().migrate();
+    Flyway.configure().dataSource(db.getJdbcUrl(),db.getUsername(),db.getPassword()).target("1").load().migrate();
     try(var c=DriverManager.getConnection(db.getJdbcUrl(),db.getUsername(),db.getPassword());var s=c.createStatement()) {
-     s.execute("INSERT INTO campus_users VALUES ('00000000-0000-0000-0000-000000000001','legacy@example.test','Legacy','hash',CURRENT_TIMESTAMP)");
+     s.execute("INSERT INTO campus_users(id,email,display_name,password_hash,created_at) VALUES ('00000000-0000-0000-0000-000000000001','legacy@example.test','Legacy','hash',CURRENT_TIMESTAMP)");
     }
    }
    var provision=db.psql("psql","-X","-v","ON_ERROR_STOP=1","-U",db.getUsername(),"-d","campus","-f",""+(legacy?"upgrade-existing.sql":"provision.sql"));
@@ -28,14 +28,15 @@ class PostgresPrivilegesIT {
    MigrationMain.run(Map.of("MIGRATION_DATABASE_URL",db.getJdbcUrl(),"MIGRATION_DATABASE_USERNAME","campus_migrator","MIGRATION_DATABASE_PASSWORD","migration-'quote-password"));
    try(var c=DriverManager.getConnection(db.getJdbcUrl(),"campus_runtime","runtime-'quote-password");var s=c.createStatement()) {
     if(legacy) {try(var r=s.executeQuery("SELECT display_name FROM campus_users")){assertThat(r.next()).isTrue();assertThat(r.getString(1)).isEqualTo("Legacy");}}
-    s.execute("INSERT INTO campus_users VALUES ('00000000-0000-0000-0000-000000000002','new@example.test','New','hash',CURRENT_TIMESTAMP)");
+    s.execute("INSERT INTO campus_users(id,email,display_name,password_hash,created_at) VALUES ('00000000-0000-0000-0000-000000000002','new@example.test','New','hash',CURRENT_TIMESTAMP)");
+    s.execute("UPDATE campus_users SET theme_preference='dark',email_verified_at=CURRENT_TIMESTAMP");
     s.execute("INSERT INTO applications(id,owner_id,company,role,location,status,notes,created_at,updated_at) VALUES ('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000002','Company','Role','Remote','SAVED','',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)");
     s.execute("UPDATE applications SET deleted=TRUE,version=version+1");
     s.execute("UPDATE applications SET deleted=FALSE,version=version+1");
     s.execute("INSERT INTO interview_stages VALUES ('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000003',0,'Interview',NULL,'PLANNED')");
     s.execute("UPDATE interview_stages SET name='Changed'");
     assertThat(s.executeUpdate("DELETE FROM interview_stages")).isEqualTo(1);
-    for(String denied : new String[]{"CREATE TABLE public.forbidden_probe(id int)","CREATE TEMP TABLE forbidden_temp(id int)","CREATE SCHEMA forbidden_schema","CREATE ROLE forbidden_role","CREATE DATABASE forbidden_db","DROP TABLE applications","ALTER TABLE applications ADD COLUMN forbidden text","TRUNCATE applications","DELETE FROM applications","DELETE FROM campus_users","UPDATE campus_users SET display_name='forbidden'","SELECT * FROM flyway_schema_history","SET ROLE campus_migrator","SET ROLE "+db.getUsername()}) {
+    for(String denied : new String[]{"CREATE TABLE public.forbidden_probe(id int)","CREATE TEMP TABLE forbidden_temp(id int)","CREATE SCHEMA forbidden_schema","CREATE ROLE forbidden_role","CREATE DATABASE forbidden_db","DROP TABLE applications","ALTER TABLE applications ADD COLUMN forbidden text","TRUNCATE applications","DELETE FROM applications","DELETE FROM campus_users","UPDATE campus_users SET display_name='forbidden'","UPDATE campus_users SET email_verification_exempt=TRUE","UPDATE campus_users SET password_hash='forbidden'","SELECT * FROM flyway_schema_history","SET ROLE campus_migrator","SET ROLE "+db.getUsername()}) {
      assertThatThrownBy(()->s.execute(denied)).as(denied).isInstanceOfSatisfying(SQLException.class,e->assertThat(e.getSQLState()).isEqualTo("42501"));
     }
    }
@@ -52,6 +53,11 @@ class PostgresPrivilegesIT {
           "--spring.datasource.username=campus_runtime",
           "--spring.datasource.password=runtime-'quote-password",
           "--campus.registration-enabled=true","--server.servlet.session.cookie.secure=false",
+          "--spring.mail.host=127.0.0.1", "--spring.mail.port=1", "--spring.mail.username=", "--spring.mail.password=",
+          "--campus.mail.public-origin=http://localhost", "--campus.mail.sender=capture@example.test",
+          "--campus.mail.key-id=isolated-test", "--campus.mail.encryption-key=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+          "--campus.mail.production=false", "--campus.mail.worker-enabled=false",
+          "--campus.verification.rate-limit-secret=isolated-postgres-verification-secret",
           "--debug=false","--logging.level.root=WARN")) {
    var server=(org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext)context;
    String base="http://127.0.0.1:"+server.getWebServer().getPort();
@@ -62,10 +68,21 @@ class PostgresPrivilegesIT {
    String token=csrf.get("token").asText();
    String email="http-"+java.util.UUID.randomUUID()+"@example.test";
    http(client,base,"POST","/api/auth/register",json.writeValueAsString(Map.of(
-       "displayName","Runtime Test","email",email,"password","Campus-test-123!","includeSamples",true)),token,201);
+       "displayName","Runtime Test","email",email,"password","Campus-test-123!","includeSamples",true)),token,202);
+   http(client,base,"POST","/api/auth/login","email="+java.net.URLEncoder.encode(email,java.nio.charset.StandardCharsets.UTF_8)
+       +"&password=Campus-test-123%21",token,403);
+   var jdbc=context.getBean(org.springframework.jdbc.core.JdbcTemplate.class);
+   var outbox=jdbc.queryForMap("SELECT id,payload,nonce,key_id FROM email_outbox WHERE verification_token_id IN "
+       +"(SELECT id FROM email_verification_tokens WHERE email=?)",email);
+   var payload=context.getBean(com.campus.tracker.mail.OutboxCrypto.class).decrypt(
+       (java.util.UUID)outbox.get("id"),(String)outbox.get("payload"),(String)outbox.get("nonce"),(String)outbox.get("key_id"));
+   http(client,base,"POST","/api/auth/email-verification/confirm",json.writeValueAsString(Map.of(
+       "token",payload.token(),"password","Campus-test-123!")),token,200);
    http(client,base,"POST","/api/auth/login","email="+java.net.URLEncoder.encode(email,java.nio.charset.StandardCharsets.UTF_8)
        +"&password=Campus-test-123%21",token,200);
    token=json.readTree(http(client,base,"GET","/api/auth/csrf",null,null,200).body()).get("token").asText();
+   http(client,base,"PUT","/api/me/preferences",json.writeValueAsString(Map.of("themePreference","dark")),token,200);
+   context.getBean(com.campus.tracker.mail.EmailOutboxWorker.class).deliverPending();
    var listed=json.readTree(http(client,base,"GET","/api/applications",null,null,200).body());
    assertThat(listed.get("totalElements").asInt()).isEqualTo(10);
    var draft=json.createObjectNode().put("company","Runtime Company").put("role","Intern")

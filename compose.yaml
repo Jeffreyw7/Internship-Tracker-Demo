@@ -31,7 +31,12 @@ services:
       database:
         condition: service_healthy
     restart: "no"
-  # Publish only on loopback; local HTTP uses non-secure cookies and enables demo signup.
+# Capture verification email locally. The web inbox is available only on loopback.
+  mail:
+    image: axllent/mailpit:v1.31.1
+    ports:
+      - "127.0.0.1:8025:8025"
+# Publish only on loopback; local HTTP uses non-secure cookies and enables demo signup.
   app:
     build:
       context: .
@@ -45,10 +50,24 @@ services:
       DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
       COOKIE_SECURE: "false"
       REGISTRATION_ENABLED: "true"
+      SMTP_HOST: mail
+      SMTP_PORT: "1025"
+      SMTP_USERNAME: ""
+      SMTP_PASSWORD: ""
+      SMTP_AUTH: "false"
+      SMTP_STARTTLS: "false"
+      PUBLIC_ORIGIN: http://127.0.0.1:8080
+      MAIL_SENDER: campus@localhost.test
+      OUTBOX_KEY_ID: compose-local-capture
+      OUTBOX_ENCRYPTION_KEY: AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=
+      VERIFICATION_RATE_LIMIT_SECRET: compose-local-verification-rate-secret
+      CAMPUS_MAIL_PRODUCTION: "false"
     depends_on:
       database:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      mail:
+        condition: service_started
 volumes:
   campus-postgres:

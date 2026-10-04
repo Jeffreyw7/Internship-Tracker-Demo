@@ -7,7 +7,7 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 @EnableConfigurationProperties(AuthAbuseProperties.class)
 public class AuthAbuseConfiguration {
-    @Bean AuthRateLimiter authRateLimiter(AuthAbuseProperties properties) {
+    @Bean AuthRateLimiter authAbuseRateLimiter(AuthAbuseProperties properties) {
         return new AuthRateLimiter(properties.maximumKeys(), System::nanoTime);
     }
     @Bean AuthWorkLimiter authWorkLimiter(AuthAbuseProperties properties) {

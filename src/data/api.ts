@@ -2,9 +2,10 @@
 // Centralizes same-origin API requests, session handling, CSRF tokens, and user-facing errors.
 export class ApiError extends Error {
   readonly status: number;
+  readonly code?: string;
   readonly retryAfterSeconds?: number;
-  constructor(status: number, message: string, retryAfterSeconds?: number) {
-    super(message); this.name='ApiError'; this.status=status; this.retryAfterSeconds=retryAfterSeconds;
+  constructor(status: number, message: string, retryAfterSeconds?: number, code?: string) {
+    super(message); this.name='ApiError'; this.status=status; this.retryAfterSeconds=retryAfterSeconds; this.code=code;
   }
 }
 async function responseError(response:Response, fallback:string):Promise<ApiError> {
@@ -22,7 +23,8 @@ async function responseError(response:Response, fallback:string):Promise<ApiErro
   }
   const display=response.status===429 && retryAfterSeconds!==undefined
     ? `${message} Try again in ${retryAfterSeconds} seconds.` : message;
-  return new ApiError(response.status,display,retryAfterSeconds);
+  const code=data && typeof data==='object' && 'code' in data && typeof data.code==='string' ? data.code : undefined;
+  return new ApiError(response.status,display,retryAfterSeconds,code);
 }
 // Keep the CSRF token in memory only; the browser manages the HttpOnly session cookie.
 let csrf: { token: string; headerName: string } | null = null;
@@ -35,7 +37,7 @@ export async function refreshCsrf() {
   csrf=await response.json();
 }
 // Attach CSRF headers to writes and include same-origin session credentials.
-export async function request<T>(path:string, init:RequestInit={}):Promise<T> {
+export async function request<T>(path:string, init:RequestInit={}, isCurrent:()=>boolean=()=>true):Promise<T> {
   const method=init.method ?? 'GET';
   const write=!['GET','HEAD','OPTIONS'].includes(method);
   if(write&&!csrf) await refreshCsrf();
@@ -47,7 +49,8 @@ export async function request<T>(path:string, init:RequestInit={}):Promise<T> {
   catch {throw new ApiError(0,'Cannot reach the Java server. Check the connection and try again.');}
   if(!response.ok) {
     const error=await responseError(response, `Request failed (${response.status}). Please try again.`);
-    if(response.status===401 && path!=='/auth/login' && path!=='/auth/me' && typeof window!=='undefined') window.dispatchEvent(new Event('campus:session-expired'));
+    // Account-scoped background requests must not expire a newer session after logout/login.
+    if(response.status===401 && path!=='/auth/login' && path!=='/auth/me' && typeof window!=='undefined' && isCurrent()) window.dispatchEvent(new Event('campus:session-expired'));
     // Do not automatically replay writes; the server may already have committed the change.
     throw error;
   }
@@ -59,6 +62,7 @@ export async function request<T>(path:string, init:RequestInit={}):Promise<T> {
 // Serialize JSON consistently with its content-type header.
 export const jsonBody=(value:unknown)=>({headers:{'Content-Type':'application/json'},body:JSON.stringify(value)});
 export interface User {id:string;displayName:string;email:string}
+export interface VerificationAccepted {status:'VERIFICATION_REQUEST_ACCEPTED';message:string}
 // Expose profile lookup and account actions to the authentication screen.
 export const authApi={
   me:()=>request<User>('/auth/me'),
@@ -68,11 +72,18 @@ export const authApi={
     const user=await request<User>('/auth/login',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({email:email.trim(),password})});
     csrf=null;await refreshCsrf();return user;
   },
-  // Create the account first, then sign in using the submitted credentials.
+  // Accepted registration does not authenticate; mailbox confirmation and login are explicit.
   async register(displayName:string,email:string,password:string,includeSamples:boolean) {
     await refreshCsrf();
-    await request<User>('/auth/register',{method:'POST',...jsonBody({displayName:displayName.trim(),email:email.trim(),password,includeSamples})});
-    return this.login(email,password);
+    return request<VerificationAccepted>('/auth/register',{method:'POST',...jsonBody({displayName:displayName.trim(),email:email.trim(),password,includeSamples})});
+  },
+  async resendVerification(email:string) {
+    await refreshCsrf();
+    return request<VerificationAccepted>('/auth/email-verification/resend',{method:'POST',...jsonBody({email:email.trim()})});
+  },
+  async confirmVerification(token:string,password:string) {
+    await refreshCsrf();
+    return request<{status:'EMAIL_VERIFIED'}>('/auth/email-verification/confirm',{method:'POST',...jsonBody({token,password})});
   },
   // End the server session and discard the in-memory CSRF token.
   async logout(){await request<void>('/auth/logout',{method:'POST'});csrf=null;}

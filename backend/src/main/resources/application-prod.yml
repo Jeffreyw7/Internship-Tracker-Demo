@@ -2,6 +2,15 @@
 spring:
   flyway:
     enabled: false
+  mail:
+    host: ${SMTP_HOST}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME}
+    password: ${SMTP_PASSWORD}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS:true}
+      mail.smtp.starttls.required: ${SMTP_STARTTLS:true}
   datasource:
     url: ${DATABASE_URL}
     username: ${DATABASE_USERNAME}
@@ -13,3 +22,11 @@ server:
         secure: ${COOKIE_SECURE:true}
 campus:
   registration-enabled: ${REGISTRATION_ENABLED:false}
+  mail:
+    public-origin: ${PUBLIC_ORIGIN}
+    sender: ${MAIL_SENDER}
+    key-id: ${OUTBOX_KEY_ID}
+    encryption-key: ${OUTBOX_ENCRYPTION_KEY}
+    production: ${CAMPUS_MAIL_PRODUCTION:true}
+  verification:
+    rate-limit-secret: ${VERIFICATION_RATE_LIMIT_SECRET}

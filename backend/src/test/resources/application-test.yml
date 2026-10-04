@@ -14,3 +14,12 @@ campus:
       capacity: 1000
     csrf-ip:
       capacity: 1000
+  mail:
+    worker-enabled: false
+    public-origin: http://localhost:8080
+    sender: capture@example.test
+    key-id: local-test-only
+    encryption-key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+  verification:
+    rate-limit-secret: test-only-verification-rate-secret
+    rate-limits-enabled: false

@@ -60,8 +60,8 @@ class AuthAbuseIntegrationTest {
         verifyNoInteractions(passwords);
     }
     @Test void registrationThrottlingCreatesNoExtraAccounts() throws Exception {
-        mvc.perform(register("192.0.2.31", "first-"+UUID.randomUUID()+"@example.test")).andExpect(status().isCreated());
-        mvc.perform(register("192.0.2.31", "second-"+UUID.randomUUID()+"@example.test")).andExpect(status().isCreated());
+        mvc.perform(register("192.0.2.31", "first-"+UUID.randomUUID()+"@example.test")).andExpect(status().isAccepted());
+        mvc.perform(register("192.0.2.31", "second-"+UUID.randomUUID()+"@example.test")).andExpect(status().isAccepted());
         long count = users.count();
         mvc.perform(register("192.0.2.31", "blocked-"+UUID.randomUUID()+"@example.test")).andExpect(status().isTooManyRequests());
         assertThat(users.count()).isEqualTo(count);
@@ -83,7 +83,7 @@ class AuthAbuseIntegrationTest {
             assertThat(users.count()).isEqualTo(count);
         }
         mvc.perform(login("192.0.2.51", "busy@example.test")).andExpect(status().isUnauthorized());
-        mvc.perform(register("192.0.2.52", "recovered-"+UUID.randomUUID()+"@example.test")).andExpect(status().isCreated());
+        mvc.perform(register("192.0.2.52", "recovered-"+UUID.randomUUID()+"@example.test")).andExpect(status().isAccepted());
     }
     @Test void csrfStillRequiredAndInvalidTrafficConsumesIpBudget() throws Exception {
         for (int i = 0; i < 2; i++) mvc.perform(post("/api/auth/login").with(r -> {r.setRemoteAddr("192.0.2.61"); return r;}))
@@ -126,7 +126,15 @@ class AuthAbuseIntegrationTest {
         var json = new com.fasterxml.jackson.databind.ObjectMapper();
         var token = json.readTree(first.getResponse().getContentAsString());
         var session = (org.springframework.mock.web.MockHttpSession)first.getRequest().getSession(false);
-        mvc.perform(post("/api/auth/register").session(session).with(r -> {r.setRemoteAddr("192.0.2.81"); return r;}).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(java.util.Map.of("displayName","Flow","email",email,"password","Campus-test-123!","includeSamples",false))).header(token.get("headerName").asText(),token.get("token").asText())).andExpect(status().isCreated());
+        mvc.perform(post("/api/auth/register").session(session).with(r -> {r.setRemoteAddr("192.0.2.81"); return r;}).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(java.util.Map.of("displayName","Flow","email",email,"password","Campus-test-123!","includeSamples",false))).header(token.get("headerName").asText(),token.get("token").asText())).andExpect(status().isAccepted());
+        mvc.perform(post("/api/auth/login").session(session).with(csrf())
+            .with(r -> {r.setRemoteAddr("192.0.2.82"); return r;})
+            .param("email",email).param("password","Campus-test-123!"))
+            .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("EMAIL_VERIFICATION_REQUIRED"));
+        // The verification suite tests token confirmation; this fixture isolates login/work limiting.
+        var verified = users.findByEmail(email).orElseThrow();
+        verified.verifyEmail(java.time.Instant.now());
+        users.saveAndFlush(verified);
         var signedIn = mvc.perform(post("/api/auth/login").session(session)
             .with(r -> {r.setRemoteAddr("192.0.2.81"); return r;})
             .header(token.get("headerName").asText(),token.get("token").asText())
