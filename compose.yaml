@@ -1,10 +1,13 @@
+# Runs the Java application with PostgreSQL for local development.
 services:
+# Persist PostgreSQL data in a named volume and wait until the database is ready.
   database:
     image: postgres:17
     environment:
       POSTGRES_DB: campus
       POSTGRES_USER: campus
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
+    # Keep database storage across container restarts.
     volumes:
       - campus-postgres:/var/lib/postgresql/data
     healthcheck:
@@ -12,6 +15,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+# Publish only on loopback; local HTTP uses non-secure cookies and enables demo signup.
   app:
     build: .
     ports:

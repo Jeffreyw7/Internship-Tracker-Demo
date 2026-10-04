@@ -69,6 +69,18 @@ New accounts require a password with at least 12 characters, including an upperc
 
 Follow-ups are displayed in the workspace. They do not send notifications or create calendar events. The app does not include email verification, password reset, admin account management or recruitment integrations.
 
+## Planned updates
+
+The following features are planned for later updates:
+
+- Email notification system
+- Calendar integration
+- Password reset
+- Email verification
+- Admin account management
+- Dark mode
+- A friendlier user interface
+
 ## Database options
 
 H2 is the default for a self-contained local project. To use local PostgreSQL with Docker:
@@ -94,6 +106,8 @@ For an existing PostgreSQL instance, select `SPRING_PROFILES_ACTIVE=prod` and se
 Flyway creates the schema; Hibernate validates it. No passwords are included in the source. The production profile requires database credentials instead of silently falling back to H2. Keep environment files out of Git.
 
 ## Architecture
+
+Source comments explain each main code section. See [docs/CODE_GUIDE.md](docs/CODE_GUIDE.md) for the end-to-end request flow, database schema, and build configuration purposes.
 
 - `backend/.../auth`: accounts, password hashing, login identity and CSRF endpoint.
 - `backend/.../application`: DTOs, JPA entities, repository, owner-scoped service, REST controller and sample-data service.

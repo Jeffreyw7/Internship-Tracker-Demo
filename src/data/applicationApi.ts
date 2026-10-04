@@ -1,6 +1,9 @@
+// Adapts editable frontend drafts and versioned API calls to persisted application records.
 import { type Application, type ApplicationDraft, validateDraft } from '../domain/application.ts';
 import { request, jsonBody } from './api.ts';
+// Match the server\'s paginated response envelope.
 interface ApplicationPage {content:Application[];totalElements:number;totalPages:number;page:number;size:number}
+// Whitelist editable fields and convert empty date inputs to JSON null.
 export function toPayload(a:ApplicationDraft) {
   const error=validateDraft(a);if(error)throw new Error(error);
   return {company:a.company.trim(),role:a.role.trim(),location:a.location.trim(),status:a.status,
@@ -15,14 +18,17 @@ export const applicationApi={
     for(let page=1;page<first.totalPages;page++) {
       const next=await request<ApplicationPage>(`/applications?size=100&page=${page}`);apps.push(...next.content);
     }
+    // Deduplicate records if updates moved a record between pages while loading.
     return [...new Map(apps.map(a=>[a.id,a])).values()];
   },
+  // Choose create or update and send the version header only for existing records.
   save(draft:ApplicationDraft,id?:string,version?:number):Promise<Application> {
     const init=jsonBody(toPayload(draft));
     return request<Application>(id?`/applications/${id}`:'/applications',{
       ...init,method:id?'PUT':'POST',headers:{...init.headers,...(id?{'If-Match':String(version)}:{})}
     });
   },
+  // Use the last known version when deleting or restoring a record.
   remove(app:Application){return request<Application>(`/applications/${app.id}`,{method:'DELETE',headers:{'If-Match':String(app.version)}});},
   restoreDeleted(app:Application){return request<Application>(`/applications/${app.id}/restore`,{method:'POST',headers:{'If-Match':String(app.version)}});}
 };

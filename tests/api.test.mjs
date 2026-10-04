@@ -1,3 +1,4 @@
+// Tests client transport contracts, password rules, and derived views using stubbed HTTP responses.
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { applicationApi, toPayload } from '../src/data/applicationApi.ts';
@@ -6,8 +7,10 @@ import { blankDraft, today, activities } from '../src/domain/application.ts';
 import { filterApplications } from '../src/domain/selectors.ts';
 import { sampleApplications } from './fixtures/seed.ts';
 import { passwordError } from '../src/domain/password.ts';
+// Restore the real fetch implementation after each test to prevent shared mock state.
 const originalFetch=globalThis.fetch;
 afterEach(()=>{globalThis.fetch=originalFetch;});
+// Build small HTTP response fixtures for the API adapter tests.
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
 const draft=()=>({...blankDraft(),company:' Example Labs ',role:'Java Intern',status:'Applied',appliedDate:today()});
 

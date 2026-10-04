@@ -1,3 +1,4 @@
+# Production overrides require external database credentials and default to secure cookies with signup disabled.
 spring:
   datasource:
     url: ${DATABASE_URL}

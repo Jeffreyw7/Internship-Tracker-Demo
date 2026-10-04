@@ -1,10 +1,13 @@
+# Local defaults: file-backed H2, schema validation, session cookies, and optional registration.
 spring:
   application:
     name: campus-tracker
+# Keep local accounts in a file; H2_PASSWORD can override the default empty database password.
   datasource:
     url: jdbc:h2:file:./data/campus;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
     username: sa
     password: ${H2_PASSWORD:}
+# Let Flyway own schema changes; Hibernate checks mappings rather than changing tables.
   jpa:
     open-in-view: false
     hibernate:
@@ -13,9 +16,11 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+# Reject unknown JSON fields, including attempts to submit server-owned metadata.
   jackson:
     deserialization:
       fail-on-unknown-properties: true
+# Bind locally by default and configure the server-side session and cookie policy.
 server:
   address: ${SERVER_ADDRESS:127.0.0.1}
   port: ${PORT:8080}
@@ -26,8 +31,10 @@ server:
         http-only: true
         same-site: lax
         secure: ${COOKIE_SECURE:false}
+# Do not include internal exception messages or stack traces in default error responses.
   error:
     include-message: never
     include-stacktrace: never
+# Allow demo signup locally; the production profile changes this default.
 campus:
   registration-enabled: ${REGISTRATION_ENABLED:true}

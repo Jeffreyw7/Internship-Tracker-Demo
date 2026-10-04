@@ -1,3 +1,4 @@
+// Implements application business rules, ownership checks, and transactional persistence.
 package com.campus.tracker.application;
 
 import com.campus.tracker.common.ApiException;
@@ -17,8 +18,10 @@ import static com.campus.tracker.application.ApplicationDtos.*;
 @Transactional
 public class ApplicationService {
     private final ApplicationRepository repository;
+    // Receive the repository used by all reads and writes.
     public ApplicationService(ApplicationRepository repository) { this.repository = repository; }
 
+    // Build an owner-scoped search and return one page of response objects.
     @Transactional(readOnly = true)
     public ApplicationPage list(UUID ownerId, String query, String status, int page, int size, String sort) {
         ApplicationStatus selected = status == null || status.isBlank() ? null : ApplicationStatus.parse(status);
@@ -28,6 +31,7 @@ public class ApplicationService {
             predicates.add(cb.isFalse(root.get("deleted")));
             if (selected != null) predicates.add(cb.equal(root.get("status"), selected));
             if (query != null && !query.isBlank()) {
+                // Escape LIKE wildcards so a search term is treated as literal user text.
                 String pattern = "%" + query.trim().toLowerCase(Locale.ROOT)
                         .replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
                 predicates.add(cb.or(cb.like(cb.lower(root.get("company")), pattern, '\\'),
@@ -37,6 +41,7 @@ public class ApplicationService {
             }
             return cb.and(predicates.toArray(Predicate[]::new));
         };
+        // Allow only known sort fields rather than accepting arbitrary database column names.
         Sort order = switch (sort) {
             case "company" -> Sort.by("company").ascending();
             case "deadline" -> Sort.by("deadline").ascending();
@@ -49,11 +54,14 @@ public class ApplicationService {
                 results.getTotalElements(), results.getTotalPages(), page, size);
     }
 
+    // Load a visible record using the same ownership rule as mutations.
     @Transactional(readOnly = true)
     public ApplicationView get(UUID ownerId, UUID id) { return ApplicationView.from(owned(ownerId, id, false)); }
 
+    // Create an ordinary user record; sample seeding uses the internal overload.
     public ApplicationView create(UUID ownerId, ApplicationRequest input) { return create(ownerId, input, false); }
 
+    // Apply validation before storing a new application and its stages.
     ApplicationView create(UUID ownerId, ApplicationRequest input, boolean sample) {
         InternshipApplication a = new InternshipApplication(ownerId);
         a.sample = sample;
@@ -61,6 +69,7 @@ public class ApplicationService {
         return ApplicationView.from(repository.saveAndFlush(a));
     }
 
+    // Update the owned record only if its version still matches the editor.
     public ApplicationView update(UUID ownerId, UUID id, String ifMatch, ApplicationRequest input) {
         InternshipApplication a = owned(ownerId, id, false);
         verifyVersion(a, ifMatch);
@@ -68,6 +77,7 @@ public class ApplicationService {
         return ApplicationView.from(repository.saveAndFlush(a));
     }
 
+    // Retain the row for undo while hiding it from normal reads.
     public ApplicationView delete(UUID ownerId, UUID id, String ifMatch) {
         InternshipApplication a = owned(ownerId, id, false);
         verifyVersion(a, ifMatch);
@@ -75,6 +85,7 @@ public class ApplicationService {
         return ApplicationView.from(repository.saveAndFlush(a));
     }
 
+    // Make a previously deleted record visible again without losing its details.
     public ApplicationView restore(UUID ownerId, UUID id, String ifMatch) {
         InternshipApplication a = owned(ownerId, id, true);
         verifyVersion(a, ifMatch);
@@ -88,6 +99,7 @@ public class ApplicationService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Application not found."));
     }
 
+    // Accept numeric or quoted ETags, then distinguish malformed headers from stale versions.
     private void verifyVersion(InternshipApplication a, String header) {
         if (header == null) throw new ApiException(HttpStatus.PRECONDITION_REQUIRED, "If-Match is required for changes.");
         String value = header.trim();
@@ -99,6 +111,7 @@ public class ApplicationService {
         if (a.version != expected) throw new ApiException(HttpStatus.CONFLICT, "This application changed elsewhere. Refresh before editing again.");
     }
 
+    // Enforce date and interview rules before copying editable fields into the entity.
     private void apply(InternshipApplication a, ApplicationRequest input) {
         if (input.status() != ApplicationStatus.SAVED && input.appliedDate() == null)
             throw new ApiException(HttpStatus.BAD_REQUEST, "Add the date you applied.");
@@ -106,6 +119,7 @@ public class ApplicationService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "The application date cannot be in the future.");
         if (input.stages().stream().anyMatch(s -> s.state() == StageState.SCHEDULED && s.date() == null))
             throw new ApiException(HttpStatus.BAD_REQUEST, "Choose a date for each scheduled interview.");
+        // Reject duplicate submitted stage IDs before reconciling the stage collection.
         Set<UUID> stageIds = new HashSet<>();
         for (StageRequest s : input.stages()) {
             if (s.id() != null && !stageIds.add(s.id())) throw new ApiException(HttpStatus.BAD_REQUEST, "Duplicate interview stage ID.");
@@ -113,6 +127,7 @@ public class ApplicationService {
         a.company = input.company().trim(); a.role = input.role().trim(); a.location = input.location().trim();
         a.status = input.status(); a.appliedDate = input.appliedDate(); a.deadline = input.deadline();
         a.followUpDate = input.followUpDate(); a.notes = input.notes(); a.updatedAt = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+        // Reuse this application\'s existing stages and assign new IDs to newly added ones.
         Map<UUID, InterviewStage> existing = new HashMap<>();
         a.stages.forEach(s -> existing.put(s.id, s));
         List<InterviewStage> next = new ArrayList<>();
@@ -124,6 +139,7 @@ public class ApplicationService {
             stage.name = inputStage.name().trim(); stage.date = inputStage.date();
             stage.state = inputStage.state(); stage.position = i; next.add(stage);
         }
+        // Remove omitted stages and preserve the submitted display order; JPA deletes orphaned rows.
         a.stages.removeIf(s -> !next.contains(s));
         next.forEach(s -> { if (!a.stages.contains(s)) a.stages.add(s); });
         a.stages.sort(Comparator.comparingInt(s -> s.position));
