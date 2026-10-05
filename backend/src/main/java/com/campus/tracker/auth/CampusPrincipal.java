@@ -15,6 +15,11 @@ public record CampusPrincipal(UUID id, String displayName, String email, String 
         return new CampusPrincipal(user.getId(), user.getDisplayName(), user.getEmail(), user.getPasswordHash(),
                 user.canAuthenticate());
     }
+    /** Authentication needs the hash; persisted sessions need only the verified identity. */
+    public CampusPrincipal sessionIdentity() {
+        return new CampusPrincipal(id, displayName, email, null, emailAccessAllowed);
+    }
+    @Override public String toString() { return "CampusPrincipal[redacted]"; }
     // All accounts currently share the ordinary user role.
     @Override public Collection<? extends GrantedAuthority> getAuthorities() { return List.of(new SimpleGrantedAuthority("ROLE_USER")); }
     // Supply the stored hash to the authentication provider for password verification.

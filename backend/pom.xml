@@ -13,6 +13,10 @@
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-security</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-validation</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-mail</artifactId></dependency>
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId></dependency>
+    <dependency><groupId>io.micrometer</groupId><artifactId>micrometer-registry-prometheus</artifactId></dependency>
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-redis</artifactId></dependency>
+    <dependency><groupId>org.springframework.session</groupId><artifactId>spring-session-data-redis</artifactId></dependency>
     <!-- Apply versioned database migrations with support for local H2 and PostgreSQL. -->
     <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-core</artifactId></dependency>
     <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-database-postgresql</artifactId></dependency>
@@ -26,7 +30,7 @@
   <!-- Package an executable Spring Boot JAR with its runtime dependencies. -->
   <build><resources><resource><directory>src/main/resources</directory></resource><resource><directory>${project.basedir}/../deploy/postgres</directory><targetPath>db/security</targetPath><includes><include>runtime-grants.sql</include></includes></resource></resources><plugins><plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId><configuration><mainClass>com.campus.tracker.CampusApplication</mainClass></configuration></plugin></plugins></build>
   <!-- Opt into PostgreSQL integration checks or serving the previously built React assets. -->
-  <profiles><profile><id>postgres-it</id><build><plugins><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-failsafe-plugin</artifactId><executions><execution><goals><goal>integration-test</goal><goal>verify</goal></goals></execution></executions></plugin></plugins></build></profile><profile><id>with-ui</id><build><plugins><plugin>
+  <profiles><profile><id>distributed-it</id><build><plugins><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-failsafe-plugin</artifactId><executions><execution><goals><goal>integration-test</goal><goal>verify</goal></goals></execution></executions></plugin></plugins></build></profile><profile><id>postgres-it</id><build><plugins><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-failsafe-plugin</artifactId><executions><execution><goals><goal>integration-test</goal><goal>verify</goal></goals></execution></executions></plugin></plugins></build></profile><profile><id>with-ui</id><build><plugins><plugin>
     <groupId>org.apache.maven.plugins</groupId><artifactId>maven-resources-plugin</artifactId>
     <executions><execution><id>bundle-react-ui</id><phase>process-resources</phase><goals><goal>copy-resources</goal></goals><configuration>
       <outputDirectory>${project.build.outputDirectory}/static</outputDirectory>

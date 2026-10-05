@@ -29,9 +29,16 @@ public class MailConfiguration {
     @EnableScheduling
     @ConditionalOnProperty(name = "campus.mail.worker-enabled", havingValue = "true", matchIfMissing = true)
     static class Scheduler {
-        private final EmailOutboxWorker worker;
-        Scheduler(EmailOutboxWorker worker) { this.worker = worker; }
+        private final MailWorkDispatcher dispatcher;
+        private final OutboxMaintenance maintenance;
+        Scheduler(EmailOutboxWorker worker, OutboxMaintenance maintenance,
+                @org.springframework.beans.factory.annotation.Value("${campus.mail.concurrency:2}") int concurrency) {
+            this.dispatcher = new MailWorkDispatcher(worker, concurrency); this.maintenance = maintenance;
+        }
+        @Bean(destroyMethod = "close") MailWorkDispatcher mailWorkDispatcher() { return dispatcher; }
         @Scheduled(fixedDelayString = "${campus.mail.poll-interval-ms:5000}")
-        public void deliver() { worker.deliverPending(); }
+        public void deliver() { dispatcher.poll(); }
+        @Scheduled(fixedDelayString = "${campus.mail.maintenance-interval-ms:60000}", initialDelay = 5000)
+        public void maintain() { maintenance.runBatch(100); }
     }
 }

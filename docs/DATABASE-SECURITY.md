@@ -7,6 +7,8 @@ The production web process uses `campus_runtime`. The one-shot `migrate` contain
 | `campus_admin` | Provisioning, backup/restore, maintenance; never supplied to the app |
 | `campus_migrator` | Owns the public schema and application tables; used only for migrations |
 | `campus_runtime` | Database CONNECT, schema USAGE, users SELECT/INSERT and column UPDATE for appearance/verification, applications SELECT/INSERT/UPDATE, stages and verification/outbox/rate-limit tables SELECT/INSERT/UPDATE/DELETE |
+| `campus_mail_worker` | CONNECT/USAGE, selected verification/account identity columns, outbox SELECT/DELETE and limited delivery-state UPDATE, expired-token/rate-limit maintenance; no password hashes or application access |
+| `campus_export_worker` | CONNECT/USAGE initially; export processing grants accompany the export migration |
 
 Runtime has no privileged role flags or memberships, ownership, CREATE/TEMP, migration-history access, or user/application DELETE. Explicit grants are reapplied after every migration; future tables require an intentional grant change. This is an isolated application database: provisioning removes database/schema privileges inherited through PUBLIC.
 
@@ -47,7 +49,7 @@ Do not remove the volume or run `docker compose down -v`. New POSTGRES environme
    docker compose exec -T database psql -X -U campus -d campus -v ON_ERROR_STOP=1 -f /opt/campus/postgres/upgrade-existing.sql
    ```
 
-   The script is one transaction. It requires the four known tables to be owned by `campus` and rejects unexpected public tables/views/sequences or pre-existing target roles. On failure, investigate the inventory; do not widen grants or run a broad `REASSIGN OWNED`. Already-upgraded installations use the normal migration job, not this one-time script.
+   The script is one transaction. It requires the four known tables to be owned by `campus` and rejects unexpected public tables/views/sequences or pre-existing migration/runtime roles. On failure, investigate the inventory; do not widen grants or run a broad `REASSIGN OWNED`. Already-separated installations use the worker-role upgrade below before the normal migration job.
 5. Run the migration job, then verify the effective runtime privileges:
 
    ```sh
@@ -61,6 +63,13 @@ Do not remove the volume or run `docker compose down -v`. New POSTGRES environme
 Keep the app stopped if any step fails. Provisioning/upgrade errors roll back their transaction. Flyway migrations may already have committed when the subsequent grants transaction fails; fix the grants and rerun the job. For rollback after an incompatible schema change, restore the verified backup to a separate database and validate it before switching. Do not grant superuser privileges back to the web process as a workaround.
 
 ## Verification
+
+For an installation that already has `campus_migrator`/`campus_runtime` but lacks worker roles, first stop affected API/worker processes and verify an isolated backup restore. Supply distinct `MAIL_WORKER_DATABASE_PASSWORD` and `EXPORT_WORKER_DATABASE_PASSWORD` through the administrative environment, then run `upgrade-workers.sql` as the database administrator. This idempotently provisions only the worker roles and CONNECT privileges. It rejects existing worker privilege flags, memberships or ownership that exceed the intended scope. Next run `MigrationMain` to apply column/table grants, followed by `verify-runtime.sql`. Never run the role upgrade using application credentials. A missing role makes the grants transaction fail and keeps new services stopped; no runtime privilege fallback is provided.
+
+```sh
+docker compose exec -T database psql -X -U <existing-admin> -d campus -v ON_ERROR_STOP=1 -f /opt/campus/postgres/upgrade-workers.sql
+docker compose up --build --force-recreate migrate
+```
 
 From `backend`, run `./mvnw -Ppostgres-it verify` (Windows: `.\mvnw.cmd -Ppostgres-it verify`). The profile creates fresh, disposable PostgreSQL 17 containers and fails visibly if Docker is missing. It exercises the actual provisioning/upgrade scripts, repeated migrations, retained legacy data, allowed DML, and permission-denied SQLSTATE 42501 for prohibited operations. Ordinary H2 tests do not establish PostgreSQL privilege safety.
 

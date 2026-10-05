@@ -6,7 +6,7 @@ The source files contain comments above the main classes, functions, and logical
 
 1. `src/main.tsx` captures and removes a verification token from the URL fragment before rendering, then mounts `AuthGate`, which checks the current session before opening the workspace.
 2. `src/App.tsx` organizes the workspace views and delegates data changes to `useApplications`.
-3. `src/data/applicationApi.ts` converts editor drafts into API requests. `src/data/api.ts` handles cookies, CSRF headers, and errors.
+3. `src/data/workspaceApi.ts` requests bounded v2 application/summary/activity projections and on-demand full details. `src/domain/workspaceController.ts` owns a 20-page/100-detail cache, cursor history, search debounce, and account generation guards. `useApplications` submits serialized writes through `applicationApi.ts` and invalidates reads after server confirmation. The full-history compatibility helper is temporarily used only for explicit CSV export. `src/data/api.ts` handles cookies, CSRF headers, and errors.
 4. Spring Security checks authentication and CSRF before a backend controller handles the request. A pending account receives `EMAIL_VERIFICATION_REQUIRED` only after its password is accepted.
 5. Controllers validate inputs and pass the authenticated user's ID to services. Services enforce ownership and business rules before repositories access the database.
 6. Response DTOs return the saved data and version to the frontend. The version prevents an older editor from overwriting a newer change.
@@ -28,6 +28,16 @@ The source files contain comments above the main classes, functions, and logical
 - `email_verification_tokens` stores one-way SHA-256 token hashes, expiry, consumption and revocation timestamps. Raw URL tokens are never stored.
 - `email_outbox` stores the address and token in an AES-GCM encrypted payload, along with leasing, retry and terminal-state fields. Issuing a token and enqueueing its message share one database transaction.
 - `auth_rate_limits` stores HMAC-protected subjects and database counters for request, address, confirmation and global mail budgets.
+
+`V4__application_read_indexes.sql` adds token-expiry/outbox-reference indexes for bounded mail maintenance. Real PostgreSQL EXPLAIN confirmed the existing V1 owner/update/ID index supports the new default descending keyset order by scanning backward; an additional duplicate read index was removed before shipping.
+
+The additive v2 read path uses JDBC projections and size+1 queries, with no mandatory page count or full application/stage graph loading. Next-activity previews are selected for at most 100 returned IDs. Summary counts use one SQL snapshot; separate list and summary calls remain independent. Company sorting uses lowercase database order, and client calendar dates drive due counts. Existing detail/mutation routes retain their ownership, version, deletion and CSRF behavior.
+
+`V5__export_jobs.sql` introduces durable job metadata and publication-intent tracking for private objects. Export creation/status/cancellation/expiry/quota APIs and the CSV encoder are implemented; processing and shared private storage are still in progress. Until the complete worker/export UI is verified, the workspace retains its existing explicit full-history CSV helper.
+
+The opt-in `distributed` profile uses allowlisted versioned Redis session values and atomic Redis authentication admission. Local profiles retain container sessions and process-local admission. Successful login strips the password hash before storing the security context. Real Redis qualification is still pending on a capable environment.
+
+The mail worker has a separate non-web entry point, restricted database role, bounded executor with no queued leases, short PostgreSQL SKIP LOCKED claims, and fenced outcomes. SMTP runs outside database transactions. Separate bounded maintenance, active/retired decryption keys, and cached recipient-free metrics support operation. Distributed API instances disable embedded polling; local development can retain it.
 
 ## Build and configuration files
 

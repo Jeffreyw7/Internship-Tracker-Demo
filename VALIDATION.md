@@ -1,5 +1,24 @@
 # Validation record
 
+## Scalability implementation checkpoint - October 4, 2026
+
+This checkpoint on `scalability-design` implements probes/metrics/resource budgets, opt-in Redis sessions and shared authentication admission, leased mail workers with separate database roles, bounded v2 application/activity reads and account summaries, and bounded frontend pages with on-demand details. Export job APIs, schema and CSV encoding are scaffolding: jobs remain PENDING because export processing and S3 storage are unfinished.
+
+Checks rerun before the user-requested commit and push:
+
+| Check | Result |
+| --- | --- |
+| `npm test` | 47 passed; no failures or skips |
+| `npm run build` | TypeScript and Vite build passed |
+| Maven `test` | 100 passed; no failures, errors or skips |
+| Maven `-Pwith-ui -DskipTests package` | Bundled JAR built after the fresh frontend build; tests ran separately above |
+| Maven `-Ppostgres-it -Dit.test=PostgresPrivilegesIT,WorkspaceReadIT,MailWorkerIT -Dpostgres.test.bin=... failsafe:integration-test failsafe:verify` | 4 real PostgreSQL scenarios passed; no failures, errors or skips |
+| `CAMPUS_BROWSER_TEST=true node tests/http_smoke.mjs` | Real Chrome workspace flows and HTTP/restart persistence passed |
+
+Checks used Node, Java 20 compiling release 17, cached Maven 3.9.11, disposable PostgreSQL 17.6/H2 databases and synthetic accounts. The first browser smoke invocation was blocked by sandbox loopback permissions; rerunning with reviewed network access passed. Logs are ignored local outputs named `test-results-commit-*.log` and `backend/target/commit-checkpoint-*.log`.
+
+Real Redis qualification remains pending because Docker/Redis is unavailable. Container/S3 qualification, export processing/frontend export jobs, scalable ingress, CI/load/recovery tooling, Java 17 runtime qualification, hosted capacity/failover and the final independent whole-branch review remain unfinished. This commit is a partial implementation checkpoint, not completion of the scalability plan. The overnight automation is paused at the user's request.
+
 ## Main review fixes - October 4, 2026
 
 Fixed the four review findings on local `main`: verification counter lock contention/deadlock, verification requests bypassing the shared authentication work cap, stale application responses expiring a newer session, and concurrent duplicate registration returning a conflict instead of acceptance.

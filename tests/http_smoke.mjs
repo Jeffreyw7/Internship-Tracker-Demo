@@ -182,6 +182,10 @@ try {
   assert.equal(confirmed.status, 'EMAIL_VERIFIED');
   await call('/api/auth/login', { method: 'POST', data: identity, headers: await csrf(), form: true });
   assert.equal((await call('/api/applications')).totalElements, 10);
+  if(process.env.CAMPUS_BROWSER_TEST==='true') {
+    const {verifyWorkspaceBrowser}=await import('./workspace_browser_smoke.mjs');
+    await verifyWorkspaceBrowser({base,identity});
+  }
   assert.deepEqual(await call('/api/me/preferences'), { themePreference: 'system' });
   let headers = await csrf();
   await call('/api/me/preferences', { method: 'PUT', data: { themePreference: 'dark' }, expected: 403 });

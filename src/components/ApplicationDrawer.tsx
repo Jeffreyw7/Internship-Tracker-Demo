@@ -4,8 +4,8 @@ import { ArrowUpRight, BriefcaseBusiness, CalendarDays, Check, Circle, MapPin, P
 import { blankDraft, formatDate, STATUSES, today, type Application, type ApplicationDraft, type InterviewStage } from '../domain/application';
 import { CompanyMark, StatusBadge } from './Shared';
 // Receive persistence callbacks from the workspace rather than calling the API directly.
-interface Props { application:Application|null; isNew:boolean; onClose:()=>void; onSave:(draft:ApplicationDraft,id?:string,version?:number)=>Promise<void>; onDelete:(app:Application)=>Promise<void> }
-export function ApplicationDrawer({application,isNew,onClose,onSave,onDelete}:Props) {
+interface Props { application:Application|null; isNew:boolean; loading?:boolean; loadError?:string; onRetry?:()=>void; onClose:()=>void; onSave:(draft:ApplicationDraft,id?:string,version?:number)=>Promise<void>; onDelete:(app:Application)=>Promise<void> }
+export function ApplicationDrawer({application,isNew,loading=false,loadError='',onRetry,onClose,onSave,onDelete}:Props) {
   const dialog=useRef<HTMLDialogElement>(null);
   const [editing,setEditing]=useState(isNew);
   // Clone the record so typing does not mutate the displayed application before saving.
@@ -17,6 +17,7 @@ export function ApplicationDrawer({application,isNew,onClose,onSave,onDelete}:Pr
   const originalVersion=useRef(application?.version);
   const deleteConfirmation=useRef<HTMLDivElement>(null);
   const saveError=useRef<HTMLDivElement>(null);
+  useEffect(()=>{if(application&&!editing){setDraft(structuredClone(application));originalVersion.current=application.version;}},[application,editing]);
   // Use native dialog focus handling and close it when the component unmounts.
   useEffect(()=>{dialog.current?.showModal(); return ()=>dialog.current?.close();},[]);
   // Move keyboard focus to confirmation and error messages when they appear.
@@ -36,7 +37,7 @@ export function ApplicationDrawer({application,isNew,onClose,onSave,onDelete}:Pr
     <div className="drawer-shell">
       <header className="drawer-header"><span>{isNew?'NEW OPPORTUNITY':editing?'EDIT APPLICATION':'APPLICATION DETAILS'}</span><button className="icon-button" aria-label="Close application" disabled={saving} onClick={onClose}><X size={20}/></button></header>
       {/* Switch between the editable form and the saved record details. */}
-      {editing?<form onSubmit={submit} className="application-form">
+      {!isNew&&!application?<div className="drawer-body"><h2 id="drawer-title">Application details</h2>{loading?<p role="status">Loading your application…</p>:<><p className="error-box" role="alert">{loadError||'Could not load this application.'}</p><button className="button secondary" onClick={onRetry}>Try again</button></>}</div>:editing?<form onSubmit={submit} className="application-form">
         <div className="drawer-body" inert={saving}><h2 id="drawer-title">{isNew?'Make your next move.':'A little progress, updated.'}</h2><p className="muted">{isNew?'Start with the basics. You can add the details as you go.':'Keep every detail of this opportunity in one place.'}</p>
           {/* Collect the core company, role, location, and pipeline status fields. */}
           <div className="form-section"><h3><BriefcaseBusiness size={16}/> The opportunity</h3>

@@ -138,10 +138,78 @@ class EmailOutboxWorkerTest {
         jdbc.update("INSERT INTO auth_rate_limits(scope,subject_hash,window_start,attempts,expires_at) VALUES(?,?,?,?,?)",
                 "request-minute", "live", at(clock.instant()), 1, at(clock.instant().plus(Duration.ofDays(20))));
         worker.deliverPending(); clock.advance(Duration.ofDays(10)); worker.deliverPending();
+        new OutboxMaintenance(jdbc, transactions.getTransactionManager(), clock).runBatch(100);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM email_outbox", Integer.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM email_verification_tokens", Integer.class)).isZero();
         assertThat(jdbc.queryForList("SELECT subject_hash FROM auth_rate_limits", String.class)).containsExactly("live");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM campus_users", Integer.class)).isEqualTo(1);
+    }
+
+    @Test void deliveryPollDoesNotPerformGlobalMaintenance() {
+        queue();
+        jdbc.update("UPDATE email_outbox SET status='FAILED',next_attempt_at=?", at(clock.instant().minus(Duration.ofDays(10))));
+        worker.deliverPending();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM email_outbox", Integer.class)).isEqualTo(1);
+    }
+
+    @Test void maintenanceStopsAtItsTotalBatchLimitAndPreservesAccounts() {
+        queue();
+        jdbc.update("UPDATE email_outbox SET status='FAILED',next_attempt_at=?", at(clock.instant().minus(Duration.ofDays(10))));
+        for (int i = 0; i < 8; i++) jdbc.update("""
+                INSERT INTO email_outbox(id,verification_token_id,payload,key_id,nonce,status,attempts,next_attempt_at,created_at)
+                SELECT ?,verification_token_id,payload,key_id,nonce,status,attempts,next_attempt_at,created_at FROM email_outbox LIMIT 1
+                """, UUID.randomUUID());
+        var maintenance = new OutboxMaintenance(jdbc, transactions.getTransactionManager(), clock);
+        for (int remaining : new int[]{6, 3, 0}) {
+            assertThat(maintenance.runBatch(3)).isEqualTo(3);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM email_outbox", Integer.class)).isEqualTo(remaining);
+        }
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM campus_users", Integer.class)).isEqualTo(1);
+    }
+
+    @Test void distinctClaimsAndExpiredOwnerCompletionAreFenced() {
+        queue();
+        jdbc.update("""
+                INSERT INTO email_outbox(id,verification_token_id,payload,key_id,nonce,status,attempts,next_attempt_at,created_at)
+                SELECT ?,verification_token_id,payload,key_id,nonce,status,attempts,next_attempt_at,created_at FROM email_outbox
+                """, UUID.randomUUID());
+        var claims = new OutboxClaimRepository(jdbc, transactions.getTransactionManager(), clock);
+        var a = claims.claim(1, UUID.randomUUID()).get(0);
+        var b = claims.claim(1, UUID.randomUUID()).get(0);
+        assertThat(a.id()).isNotEqualTo(b.id());
+        clock.advance(Duration.ofSeconds(121));
+        assertThat(claims.finish(a, "SENT", null)).isFalse();
+        var replacement = claims.claim(1, UUID.randomUUID()).get(0);
+        assertThat(claims.finish(replacement, "SENT", null)).isTrue();
+        assertThat(claims.finish(a, "FAILED", "stale")).isFalse();
+    }
+
+    @Test void saturatedDispatcherHasNoQueuedLeasesAndSmtpHoldsNoTransaction() throws Exception {
+        UUID tokenId = queue();
+        transactions.executeWithoutResult(status -> {
+            for (int i = 0; i < 5; i++) outbox.enqueue(tokenId, "student@example.test", "synthetic-token");
+        });
+        var entered = new java.util.concurrent.CountDownLatch(2);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        var transactionDuringSmtp = new java.util.concurrent.atomic.AtomicBoolean();
+        var blocking = new EmailOutboxWorker(jdbc, transactions.getTransactionManager(), crypto, (email, token) -> {
+            if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) transactionDuringSmtp.set(true);
+            entered.countDown();
+            try { if (!release.await(10, java.util.concurrent.TimeUnit.SECONDS)) throw new IllegalStateException("Test delivery wait timed out"); }
+            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new IllegalStateException(); }
+        }, clock);
+        try (var dispatcher = new MailWorkDispatcher(blocking, 2)) {
+            try {
+                // H2 conditional contenders can pick the same row; the loser retries on the next poll.
+                long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+                do { dispatcher.poll(); } while (!entered.await(10, java.util.concurrent.TimeUnit.MILLISECONDS) && System.nanoTime() < deadline);
+                assertThat(entered.getCount()).isZero();
+                for (int i = 0; i < 10; i++) dispatcher.poll();
+                assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM email_outbox WHERE status='SENDING'", Integer.class)).isEqualTo(2);
+                assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM email_outbox WHERE status='PENDING'", Integer.class)).isEqualTo(4);
+                assertThat(transactionDuringSmtp.get()).isFalse();
+            } finally { release.countDown(); }
+        }
     }
 
     private UUID queue() {

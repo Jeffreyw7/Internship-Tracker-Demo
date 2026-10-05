@@ -2,6 +2,8 @@
 spring:
   application:
     name: campus-tracker
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
   # Local capture SMTP only; run a capture server on loopback before registering.
   mail:
     host: ${SMTP_HOST:127.0.0.1}
@@ -20,6 +22,11 @@ spring:
     url: jdbc:h2:file:./data/campus;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
     username: sa
     password: ${H2_PASSWORD:}
+    hikari:
+      maximum-pool-size: ${DATABASE_POOL_SIZE:10}
+      minimum-idle: ${DATABASE_POOL_MIN_IDLE:2}
+      connection-timeout: ${DATABASE_ACQUIRE_TIMEOUT_MS:3000}
+      validation-timeout: ${DATABASE_VALIDATE_TIMEOUT_MS:2000}
 # Let Flyway own schema changes; Hibernate checks mappings rather than changing tables.
   jpa:
     open-in-view: false
@@ -35,6 +42,14 @@ spring:
       fail-on-unknown-properties: true
 # Bind locally by default and configure the server-side session and cookie policy.
 server:
+  shutdown: graceful
+  tomcat:
+    connection-timeout: ${HTTP_CONNECTION_TIMEOUT:5s}
+    keep-alive-timeout: ${HTTP_KEEP_ALIVE_TIMEOUT:15s}
+    threads:
+      max: ${HTTP_MAX_THREADS:100}
+      min-spare: ${HTTP_MIN_THREADS:10}
+    accept-count: ${HTTP_ACCEPT_COUNT:100}
   forward-headers-strategy: NONE
   address: ${SERVER_ADDRESS:127.0.0.1}
   port: ${PORT:8080}
@@ -51,10 +66,12 @@ server:
     include-stacktrace: never
 # Allow demo signup locally; the production profile changes this default.
 campus:
+  operations:
+    metrics-token: ${METRICS_TOKEN:}
   registration-enabled: ${REGISTRATION_ENABLED:true}
   auth-abuse:
-    maximum-keys: 10000
-    maximum-active: 2
+    maximum-keys: ${AUTH_MAXIMUM_KEYS:10000}
+    maximum-active: ${AUTH_MAXIMUM_ACTIVE:2}
     login-ip:
       capacity: 20
       refill-period: 1m
@@ -79,3 +96,24 @@ campus:
     token-ttl: ${VERIFICATION_TOKEN_TTL:24h}
     rate-limit-secret: ${VERIFICATION_RATE_LIMIT_SECRET:local-development-rate-limit-secret}
     rate-limits-enabled: ${VERIFICATION_RATE_LIMITS_ENABLED:true}
+    global-mail-daily-limit: ${VERIFICATION_GLOBAL_MAIL_DAILY_LIMIT:1000}
+
+# Probe responses disclose only aggregate status. SMTP is not a web readiness dependency.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: never
+      show-components: never
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
+          additional-path: server:/livez
+        readiness:
+          include: readinessState,db
+          additional-path: server:/readyz

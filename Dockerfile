@@ -24,6 +24,14 @@ COPY --from=backend --chown=10001:10001 /source/backend/target/dependency /app/l
 USER 10001:10001
 ENTRYPOINT ["java","-cp","/app/classes:/app/lib/*","com.campus.tracker.migration.MigrationMain"]
 
+# Dedicated workers import no HTTP controllers, session store or application mutation services.
+FROM eclipse-temurin:17-jre AS worker
+WORKDIR /app
+COPY --from=backend --chown=10001:10001 /source/backend/target/classes /app/classes
+COPY --from=backend --chown=10001:10001 /source/backend/target/dependency /app/lib
+USER 10001:10001
+ENTRYPOINT ["java","-cp","/app/classes:/app/lib/*","com.campus.tracker.worker.WorkerApplication"]
+
 FROM eclipse-temurin:17-jre AS app
 WORKDIR /app
 RUN mkdir /app/data && chown -R 10001:10001 /app

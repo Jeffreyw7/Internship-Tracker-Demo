@@ -23,12 +23,22 @@ public class AuthRateLimiter {
     private final Clock clock;
     private final byte[] secret;
     private final boolean enabled;
+    private final int globalMailDailyLimit;
 
     public AuthRateLimiter(JdbcTemplate jdbc, Clock clock,
+            String secret, boolean enabled) {
+        this(jdbc, clock, secret, enabled, 1000);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AuthRateLimiter(JdbcTemplate jdbc, Clock clock,
             @Value("${campus.verification.rate-limit-secret}") String secret,
-            @Value("${campus.verification.rate-limits-enabled:true}") boolean enabled) {
+            @Value("${campus.verification.rate-limits-enabled:true}") boolean enabled,
+            @Value("${campus.verification.global-mail-daily-limit:1000}") int globalMailDailyLimit) {
         if (secret.length() < 24) throw new IllegalArgumentException("Verification rate-limit secret must be at least 24 characters.");
+        if (globalMailDailyLimit < 1 || globalMailDailyLimit > 100_000_000) throw new IllegalArgumentException("Invalid global verification mail budget");
         this.jdbc = jdbc; this.clock = clock; this.secret = secret.getBytes(StandardCharsets.UTF_8); this.enabled = enabled;
+        this.globalMailDailyLimit = globalMailDailyLimit;
     }
 
     // Each atomic counter statement commits before another bucket is visited. Suspend callers'
@@ -48,7 +58,7 @@ public class AuthRateLimiter {
         return allowed("email-minute", email, 1, Duration.ofMinutes(1))
                 & allowed("email-hour", email, 5, Duration.ofHours(1))
                 & allowed("email-day", email, 10, Duration.ofDays(1))
-                & allowed("mail-global-day", "all", 1000, Duration.ofDays(1));
+                & allowed("mail-global-day", "all", globalMailDailyLimit, Duration.ofDays(1));
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)

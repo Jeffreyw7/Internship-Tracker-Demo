@@ -15,6 +15,11 @@ spring:
     url: ${DATABASE_URL}
     username: ${DATABASE_USERNAME}
     password: ${DATABASE_PASSWORD}
+    hikari:
+      data-source-properties:
+        connectTimeout: ${DATABASE_CONNECT_TIMEOUT_SECONDS:3}
+        socketTimeout: ${DATABASE_SOCKET_TIMEOUT_SECONDS:10}
+        options: -c statement_timeout=${DATABASE_STATEMENT_TIMEOUT_MS:8000} -c lock_timeout=${DATABASE_LOCK_TIMEOUT_MS:2000}
 server:
   servlet:
     session:

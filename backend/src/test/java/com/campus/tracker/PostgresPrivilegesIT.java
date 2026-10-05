@@ -41,6 +41,7 @@ class PostgresPrivilegesIT {
     }
    }
    verifyHttp(db);
+   verifyWorkerPrivileges(db);
    var verification=db.psql("psql","-X","-v","ON_ERROR_STOP=1","-U",db.getUsername(),"-d","campus","-f","verify-runtime.sql");
    assertThat(verification.getExitCode()).withFailMessage(verification.getStderr()).isZero();
   }
@@ -98,7 +99,40 @@ class PostgresPrivilegesIT {
    var deleted=json.readTree(httpVersion(client,base,"DELETE",path,null,token,updated.get("version").asText(),200).body());
    var restored=json.readTree(httpVersion(client,base,"POST",path+"/restore",null,token,deleted.get("version").asText(),200).body());
    assertThat(restored.get("deleted").asBoolean()).isFalse();
+   var export=json.readTree(http(client,base,"POST","/api/v2/exports",null,token,202).body());
+   http(client,base,"POST","/api/v2/exports",null,token,202);
+   http(client,base,"POST","/api/v2/exports",null,token,429);
+   String exportPath="/api/v2/exports/"+export.get("id").asText();
+   assertThat(json.readTree(http(client,base,"GET",exportPath,null,null,200).body()).get("state").asText()).isEqualTo("PENDING");
+   http(client,base,"GET",exportPath+"/download",null,null,409);
+   http(client,base,"DELETE",exportPath,null,token,200);
+   http(client,base,"POST","/api/v2/exports",null,token,202);
    http(client,base,"POST","/api/auth/logout",null,token,204);
+  }
+ }
+ private void verifyWorkerPrivileges(TestDatabase db) throws Exception {
+  try(var c=DriverManager.getConnection(db.getJdbcUrl(),"campus_mail_worker","mail-worker-'quote-password");var s=c.createStatement()) {
+   s.execute("SELECT id,email,email_verified_at,email_verification_exempt FROM campus_users");
+   s.execute("SELECT id,user_id,email,expires_at,consumed_at,revoked_at FROM email_verification_tokens");
+   s.execute("SELECT id,payload,nonce,key_id,attempts FROM email_outbox");
+   s.execute("UPDATE email_outbox SET status='SENDING',attempts=attempts+1,lease_owner=NULL WHERE 1=0");
+   s.execute("DELETE FROM auth_rate_limits WHERE expires_at<CURRENT_TIMESTAMP AND 1=0");
+   for(String denied:new String[]{"SELECT password_hash FROM campus_users","SELECT token_hash FROM email_verification_tokens",
+     "SELECT * FROM applications","SELECT * FROM interview_stages","SELECT * FROM flyway_schema_history",
+     "UPDATE campus_users SET email_verified_at=CURRENT_TIMESTAMP","DELETE FROM campus_users",
+     "UPDATE email_outbox SET verification_token_id=NULL WHERE 1=0","TRUNCATE email_outbox",
+     "CREATE TEMP TABLE forbidden_worker_probe(id int)","SET ROLE campus_runtime","SET ROLE campus_migrator"})
+    assertThatThrownBy(()->s.execute(denied)).as(denied).isInstanceOfSatisfying(SQLException.class,e->assertThat(e.getSQLState()).isEqualTo("42501"));
+  }
+  try(var c=DriverManager.getConnection(db.getJdbcUrl(),"campus_export_worker","export-worker-'quote-password");var s=c.createStatement()) {
+   s.execute("SELECT id,owner_id,company,role,location,status,applied_date,deadline,follow_up_date,notes,deleted,created_at FROM applications");
+   s.execute("SELECT id,application_id,position,name,stage_date,state FROM interview_stages");
+   s.execute("SELECT state,lease_owner,object_key FROM export_jobs");
+   s.execute("UPDATE export_jobs SET state='RUNNING',attempts=attempts+1 WHERE 1=0");
+   for(String denied:new String[]{"SELECT password_hash FROM campus_users","SELECT * FROM email_outbox",
+     "SELECT * FROM flyway_schema_history","DELETE FROM applications","UPDATE applications SET notes='forbidden'",
+     "UPDATE interview_stages SET name='forbidden'","UPDATE export_jobs SET owner_id=NULL WHERE 1=0","SET ROLE campus_mail_worker","SET ROLE campus_migrator"})
+    assertThatThrownBy(()->s.execute(denied)).as(denied).isInstanceOfSatisfying(SQLException.class,e->assertThat(e.getSQLState()).isEqualTo("42501"));
   }
  }
  private void verifyConcurrentAuth(org.springframework.context.ConfigurableApplicationContext context) throws Exception {
@@ -159,7 +193,7 @@ class PostgresPrivilegesIT {
   return response;
  }
  /** Local mode always initializes its own cluster; it cannot target an existing database. */
- private static final class TestDatabase implements AutoCloseable {
+ static final class TestDatabase implements AutoCloseable {
   private PostgreSQLContainer<?> container;
   private Path binaryDirectory, dataDirectory, log;
   private int port;
@@ -170,7 +204,8 @@ class PostgresPrivilegesIT {
    String binaries=System.getProperty("postgres.test.bin");
    if(binaries==null) {
     container=new PostgreSQLContainer<>("postgres:17").withDatabaseName("campus").withUsername(username).withPassword(password)
-     .withEnv("MIGRATION_DATABASE_PASSWORD","migration-'quote-password").withEnv("RUNTIME_DATABASE_PASSWORD","runtime-'quote-password");
+     .withEnv("MIGRATION_DATABASE_PASSWORD","migration-'quote-password").withEnv("RUNTIME_DATABASE_PASSWORD","runtime-'quote-password")
+     .withEnv("MAIL_WORKER_DATABASE_PASSWORD","mail-worker-'quote-password").withEnv("EXPORT_WORKER_DATABASE_PASSWORD","export-worker-'quote-password");
     container.start();
     container.copyFileToContainer(MountableFile.forHostPath(Path.of("../deploy/postgres").toAbsolutePath()),"/scripts");
    } else {
@@ -201,6 +236,8 @@ class PostgresPrivilegesIT {
    builder.environment().put("PGPASSWORD",password);
    builder.environment().put("MIGRATION_DATABASE_PASSWORD","migration-'quote-password");
    builder.environment().put("RUNTIME_DATABASE_PASSWORD","runtime-'quote-password");
+   builder.environment().put("MAIL_WORKER_DATABASE_PASSWORD","mail-worker-'quote-password");
+   builder.environment().put("EXPORT_WORKER_DATABASE_PASSWORD","export-worker-'quote-password");
    // Windows descendants can keep inherited pipe handles open after pg_ctl exits.
    Path output=java.nio.file.Files.createTempFile(dataDirectory.getParent(),"process-",".log");
    builder.redirectOutput(output.toFile());
@@ -217,5 +254,5 @@ class PostgresPrivilegesIT {
    else if(dataDirectory!=null) check(process("pg_ctl","-D",dataDirectory.toString(),"-m","fast","-w","stop"));
   }
  }
- private record Result(int getExitCode,String getStderr) {}
+ record Result(int getExitCode,String getStderr) {}
 }

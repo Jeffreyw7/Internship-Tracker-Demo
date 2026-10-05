@@ -10,6 +10,22 @@ DO $$ BEGIN
  IF has_table_privilege('campus_runtime','public.campus_users','UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') OR has_table_privilege('campus_runtime','public.applications','DELETE,TRUNCATE,REFERENCES,TRIGGER') OR has_table_privilege('campus_runtime','public.interview_stages','TRUNCATE,REFERENCES,TRIGGER') THEN RAISE EXCEPTION 'Excess runtime table privileges'; END IF;
  IF NOT has_table_privilege('campus_runtime','public.campus_users','SELECT') OR NOT has_table_privilege('campus_runtime','public.campus_users','INSERT') OR NOT has_table_privilege('campus_runtime','public.applications','UPDATE') OR NOT has_table_privilege('campus_runtime','public.interview_stages','DELETE') THEN RAISE EXCEPTION 'Missing runtime DML privileges'; END IF;
 END $$;
+DO $$ DECLARE worker text; BEGIN
+ FOREACH worker IN ARRAY ARRAY['campus_mail_worker','campus_export_worker'] LOOP
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname=worker AND rolcanlogin AND NOT
+   (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls OR rolinherit)) THEN RAISE EXCEPTION 'Unsafe/missing worker role'; END IF;
+  IF EXISTS (SELECT FROM pg_auth_members WHERE member=worker::regrole) THEN RAISE EXCEPTION 'Worker has role memberships'; END IF;
+  IF has_database_privilege(worker,'campus','CREATE') OR has_database_privilege(worker,'campus','TEMP')
+   OR has_schema_privilege(worker,'public','CREATE') THEN RAISE EXCEPTION 'Worker can create objects'; END IF;
+  IF has_column_privilege(worker,'public.campus_users','password_hash','SELECT')
+   OR has_table_privilege(worker,'public.campus_users','UPDATE,DELETE')
+   OR has_table_privilege(worker,'public.applications','INSERT,UPDATE,DELETE')
+   OR has_table_privilege(worker,'public.flyway_schema_history','SELECT,INSERT,UPDATE,DELETE') THEN RAISE EXCEPTION 'Worker has excessive business privileges'; END IF;
+ END LOOP;
+ IF NOT has_column_privilege('campus_mail_worker','public.campus_users','email','SELECT')
+  OR NOT has_column_privilege('campus_mail_worker','public.email_outbox','status','UPDATE') THEN RAISE EXCEPTION 'Missing mail worker privileges'; END IF;
+ IF has_column_privilege('campus_mail_worker','public.email_verification_tokens','token_hash','SELECT') THEN RAISE EXCEPTION 'Mail worker can read token hashes'; END IF;
+END $$;
 DO $$ BEGIN
  IF NOT has_column_privilege('campus_runtime','public.campus_users','theme_preference','UPDATE') OR NOT has_column_privilege('campus_runtime','public.campus_users','email_verified_at','UPDATE') THEN RAISE EXCEPTION 'Missing appearance or verification update privileges'; END IF;
  IF has_column_privilege('campus_runtime','public.campus_users','email','UPDATE') OR has_column_privilege('campus_runtime','public.campus_users','password_hash','UPDATE') OR has_column_privilege('campus_runtime','public.campus_users','email_verification_exempt','UPDATE') THEN RAISE EXCEPTION 'Runtime can alter protected account fields'; END IF;

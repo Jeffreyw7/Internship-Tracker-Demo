@@ -1,0 +1,37 @@
+# Explicit opt-in: ordinary local/test sessions remain in the servlet container.
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      username: ${REDIS_USERNAME:}
+      password: ${REDIS_PASSWORD:}
+      connect-timeout: 2s
+      timeout: 2s
+      ssl:
+        enabled: ${REDIS_TLS:false}
+      repositories:
+        enabled: false
+  session:
+    timeout: 2h
+    redis:
+      namespace: ${SESSION_NAMESPACE:campus:local:session:v1}
+campus:
+  auth-admission:
+    namespace: ${AUTH_ADMISSION_NAMESPACE:campus:local:admission:v1}
+    hmac-secret: ${AUTH_ADMISSION_HMAC_SECRET}
+  mail:
+    worker-enabled: false
+server:
+  forward-headers-strategy: NATIVE
+  tomcat:
+    remoteip:
+      # Trust no forwarding peer until the private ingress's exact addresses are supplied.
+      internal-proxies: ${TRUSTED_PROXY_REGEX:^$}
+      trusted-proxies: ^$
+management:
+  endpoint:
+    health:
+      group:
+        readiness:
+          include: readinessState,db,redis

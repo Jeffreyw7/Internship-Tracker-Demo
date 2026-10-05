@@ -1,0 +1,18 @@
+# Use WorkerApplication's entry point. The ordinary HTTP application is not the worker bootstrap.
+spring:
+  main:
+    web-application-type: none
+  datasource:
+    hikari:
+      maximum-pool-size: ${WORKER_DATABASE_POOL_SIZE:5}
+      minimum-idle: 1
+  task:
+    scheduling:
+      pool:
+        size: 2
+campus:
+  worker:
+    role: ${WORKER_ROLE}
+  mail:
+    worker-enabled: true
+    concurrency: ${MAIL_WORKER_CONCURRENCY:2}

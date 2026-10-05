@@ -10,10 +10,10 @@ import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 public final class AuthAbuseFilter extends OncePerRequestFilter {
-    private final AuthRateLimiter limiter;
+    private final AuthAdmissionLimiter limiter;
     private final AuthAbuseProperties policies;
     private final ObjectMapper json;
-    public AuthAbuseFilter(AuthRateLimiter limiter, AuthAbuseProperties policies, ObjectMapper json) {
+    public AuthAbuseFilter(AuthAdmissionLimiter limiter, AuthAbuseProperties policies, ObjectMapper json) {
         this.limiter = limiter; this.policies = policies; this.json = json;
     }
     @Override protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)

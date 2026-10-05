@@ -8,7 +8,7 @@ import java.util.function.LongSupplier;
 import org.slf4j.LoggerFactory;
 
 /** Bounded process-local buckets. Active restrictions are never evicted to admit new identities. */
-public final class AuthRateLimiter {
+public final class AuthRateLimiter implements AuthAdmissionLimiter {
     public record Policy(int capacity, Duration refillPeriod) {
         public Policy {
             if (capacity < 1 || capacity > 1_000_000 || refillPeriod == null

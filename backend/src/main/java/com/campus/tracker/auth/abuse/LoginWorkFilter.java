@@ -8,11 +8,11 @@ import java.util.Locale;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 public final class LoginWorkFilter extends OncePerRequestFilter {
-    private final AuthRateLimiter limiter;
+    private final AuthAdmissionLimiter limiter;
     private final AuthWorkLimiter work;
     private final AuthAbuseProperties policies;
     private final ObjectMapper json;
-    public LoginWorkFilter(AuthRateLimiter limiter, AuthWorkLimiter work, AuthAbuseProperties policies, ObjectMapper json) {
+    public LoginWorkFilter(AuthAdmissionLimiter limiter, AuthWorkLimiter work, AuthAbuseProperties policies, ObjectMapper json) {
         this.limiter = limiter; this.work = work; this.policies = policies; this.json = json;
     }
     @Override protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)

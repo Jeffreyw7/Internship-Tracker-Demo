@@ -91,8 +91,20 @@ Errors use `{ "message": "Human-readable explanation" }`:
 
 ## Authentication throttling
 
-Login, registration, and CSRF/session-creating requests are rate-limited. Limits are process-local and reset on restart. A throttled request returns **429**, a positive integer `Retry-After` header (seconds), and the usual `{"message":"..."}` body. Clients must not automatically replay writes.
+Login, registration, and CSRF/session-creating requests are rate-limited. Default local-profile limits are process-local and reset on restart. The opt-in `distributed` profile uses atomic Redis-backed admission and shared sessions; Redis failure returns 503 instead of falling back to local budgets or sessions. A throttled request returns **429**, a positive integer `Retry-After` header (seconds), and the usual `{"message":"..."}` body. Clients must not automatically replay writes.
 
 The CSRF budget also applies to anonymous unsafe requests on unrelated paths, because Spring may create a session before returning 403. Login rejects missing, duplicate, or oversized email parameters with 400 before password verification. Existing-account passwords are not subjected to registration complexity rules.
 
 See [authentication security](AUTHENTICATION-SECURITY.md) for defaults, proxy configuration, and limits.
+
+## Bounded workspace reads
+
+`GET /api/v2/applications` returns `{content,nextCursor,hasNext,size,readAt}`. It defaults to eight records and accepts at most 100. List items include identity/display fields, status, dates, timestamps, version, sample, and nullable `nextActivity` (`id,kind,label,date,stageId`). Notes and full stages remain on the authenticated `/api/applications/{id}` detail endpoint. Optional date strings retain the empty-string convention; activity dates are calendar dates.
+
+Filters are `q` (literal substring, max 200; company/role/location/notes/stage names), `status` (readable status label), `tab=all|active|saved|closed`, `dueOnly`, `today=YYYY-MM-DD`, `sort=updated|company|deadline|applied`, `size`, and `cursor`. Due filtering requires the client's local calendar date. Active means Applied/Interviewing; Closed includes Offer/Rejected/Withdrawn. Follow-up eligibility excludes Rejected/Withdrawn and retains Offer.
+
+Updated/applied order descends; company/deadline ascends; date nulls are last and application ID descends to break ties. Company uses lowercase database ordering, deliberately replacing browser locale ordering. Opaque versioned cursors bind to the account and normalized filters, including size/today. Malformed, oversized or mismatched cursors return 400. Authorization always comes from the session. Pages traverse live data: concurrent changes can move rows; refresh resets traversal. No total/count query is required for a page.
+
+`GET /api/v2/applications/summary?today=YYYY-MM-DD` returns whole-account `total,active,interviews,offers,due,scheduledInterviews,hasSamples,perStatus,readAt`. A single SQL statement computes one snapshot independently of list filters. Separate list/summary responses are not an atomic snapshot together.
+
+`GET /api/v2/activities` accepts `kind=Interview|Follow-up|Deadline`, `q`, optional `today`, `size` (default 25, max 100), and `cursor`. It returns the same page envelope with projections containing application identity/display/version, kind/label/date, and nullable stage ID. Activities order by date, kind, and stable activity ID ascending. Completed/undated stages and Rejected/Withdrawn applications are excluded; Offer interviews/follow-ups and Saved deadlines remain. Search has the same literal, stage-inclusive semantics as application listing. Fetch full current detail before completing an item.

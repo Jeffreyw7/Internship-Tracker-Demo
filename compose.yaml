@@ -1,5 +1,18 @@
 # Runs the Java application with PostgreSQL for local development.
 services:
+  # Optional shared store; activate with --profile distributed and the distributed app profile.
+  redis:
+    profiles: [distributed]
+    image: redis:7.4-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD for distributed mode}
+      REDIS_MAX_MEMORY: ${REDIS_MAX_MEMORY:-256mb}
+    command: ["sh", "-ec", "exec redis-server --maxmemory \"$$REDIS_MAX_MEMORY\" --maxmemory-policy noeviction --requirepass \"$$REDIS_PASSWORD\""]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 # Persist PostgreSQL data in a named volume and wait until the database is ready.
   database:
     image: postgres:17
@@ -9,6 +22,8 @@ services:
       POSTGRES_PASSWORD: ${DATABASE_ADMIN_PASSWORD:?Set DATABASE_ADMIN_PASSWORD in .env}
       MIGRATION_DATABASE_PASSWORD: ${MIGRATION_DATABASE_PASSWORD:?Set MIGRATION_DATABASE_PASSWORD in .env}
       RUNTIME_DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
+      MAIL_WORKER_DATABASE_PASSWORD: ${MAIL_WORKER_DATABASE_PASSWORD:?Set MAIL_WORKER_DATABASE_PASSWORD in .env}
+      EXPORT_WORKER_DATABASE_PASSWORD: ${EXPORT_WORKER_DATABASE_PASSWORD:?Set EXPORT_WORKER_DATABASE_PASSWORD in .env}
     # Keep database storage across container restarts.
     volumes:
       - campus-postgres:/var/lib/postgresql/data
@@ -44,7 +59,12 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     environment:
-      SPRING_PROFILES_ACTIVE: prod
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      SESSION_NAMESPACE: ${SESSION_NAMESPACE:-campus:compose:session:v1}
+      AUTH_ADMISSION_NAMESPACE: ${AUTH_ADMISSION_NAMESPACE:-campus:compose:admission:v1}
+      AUTH_ADMISSION_HMAC_SECRET: ${AUTH_ADMISSION_HMAC_SECRET:-}
       DATABASE_URL: jdbc:postgresql://database:5432/campus
       DATABASE_USERNAME: campus_runtime
       DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
@@ -69,5 +89,8 @@ services:
         condition: service_completed_successfully
       mail:
         condition: service_started
+      redis:
+        condition: service_healthy
+        required: false
 volumes:
   campus-postgres:

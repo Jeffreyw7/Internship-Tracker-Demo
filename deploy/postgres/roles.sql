@@ -8,3 +8,4 @@ REVOKE ALL ON DATABASE campus FROM PUBLIC;
 GRANT CONNECT ON DATABASE campus TO campus_migrator, campus_runtime;
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 ALTER SCHEMA public OWNER TO campus_migrator;
+\ir worker-roles.sql

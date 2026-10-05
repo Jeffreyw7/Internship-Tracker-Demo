@@ -13,7 +13,7 @@ export interface Application {
 // Restrict editor drafts to fields users may change.
 export type ApplicationDraft = Omit<Application, 'id' | 'createdAt' | 'updatedAt' | 'version' | 'sample' | 'deleted'>;
 // Rejected and withdrawn applications no longer contribute scheduled activities.
-export const isClosed = (a: Application) => ['Rejected', 'Withdrawn'].includes(a.status);
+export const isClosed = (a: Pick<Application,'status'>) => ['Rejected', 'Withdrawn'].includes(a.status);
 // Build local calendar dates without converting them to UTC.
 export function today() { return localDate(new Date()); }
 export function localDate(d: Date) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }

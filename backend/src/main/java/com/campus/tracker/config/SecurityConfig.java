@@ -39,6 +39,12 @@ public class SecurityConfig {
     @Bean AuthenticationProvider authenticationProvider(UserDetailsService users, PasswordEncoder passwords) {
         DaoAuthenticationProvider provider = new DaoAuthenticationProvider(users) {
             @Override
+            protected org.springframework.security.core.Authentication createSuccessAuthentication(Object principal,
+                    org.springframework.security.core.Authentication authentication, UserDetails details) {
+                // Sanitize before the authentication filter persists its SecurityContext.
+                return super.createSuccessAuthentication(((CampusPrincipal) principal).sessionIdentity(), authentication, details);
+            }
+            @Override
             protected void additionalAuthenticationChecks(UserDetails details,
                     UsernamePasswordAuthenticationToken authentication) throws AuthenticationException {
                 super.additionalAuthenticationChecks(details, authentication);
@@ -52,7 +58,7 @@ public class SecurityConfig {
     }
 
     // Apply security checks before requests reach the REST controllers.
-    @Bean SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper json, AuthRateLimiter limiter,
+    @Bean SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper json, AuthAdmissionLimiter limiter,
             AuthWorkLimiter work, AuthAbuseProperties policies, AuthenticationProvider authenticationProvider) throws Exception {
         return http
                 .authenticationProvider(authenticationProvider)
@@ -62,7 +68,7 @@ public class SecurityConfig {
                 .addFilterBefore(new LoginWorkFilter(limiter, work, policies, json), UsernamePasswordAuthenticationFilter.class)
                 // Allow account setup and health checks; require a signed-in user for other API routes.
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.GET, "/api/auth/csrf", "/api/health").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/auth/csrf", "/api/health", "/livez", "/readyz").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login",
                                 "/api/auth/email-verification/resend", "/api/auth/email-verification/confirm").permitAll()
                         .requestMatchers("/api/**").authenticated()
