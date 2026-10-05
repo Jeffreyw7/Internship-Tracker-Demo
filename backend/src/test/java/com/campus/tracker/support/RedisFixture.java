@@ -16,7 +16,7 @@ public final class RedisFixture implements AutoCloseable {
             port = Integer.parseInt(supplied);
             if (port < 1024 || port > 65535) throw new IllegalArgumentException("Invalid disposable Redis port");
         } else {
-            container = new GenericContainer<>("redis:7.4-alpine").withExposedPorts(6379)
+            container = new GenericContainer<>("redis:7.4.11-alpine").withExposedPorts(6379)
                     .withCommand("redis-server", "--maxmemory", "64mb", "--maxmemory-policy", "noeviction");
             container.start();
             host = container.getHost();

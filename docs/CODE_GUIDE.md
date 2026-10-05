@@ -35,7 +35,7 @@ The additive v2 read path uses JDBC projections and size+1 queries, with no mand
 
 `V5__export_jobs.sql` introduces durable job metadata and publication-intent tracking for private objects. Export creation/status/cancellation/expiry/quota APIs and the CSV encoder are implemented; processing and shared private storage are still in progress. Until the complete worker/export UI is verified, the workspace retains its existing explicit full-history CSV helper.
 
-The opt-in `distributed` profile uses allowlisted versioned Redis session values and atomic Redis authentication admission. Local profiles retain container sessions and process-local admission. Successful login strips the password hash before storing the security context. Real Redis qualification is still pending on a capable environment.
+The opt-in `distributed` profile uses allowlisted versioned Redis session values and atomic Redis authentication admission. Local profiles retain container sessions and process-local admission. Successful login strips the password hash before storing the security context. Five real Redis integration scenarios passed locally on October 5, 2026; see `VALIDATION.md`. Managed failover and production capacity remain unqualified.
 
 The mail worker has a separate non-web entry point, restricted database role, bounded executor with no queued leases, short PostgreSQL SKIP LOCKED claims, and fenced outcomes. SMTP runs outside database transactions. Separate bounded maintenance, active/retired decryption keys, and cached recipient-free metrics support operation. Distributed API instances disable embedded polling; local development can retain it.
 
@@ -61,3 +61,11 @@ The mail worker has a separate non-web entry point, restricted database role, bo
 - `.vscode/settings.json`: configures the Java editor's null analysis setting.
 
 Compiled output in `dist/` and `backend/target/`, installed dependencies, local databases, and third-party tooling are not source documentation targets.
+
+## Replicated deployment and asynchronous exports
+
+The workspace now uses bounded v2 pages, separate account summaries/activity feeds and on-demand full details. It keeps at most 20 page histories and 100 detail records per account, clears them at account changes, and retains serialized server-confirmed mutations and If-Match conflicts. CSV generation runs through durable owner-scoped jobs and a private worker/storage path, with guarded binary transport and visible status/cancel/download controls.
+
+`compose.scalable.yaml` provides the separate static gateway, two API replicas, private PostgreSQL/Redis/S3-compatible services and non-web mail/export workers. Dedicated credentials, short fenced leases, pool limits, startup migration gates and API cache/proxy controls are documented in `deploy/OPERATIONS.md`. Public probes have a stateless security chain and do not resolve a caller's Redis session cookie; readiness still checks DB/Redis and authenticated requests fail closed during dependency loss.
+
+The load harness lives in `tests/load/`: generated disposable data, open-loop arrivals, dropped-load accounting, bounded latency reservoirs, resource samples and no credentials in reports. CI runs Java 17/Node tests, real-service integration, packaged HTTP and the private Compose migration-failure test. Hosted capacity/HA/restore remains an explicit acceptance stage, described in `deploy/RECOVERY.md`; passing a local fixture does not establish those guarantees.

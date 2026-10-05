@@ -86,3 +86,9 @@ Supply an installed PostgreSQL 17 bin directory containing initdb.exe, pg_ctl.ex
 This mode initializes isolated clusters under backend/target, uses loopback and synthetic credentials, and shuts the servers down after each test. It never connects to an existing application database. Subprocess output goes to files to avoid inherited Windows pipe handles blocking shutdown.
 
 Each fresh/legacy scenario also starts the application with runtime credentials and exercises registration with samples, login, application create/edit/delete/restore, and stage removal over HTTP. See [the verification record](../VALIDATION.md) for executed results and remaining deployment checks.
+
+## Replicated stack startup gate
+
+`npm run test:distributed` now exercises the actual Compose startup gate using a disposable project and an invalid additive migration. Both APIs and both workers must remain stopped after the migrator fails. The regular `compose.yaml` still serves single-instance local development; `compose.scalable.yaml` is a separate qualification topology. Neither file proves managed PostgreSQL failover or multi-zone durability. Promote only after verified backup/restore and the hosted acceptance checks in `deploy/RECOVERY.md`.
+
+V5 adds durable export metadata; V6 adds retry timing and stable export traversal indexing. Applied migrations remain immutable. API credentials can create/read/cancel owned jobs but cannot publish output. Export-worker credentials can read required application/stage columns and claim/publish/expire/retire export metadata, but cannot mutate application or account records. Private storage permissions mirror that division. A role/grants upgrade failure keeps new processes stopped rather than widening runtime privileges.

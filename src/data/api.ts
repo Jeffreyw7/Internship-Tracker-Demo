@@ -37,11 +37,14 @@ export function sessionGuard():()=>boolean {
 }
 // Fetch the session token and detect when a static server is answering instead of Java.
 export async function refreshCsrf() {
+  const generation=sessionGeneration;
   const response = await fetch('/api/auth/csrf', { credentials:'same-origin', cache:'no-store' });
   // Translate HTTP failures and notify the authentication gate when a protected session expires.
   if(!response.ok) throw await responseError(response, 'Cannot connect to the Java server. Start the backend and try again.');
   if(!response.headers.get('content-type')?.includes('application/json')) throw new ApiError(503, 'The Java API is not running. Start Spring Boot and try again.');
-  csrf=await response.json();
+  const token=await response.json();
+  if(generation!==sessionGeneration)throw new ApiError(409,'Your account changed. Try again from the current account.');
+  csrf=token;
 }
 // Attach CSRF headers to writes and include same-origin session credentials.
 export async function request<T>(path:string, init:RequestInit={}, isCurrent:()=>boolean=()=>true):Promise<T> {
@@ -49,6 +52,7 @@ export async function request<T>(path:string, init:RequestInit={}, isCurrent:()=
   const method=init.method ?? 'GET';
   const write=!['GET','HEAD','OPTIONS'].includes(method);
   if(write&&!csrf) await refreshCsrf();
+  if(write&&(generation!==sessionGeneration||!isCurrent()))throw new ApiError(409,'Your account changed. Try again from the current account.');
   const headers=new Headers(init.headers);
   if(write && csrf) headers.set(csrf.headerName,csrf.token);
   headers.set('Accept','application/json');
@@ -70,6 +74,26 @@ export async function request<T>(path:string, init:RequestInit={}, isCurrent:()=
   if(response.status===204) return undefined as T;
   if(!response.headers.get('content-type')?.includes('application/json')) throw new ApiError(503,'The Java API is unavailable. Start Spring Boot and try again.');
   return response.json() as Promise<T>;
+}
+// Binary responses preserve the same authentication boundary without JSON decoding or public URLs.
+export async function requestBlob(path:string,isCurrent:()=>boolean=()=>true):Promise<Blob> {
+  const generation=sessionGeneration;
+  const current=()=>generation===sessionGeneration&&isCurrent();
+  if(!current())throw new ApiError(409,'Your account changed.');
+  let response:Response;
+  try{response=await fetch('/api'+path,{headers:{Accept:'text/csv'},credentials:'same-origin',cache:'no-store'});}
+  catch{throw new ApiError(0,'Cannot reach the Java server. Check the connection and try again.');}
+  if(!response.ok){
+    const error=await responseError(response,`Download failed (${response.status}). Please try again.`);
+    if(response.status===401&&typeof window!=='undefined'&&current()){
+      sessionGeneration++;csrf=null;window.dispatchEvent(new Event('campus:session-expired'));
+    }
+    throw error;
+  }
+  if(!response.headers.get('content-type')?.includes('text/csv'))throw new ApiError(503,'Export download is unavailable. Try again.');
+  const blob=await response.blob();
+  if(!current())throw new ApiError(409,'Your account changed.');
+  return blob;
 }
 // Serialize JSON consistently with its content-type header.
 export const jsonBody=(value:unknown)=>({headers:{'Content-Type':'application/json'},body:JSON.stringify(value)});

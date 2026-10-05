@@ -146,11 +146,11 @@ Default application page size is eight to retain the current UI, with maximum 10
 
 **Interfaces:** ExportObjectStore provides put/open/delete by generated internal key; filesystem mode is for isolated local testing, S3-compatible private storage for distributed deployment. Export creation commits before 202. Export workers use their own role/pool and fenced leases; job APIs always derive owner from session.
 
-- [ ] Write tests for CSRF/ownership on create/status/cancel/download, guessed UUID=404, exactly two active jobs/account, lease takeover, cancellation races, expiry, output publication failure, fenced stale completion, and cleanup of abandoned objects. Quotas: maximum two active jobs/account, 100 MiB/object, 24-hour retention; expose validated overrides.
-- [ ] Write real CSV assertions for BOM, CRLF, quotes/newlines, formula prefixes, all fields/stages, and full history beyond the first page. Live export traversal orders by immutable createdAt/ID with job-start creation cutoff; no point-in-time values/deletion guarantee.
-- [ ] Run focused tests before adding durable jobs. Use isolated S3-compatible storage for distributed checks; do not test uploads against a user's bucket.
-- [ ] Add V5 job schema, explicit role grants, atomic per-account creation quota using account row locking, bounded reads, lease renewal/fencing, capped streaming object writes, expiry/cancellation, and authorized download proxy. Restrict worker read access to required application/stage columns and worker write access to jobs only.
-- [ ] Ensure mail/export executors, pools, deadlines, and roles are separate. Run H2 tests, PostgreSQL privileges and two-worker races, isolated storage checks, and termination during publication. V4 belongs to Task 5 indexes and V5 to export schema; role provisioning in Task 4 is a separate administrative procedure, matching the repository's existing privilege separation.
+- [x] Write tests for CSRF/ownership on create/status/cancel/download, guessed UUID=404, exactly two active jobs/account, lease takeover, cancellation races, expiry, output publication failure, fenced stale completion, and cleanup of abandoned objects. Quotas: maximum two active jobs/account, 100 MiB/object, 24-hour retention; expose validated overrides.
+- [x] Write real CSV assertions for BOM, CRLF, quotes/newlines, formula prefixes, all fields/stages, and full history beyond the first page. Live export traversal orders by immutable createdAt/ID with job-start creation cutoff; no point-in-time values/deletion guarantee.
+- [x] Run focused tests before adding durable jobs. Use isolated S3-compatible storage for distributed checks; do not test uploads against a user's bucket.
+- [x] Add V5 job schema, explicit role grants, atomic per-account creation quota using account row locking, bounded reads, lease renewal/fencing, capped streaming object writes, expiry/cancellation, and authorized download proxy. Restrict worker read access to required application/stage columns and worker write access to jobs only.
+- [x] Ensure mail/export executors, pools, deadlines, and roles are separate. Run H2 tests, PostgreSQL privileges and two-worker races, isolated storage checks, and termination during publication. V4 belongs to Task 5 indexes and V5 to export schema; role provisioning in Task 4 is a separate administrative procedure, matching the repository's existing privilege separation.
 
 ## Task 9: Wire full-history exports into the workspace
 
@@ -158,10 +158,10 @@ Default application page size is eight to retain the current UI, with maximum 10
 
 **Interfaces:** `exportApi.create/status/cancel/download` with account guards. Binary download transport shares same-origin credentials and status/session handling; it must not pass a CSV response through the existing JSON-only request function. Poll every two seconds only while an active job is visible, with cancellation on account change and no write retries.
 
-- [ ] Write tests: exporting an eight-item page produces the full job, CSV download uses authenticated transport, expiry/failure states are actionable, old-account status/download cannot affect a new account, polling stops on terminal state/logout, and cancellation is CSRF-protected.
-- [ ] Run the Node export tests against missing controller/adapters before implementation.
-- [ ] Replace browser all-history CSV generation with job creation/status/download; remove the temporary export use of full-history listing from Task 7. Retain CSV filename/local date semantics and release download object URLs.
-- [ ] Run frontend suite/build and browser-to-worker-to-download end-to-end checks with more than 100 applications, quoted notes, formula prefixes, and multiple stages.
+- [x] Write tests: exporting an eight-item page produces the full job, CSV download uses authenticated transport, expiry/failure states are actionable, old-account status/download cannot affect a new account, polling stops on terminal state/logout, and cancellation is CSRF-protected.
+- [x] Run the Node export tests against missing controller/adapters before implementation.
+- [x] Replace browser all-history CSV generation with job creation/status/download; remove the temporary export use of full-history listing from Task 7. Retain CSV filename/local date semantics and release download object URLs.
+- [x] Run frontend suite/build and browser-to-worker-to-download end-to-end checks with more than 100 applications, quoted notes, formula prefixes, and multiple stages.
 
 ## Task 10: Provide portable ingress, replicated containers, and migration gating
 

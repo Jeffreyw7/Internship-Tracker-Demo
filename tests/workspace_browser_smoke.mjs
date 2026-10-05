@@ -54,6 +54,25 @@ export async function verifyWorkspaceBrowser({base,identity}) {
     await page.getByText('Interview marked complete. Nice progress!',{exact:true}).waitFor();
     await page.getByRole('button',{name:'Undo',exact:true}).click();
     await page.getByText('Change undone.',{exact:true}).waitFor();
+    const csrf=await (await context.request.get(base+'/api/auth/csrf')).json();
+    for(let index=0;index<106;index++) {
+      const response=await context.request.post(base+'/api/applications',{headers:{[csrf.headerName]:csrf.token},data:{
+        company:'Export fixture '+index,role:'Intern',location:'Remote',status:'Applied',appliedDate:'2026-10-05',deadline:null,followUpDate:null,
+        notes:'=formula \"quoted\"\nnotes',stages:[{name:'Technical',state:'Scheduled',date:'2026-10-06'},{name:'Team',state:'Planned',date:null}],
+      }});
+      assert.equal(response.status(),201,await response.text());
+    }
+    await page.getByRole('button',{name:'Export CSV',exact:true}).click();
+    await page.getByRole('button',{name:'Download CSV',exact:true}).waitFor({timeout:20000});
+    const downloadEvent=page.waitForEvent('download');
+    await page.getByRole('button',{name:'Download CSV',exact:true}).click();
+    const download=await downloadEvent;
+    const stream=await download.createReadStream();const chunks=[];for await(const chunk of stream)chunks.push(chunk);
+    const csv=Buffer.concat(chunks).toString('utf8');
+    assert.match(csv,/Export fixture 105/);assert.match(csv,/Technical \| Scheduled \| 2026-10-06; Team \| Planned/);
+    assert.match(csv,/"'=formula ""quoted""\nnotes"/);
+    assert.equal(csv.split('\r\n').length,118); // header + 116 records + trailing newline
+    assert.equal(requests.filter(request=>new URL(request.url).pathname==='/api/applications'&&request.method==='GET').length,0);
     if(process.env.CAMPUS_BROWSER_SCREENSHOT)await page.screenshot({path:process.env.CAMPUS_BROWSER_SCREENSHOT,fullPage:true});
     assert.deepEqual(errors,[]);
     await page.getByRole('button',{name:'Sign out',exact:true}).click();

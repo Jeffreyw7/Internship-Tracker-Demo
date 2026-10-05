@@ -1,0 +1,7 @@
+campus:
+  worker:
+    role: export
+  export:
+    worker-enabled: true
+  mail:
+    worker-enabled: false

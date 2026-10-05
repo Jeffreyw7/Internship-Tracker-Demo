@@ -17,7 +17,6 @@ public class WorkerConfiguration {
             org.springframework.boot.autoconfigure.jdbc.DataSourceProperties database) {
         return () -> {
             if (!role.equals("mail") && !role.equals("export")) throw new IllegalArgumentException("Worker role must be mail or export");
-            if (role.equals("export")) throw new IllegalArgumentException("Export worker is not configured yet");
             if (environment.acceptsProfiles(org.springframework.core.env.Profiles.of("prod"))
                     && !("campus_" + role + "_worker").equals(database.getUsername()))
                 throw new IllegalArgumentException("Worker requires its separate database role");
@@ -29,6 +28,12 @@ public class WorkerConfiguration {
     @Import({MailConfiguration.class, OutboxKeyRing.class, OutboxCrypto.class, OutboxClaimRepository.class,
             OutboxMaintenance.class, EmailOutboxWorker.class, MailMetrics.class})
     static class MailRole {
+        @Bean Clock clock() { return Clock.systemUTC(); }
+    }
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnProperty(name = "campus.worker.role", havingValue = "export")
+    @Import({com.campus.tracker.export.ExportConfiguration.class, com.campus.tracker.export.CsvWriter.class})
+    static class ExportRole {
         @Bean Clock clock() { return Clock.systemUTC(); }
     }
 }

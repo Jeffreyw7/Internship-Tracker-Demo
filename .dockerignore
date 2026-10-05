@@ -7,3 +7,8 @@ data
 .openai
 .env
 *.zip
+.superpowers
+.codex
+.agents
+*.log
+test-results*

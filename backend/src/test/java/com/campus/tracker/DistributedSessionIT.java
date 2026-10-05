@@ -65,6 +65,8 @@ class DistributedSessionIT {
                     request(baseB, "POST", "/api/auth/logout", null, token, 204);
                     request(baseA, "GET", "/api/auth/me", null, null, 401);
                     if (System.getProperty("campus.test.redis.port") == null) {
+                        // Even an existing anonymous session cookie must not make probes load Redis security state.
+                        request(baseA, "GET", "/api/auth/csrf", null, null, 200);
                         redis.stop();
                         request(baseA, "GET", "/api/auth/csrf", null, null, 503);
                         request(baseA, "GET", "/readyz", null, null, 503);

@@ -1,5 +1,13 @@
 # Validation record
 
+## Redis integration qualification - October 5, 2026
+
+The Redis test failure reported as "Could not find a valid Docker environment" was caused by Docker Desktop's engine not running. Starting the installed Docker Desktop app made the Linux engine reachable; no application changes or Docker data reset were required.
+
+Fresh Maven `-Pdistributed-it -Dit.test=DistributedSessionIT,RedisAuthRateLimiterIT test-compile failsafe:integration-test failsafe:verify` passed all 5 integration scenarios with zero failures, errors or skips. Tests used isolated `redis:7.4-alpine` containers on Docker Desktop 4.93.0 / Engine 29.8.1, Java 20 compiling release 17 and cached Maven 3.9.11. Coverage includes shared sessions/CSRF across two API instances, API restart/logout, concurrent shared admission limits, limiter restart, bounded cardinality/refill, Redis memory exhaustion and controlled errors after Redis shutdown. Shutdown-related connection warnings are expected in the outage tests. Evidence: ignored `backend/target/docker-redis-qualification.log`.
+
+This verifies the local Redis integration scenarios previously blocked by the missing runtime. It does not establish managed Redis failover, production capacity, or distributed export/storage readiness. The overnight automation remains paused.
+
 ## Scalability implementation checkpoint - October 4, 2026
 
 This checkpoint on `scalability-design` implements probes/metrics/resource budgets, opt-in Redis sessions and shared authentication admission, leased mail workers with separate database roles, bounded v2 application/activity reads and account summaries, and bounded frontend pages with on-demand details. Export job APIs, schema and CSV encoding are scaffolding: jobs remain PENDING because export processing and S3 storage are unfinished.

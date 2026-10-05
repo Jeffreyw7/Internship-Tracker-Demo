@@ -1,5 +1,5 @@
 // Coordinates the signed-in workspace: views, filters, editor actions, CSV export, and undo notifications.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ArrowDown, ArrowDownToLine, ArrowRight, ArrowUpRight, Bell, BriefcaseBusiness, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, CircleDot, Clock3, GraduationCap, LayoutGrid, LockKeyhole, Menu, Plus, Search, SlidersHorizontal, Sparkles, Target, Trophy, X } from 'lucide-react';
 import { dayDistance, formatDate, isClosed, relativeDate, STATUSES, today, type Application, type ApplicationDraft, type Status } from './domain/application';
 import { useApplications } from './hooks/useApplications';
@@ -8,8 +8,8 @@ import { CompanyButton, CompanyMark, StatusBadge } from './components/Shared';
 import type {Tab} from './domain/selectors';
 import {completeWorkspaceActivity} from './domain/workspaceController';
 import type {ActivityItem, ApplicationFilters} from './data/workspaceApi';
-import {applicationApi} from './data/applicationApi';
-import {sessionGuard} from './data/api';
+import {exportApi} from './data/exportApi';
+import {createExportController} from './domain/exportController';
 import type {User} from './data/api';
 import { ThemeSelect } from './components/ThemeSelect';
 // Limit navigation to the three workspace views.
@@ -17,8 +17,6 @@ type View='applications'|'interviews'|'followups';
 // Retain the server version and previous data needed to safely undo each supported change.
 type Undo={kind:'delete';deleted:Application}|{kind:'update';before:Application;version:number};
 type Toast={message:string;undo?:Undo};
-// Quote CSV fields and prefix recognized formula-leading characters to reduce spreadsheet formula execution.
-function csvCell(v:string){return '"'+(/^[=+\-@\t\r]/.test(v)?"'":'')+v.replaceAll('"','""')+'"';}
 export default function App({user,onLogout}:{user:User;onLogout:()=>Promise<void>}) {
   // Read server-backed data and mutation handlers from the shared hook.
   const {workspace,controller,error,ready,busy,save,remove,restoreDeleted,refresh,loadDetail}=useApplications(user.id);
@@ -44,9 +42,14 @@ export default function App({user,onLogout}:{user:User;onLogout:()=>Promise<void
   const due=counts.due;
   const [detail,setDetail]=useState<{application:Application|null;loading:boolean;error:string}>({application:null,loading:false,error:''});
   const [detailRetry,setDetailRetry]=useState(0);
-  const [exporting,setExporting]=useState(false);
-  const alive=useRef(true);
-  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
+  const exports=useMemo(()=>createExportController(exportApi),[user.id]);
+  const exportStatus=useSyncExternalStore(exports.subscribe,exports.getSnapshot);
+  const exportActive=exportStatus.job?.state==='PENDING'||exportStatus.job?.state==='RUNNING';
+  useEffect(()=>{
+    const visible=()=>exports.setVisible(!document.hidden);visible();
+    document.addEventListener('visibilitychange',visible);
+    return()=>{document.removeEventListener('visibilitychange',visible);exports.clear();};
+  },[exports]);
   useEffect(()=>{
     const id=drawer?.id;let current=true;
     setDetail({application:null,loading:!!id,error:''});
@@ -70,14 +73,10 @@ export default function App({user,onLogout}:{user:User;onLogout:()=>Promise<void
   async function undoChange(){const action=toast?.undo;if(!action||busy)return;try{if(action.kind==='delete')await restoreDeleted(action.deleted);else await save(action.before,action.before.id,action.version);setToast({message:'Change undone.'});}catch(e){setToast({message:e instanceof Error?e.message:'Unable to undo.'});}}
   // Display logout failures without discarding the current workspace.
   async function signOut(){try{await onLogout();}catch(e){setToast({message:e instanceof Error?e.message:'Could not sign out.'});}}
-  // Temporary full-history export stays separate from bounded workspace reads until durable export jobs replace it.
-  async function exportCSV(){if(exporting)return;const isCurrent=sessionGuard();setExporting(true);try{
-    const history=await applicationApi.list();if(!isCurrent()||!alive.current)return;
-    const header=['Company','Role','Location','Status','Application date','Deadline','Follow-up date','Interview stages','Notes'];
-    const rows=history.map(a=>[a.company,a.role,a.location,a.status,a.appliedDate,a.deadline,a.followUpDate,a.stages.map(s=>`${s.name} | ${s.state} | ${s.date}`).join('; '),a.notes]);
-    const blob=new Blob(['\uFEFF'+[header,...rows].map(row=>row.map(csvCell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8;'});
-    const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='campus-applications-'+today()+'.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);setToast({message:'Your application CSV is ready.'});
-  }catch(e){if(isCurrent()&&alive.current)setToast({message:e instanceof Error?e.message:'Could not export applications.'});}finally{if(alive.current)setExporting(false);}}
+  async function downloadCSV(){
+    const blob=await exports.download();if(!blob)return;
+    const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='campus-applications-'+today()+'.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
   // Keep the separately fetched editor record stable while read caches refresh.
   const selected=detail.application;
   const heading=view==='applications'?'Your next chapter starts here.':view==='interviews'?'Turn conversations into opportunities.':'A little follow-up goes a long way.';
@@ -102,9 +101,15 @@ export default function App({user,onLogout}:{user:User;onLogout:()=>Promise<void
           <button className="summary-card offer-card" onClick={()=>filterStatus('Offer')}><div className="summary-label">Offers received<span className="summary-icon"><Trophy size={17}/></span></div><div className="summary-value">{counts.offers}<span className="offer-star"><Sparkles size={24}/></span></div><p>{counts.offers?'Something worth celebrating':'The next chapter is ahead'}</p></button>
         </section>
         {/* Group search, filters, export, paging, and the selected table or activity view. */}
-        <section className="workspace-panel" aria-labelledby="workspace-title" aria-busy={workspace.loading}><div className="panel-heading"><div className="panel-title"><h2 id="workspace-title">{view==='applications'?'Applications':view==='interviews'?'Interview schedule':'Follow-up list'}</h2><span className="count-badge">{view==='applications'?counts.total:focusedActivities.length}</span></div><div className="panel-actions"><span className="sample-label">{counts.hasSamples?'Includes sample data':'Your applications'}</span><button className="button secondary export-button" disabled={busy} onClick={()=>void refresh()}>Refresh</button><button className="button secondary export-button" onClick={()=>void exportCSV()} disabled={!ready||busy||exporting}><ArrowDownToLine size={14}/> {exporting?'Preparing CSV…':'Export CSV'}</button></div></div>
+        <section className="workspace-panel" aria-labelledby="workspace-title" aria-busy={workspace.loading}><div className="panel-heading"><div className="panel-title"><h2 id="workspace-title">{view==='applications'?'Applications':view==='interviews'?'Interview schedule':'Follow-up list'}</h2><span className="count-badge">{view==='applications'?counts.total:focusedActivities.length}</span></div><div className="panel-actions"><span className="sample-label">{counts.hasSamples?'Includes sample data':'Your applications'}</span><button className="button secondary export-button" disabled={busy} onClick={()=>void refresh()}>Refresh</button><button className="button secondary export-button" onClick={()=>void exports.start()} disabled={!ready||busy||exportStatus.busy||exportActive}><ArrowDownToLine size={14}/> Export CSV</button></div></div>
           {view==='applications'&&<div className="tabs" role="tablist" aria-label="Application groups">{(['All applications','In progress','Saved','Closed'] as Tab[]).map(t=><button role="tab" aria-selected={tab===t} key={t} className={tab===t?'active':''} onClick={()=>{setTab(t);setStatus('All statuses');setDueOnly(false);}}>{t}{t==='All applications'&&<span>{counts.total}</span>}</button>)}</div>}
           <div className="toolbar"><div className="search-field"><Search size={17}/><input ref={searchRef} aria-label="Search applications" placeholder="Search company, role, or notes…" value={query} onChange={e=>setQuery(e.target.value)}/>{query?<button className="icon-button" aria-label="Clear search" onClick={()=>setQuery('')}><X size={14}/></button>:<kbd>Ctrl K</kbd>}</div>{view==='applications'&&<div className="filters"><label className="select-wrapper"><SlidersHorizontal size={14}/><select aria-label="Filter status" value={status} onChange={e=>setStatus(e.target.value)}><option>All statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select><ChevronDown size={12}/></label><label className="select-wrapper sort-wrapper"><ArrowDown size={14}/><select aria-label="Sort applications" value={sort} onChange={e=>setSort(e.target.value)}><option value="recent">Last updated</option><option value="applied">Date applied</option><option value="deadline">Deadline</option><option value="company">Company A–Z</option></select><ChevronDown size={12}/></label></div>}</div>
+          {(exportStatus.job||exportStatus.error||exportStatus.busy)&&<div className="export-status" role="status" aria-live="polite">
+            <span>{exportStatus.error||exportStatus.message||(exportStatus.busy?'Starting your export…':'')}</span>
+            {exportActive&&<button className="button secondary" disabled={exportStatus.busy} onClick={()=>void exports.cancel()}>Cancel export</button>}
+            {exportStatus.job?.state==='READY'&&<button className="button secondary" disabled={exportStatus.downloading} onClick={()=>void downloadCSV()}>{exportStatus.downloading?'Downloading…':'Download CSV'}</button>}
+            {exportActive&&exportStatus.error&&<button className="button secondary" onClick={()=>void exports.refresh()}>Check export status</button>}
+          </div>}
           {dueOnly&&<div className="active-filter"><span>Follow-ups due today or overdue</span><button className="text-button" onClick={()=>setDueOnly(false)}>Clear <X size={13}/></button></div>}
           {workspace.summaryError&&<p className="error-box" role="alert">Counts could not load: {workspace.summaryError}</p>}{workspace.loading&&view==='applications'&&<p role="status">Loading applications…</p>}{/* Render bounded pages and on-demand detail actions. */}
           {view==='applications'?<><div className="table-scroll"><table><thead><tr><th>Company</th><th>Role</th><th>Status</th><th>Applied</th><th>Next step</th><th><span className="sr-only">Details</span></th></tr></thead><tbody>{visible.map(a=>{const next=a.nextActivity;return <tr key={a.id}><td><CompanyButton app={a} onOpen={open}/></td><td className="role-cell">{a.role}<span>Internship</span></td><td><StatusBadge status={a.status}/></td><td className="date-cell">{formatDate(a.appliedDate)}</td><td>{next?<button className={'next-step '+(next.date<=today()?'urgent':'')} onClick={()=>open(a)}><span>{next.kind==='Interview'?<CalendarDays size={12}/>:next.kind==='Deadline'?<Target size={12}/>:<Clock3 size={12}/>} {relativeDate(next.date)}</span><small>{next.kind==='Interview'?next.label:next.kind}</small></button>:<span className="no-step">{a.status==='Offer'?'Offer received':isClosed(a)?'Closed':'Nothing scheduled'}</span>}</td><td><button className="icon-button row-open" aria-label={`View ${a.company} details`} onClick={()=>open(a)}><ArrowUpRight size={16}/></button></td></tr>;})}</tbody></table></div>{!workspace.loading&&visible.length===0&&<div className="empty-state"><Search size={25}/><h3>No applications found</h3><p>{query||status!=='All statuses'||tab!=='All applications'||dueOnly?'Try a different search or clear your filters.':'Your next opportunity belongs here. Add your first application.'}</p><button className="button secondary" onClick={()=>{setQuery('');setStatus('All statuses');setTab('All applications');setDueOnly(false);if(!counts.total)setDrawer({id:null});}}>{counts.total?'Clear filters':'Add application'}</button></div>}<div className="table-footer"><span>{visible.length} on this page · {counts.total} total applications</span><div className="pagination"><button className="button secondary" disabled={!workspace.canPrevious||workspace.loading||busy} onClick={()=>void controller.previous()}>Previous</button><span>Page {workspace.pageNumber}</span><button className="button secondary" disabled={!workspace.canNext||workspace.loading||busy} onClick={()=>void controller.next()}>Next</button></div></div></>:<div className="activity-list">{workspace.loading?<p role="status">Loading activities…</p>:focusedActivities.length?focusedActivities.map(activity=><div className="activity-row" key={activity.id}><div className={'activity-date '+(dayDistance(activity.date)<0?'overdue':'')}><strong>{new Date(activity.date+'T12:00:00').getDate()}</strong><span>{new Date(activity.date+'T12:00:00').toLocaleDateString('en-US',{month:'short'})}</span></div><button className="activity-company" onClick={()=>open({id:activity.applicationId})}><strong>{activity.label}</strong><span>{activity.company} · {activity.role}</span></button><span className={'activity-due '+(dayDistance(activity.date)<0?'urgent':'')}>{relativeDate(activity.date)}</span><button className="button secondary complete-button" disabled={busy||!ready} aria-label={`Complete ${activity.company} ${activity.kind.toLowerCase()}`} onClick={()=>completeActivity(activity)}><Check size={15}/><span>Mark done</span></button></div>):<div className="empty-state"><CircleCheck size={28}/><h3>{query?'No matching items':'You’re all caught up.'}</h3><p>{view==='interviews'?'Schedule an interview in any application to see it here.':'Add a follow-up date to an application to keep the conversation going.'}</p></div>}</div>}

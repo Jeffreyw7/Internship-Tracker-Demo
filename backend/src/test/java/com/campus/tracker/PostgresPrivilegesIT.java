@@ -203,7 +203,7 @@ class PostgresPrivilegesIT {
    username=legacy?"campus":"campus_admin";
    String binaries=System.getProperty("postgres.test.bin");
    if(binaries==null) {
-    container=new PostgreSQLContainer<>("postgres:17").withDatabaseName("campus").withUsername(username).withPassword(password)
+    container=new PostgreSQLContainer<>("postgres:17.11").withDatabaseName("campus").withUsername(username).withPassword(password)
      .withEnv("MIGRATION_DATABASE_PASSWORD","migration-'quote-password").withEnv("RUNTIME_DATABASE_PASSWORD","runtime-'quote-password")
      .withEnv("MAIL_WORKER_DATABASE_PASSWORD","mail-worker-'quote-password").withEnv("EXPORT_WORKER_DATABASE_PASSWORD","export-worker-'quote-password");
     container.start();

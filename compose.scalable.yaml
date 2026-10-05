@@ -1,0 +1,202 @@
+# Portable, single-host qualification stack. Publish only the same-origin gateway.
+# Use a new project with disposable secrets for tests. This is not multi-zone HA.
+x-common: &common
+  DATABASE_URL: jdbc:postgresql://database:5432/campus
+  SMTP_HOST: mail
+  SMTP_PORT: "1025"
+  SMTP_USERNAME: ""
+  SMTP_PASSWORD: ""
+  SMTP_AUTH: "false"
+  SMTP_STARTTLS: "false"
+  PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set the loopback origin}
+  MAIL_SENDER: campus@localhost.test
+  OUTBOX_KEY_ID: ${OUTBOX_KEY_ID:?Set an outbox key ID}
+  OUTBOX_ENCRYPTION_KEY: ${OUTBOX_ENCRYPTION_KEY:?Set a synthetic outbox key}
+  VERIFICATION_RATE_LIMIT_SECRET: ${VERIFICATION_RATE_LIMIT_SECRET:?Set a verification HMAC secret}
+  CAMPUS_MAIL_PRODUCTION: "false"
+  JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=60 -XX:InitialRAMPercentage=10
+  EXPORT_STORAGE: s3
+  EXPORT_S3_BUCKET: campus-exports
+  EXPORT_S3_ENDPOINT: http://storage:8333
+  EXPORT_S3_PATH_STYLE: "true"
+  EXPORT_S3_ALLOW_INSECURE_ENDPOINT: "true"
+  AWS_REGION: us-east-1
+x-api-environment: &api-environment
+  <<: *common
+  SPRING_PROFILES_ACTIVE: prod,distributed
+  DATABASE_USERNAME: campus_runtime
+  DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Set the API role password}
+  DATABASE_POOL_SIZE: "6"
+  DATABASE_POOL_MIN_IDLE: "1"
+  HTTP_MAX_THREADS: "40"
+  HTTP_ACCEPT_COUNT: "40"
+  REDIS_HOST: redis
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?Set the Redis password}
+  SESSION_NAMESPACE: campus:qualification:session:v1
+  AUTH_ADMISSION_NAMESPACE: campus:qualification:admission:v1
+  AUTH_ADMISSION_HMAC_SECRET: ${AUTH_ADMISSION_HMAC_SECRET:?Set the admission HMAC secret}
+  TRUSTED_PROXY_REGEX: ${TRUSTED_PROXY_REGEX:?Set the exact ingress peer regex}
+  COOKIE_SECURE: "false"
+  REGISTRATION_ENABLED: "true"
+  MAIL_WORKER_ENABLED: "false"
+  EXPORT_WORKER_ENABLED: "false"
+  METRICS_TOKEN: ${METRICS_TOKEN:?Set a metrics bearer token}
+  AWS_ACCESS_KEY_ID: ${EXPORT_API_ACCESS_KEY:?Set private storage read credentials}
+  AWS_SECRET_ACCESS_KEY: ${EXPORT_API_SECRET_KEY:?Set private storage read credentials}
+x-api: &api
+  build: {context: ., target: app}
+  environment: *api-environment
+  networks: [edge, data]
+  mem_limit: 768m
+  cpus: 1.0
+  pids_limit: 180
+  stop_grace_period: 35s
+  healthcheck:
+    test: [CMD, curl, --fail, --silent, --max-time, "3", http://127.0.0.1:8080/readyz]
+    interval: 10s
+    timeout: 5s
+    start_period: 90s
+    retries: 12
+  depends_on:
+    migrate: {condition: service_completed_successfully}
+    redis: {condition: service_healthy}
+    storage-init: {condition: service_completed_successfully}
+services:
+  database:
+    image: postgres:17.11
+    environment:
+      POSTGRES_DB: campus
+      POSTGRES_USER: campus_admin
+      POSTGRES_PASSWORD: ${DATABASE_ADMIN_PASSWORD:?Set the disposable administrator password}
+      MIGRATION_DATABASE_PASSWORD: ${MIGRATION_DATABASE_PASSWORD:?Set the migrator password}
+      RUNTIME_DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Set the API role password}
+      MAIL_WORKER_DATABASE_PASSWORD: ${MAIL_WORKER_DATABASE_PASSWORD:?Set the mail worker password}
+      EXPORT_WORKER_DATABASE_PASSWORD: ${EXPORT_WORKER_DATABASE_PASSWORD:?Set the export worker password}
+    volumes:
+      - database:/var/lib/postgresql/data
+      - ./deploy/postgres:/opt/campus/postgres:ro
+      - ./deploy/postgres/10-provision.sh:/docker-entrypoint-initdb.d/10-provision.sh:ro
+    networks: [data]
+    command: [postgres, -c, max_connections=60]
+    mem_limit: 512m
+    cpus: 1.0
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U campus_admin -d campus']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  migrate:
+    build: {context: ., target: migrate}
+    environment:
+      MIGRATION_DATABASE_URL: jdbc:postgresql://database:5432/campus
+      MIGRATION_DATABASE_USERNAME: campus_migrator
+      MIGRATION_DATABASE_PASSWORD: ${MIGRATION_DATABASE_PASSWORD:?Set the migrator password}
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=60
+    networks: [data]
+    mem_limit: 256m
+    depends_on:
+      database: {condition: service_healthy}
+    restart: "no"
+  redis:
+    image: redis:7.4.11-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set the Redis password}
+    command: [sh, -ec, 'exec redis-server /etc/redis/redis.conf --requirepass "$$REDIS_PASSWORD"']
+    volumes: [redis:/data, ./deploy/redis/redis.conf:/etc/redis/redis.conf:ro]
+    networks: [data]
+    mem_limit: 128m
+    cpus: 0.5
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  storage:
+    image: chrislusf/seaweedfs:4.48
+    command: [server, -s3, -s3.config=/etc/exports-auth.json, -dir=/data, -ip=storage, -ip.bind=0.0.0.0, -volume.max=1, -master.telemetry=false]
+    volumes: [storage:/data, '${S3_CREDENTIALS_FILE:?Set a private fixture credential file}:/etc/exports-auth.json:ro']
+    networks: [data]
+    mem_limit: 512m
+    cpus: 0.5
+    healthcheck:
+      test: [CMD-SHELL, 'wget -qO- http://127.0.0.1:9333/cluster/status >/dev/null']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  storage-init:
+    image: chrislusf/seaweedfs:4.48
+    entrypoint: [sh, -ec]
+    command:
+      - >-
+        buckets="$$(echo 's3.bucket.list' | weed shell -master=storage:9333 -filer=storage:8888)";
+        if printf '%s\n' "$$buckets" | grep -q '  campus-exports[[:space:]]'; then exit 0; fi;
+        echo 's3.bucket.create -name campus-exports' | weed shell -master=storage:9333 -filer=storage:8888
+    networks: [data]
+    mem_limit: 128m
+    depends_on:
+      storage: {condition: service_healthy}
+    restart: "no"
+  mail:
+    image: axllent/mailpit:v1.31.3
+    networks: [data]
+    mem_limit: 128m
+    cpus: 0.25
+  api-a: *api
+  api-b: *api
+  mail-worker:
+    build: {context: ., target: worker}
+    environment:
+      <<: *common
+      SPRING_PROFILES_ACTIVE: worker,prod
+      WORKER_ROLE: mail
+      DATABASE_USERNAME: campus_mail_worker
+      DATABASE_PASSWORD: ${MAIL_WORKER_DATABASE_PASSWORD:?Set the mail worker password}
+      WORKER_DATABASE_POOL_SIZE: "3"
+      MAIL_WORKER_CONCURRENCY: "2"
+    networks: [data]
+    mem_limit: 384m
+    cpus: 0.5
+    stop_grace_period: 35s
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      mail: {condition: service_started}
+  export-worker:
+    build: {context: ., target: worker}
+    environment:
+      <<: *common
+      SPRING_PROFILES_ACTIVE: worker,prod,export-worker
+      WORKER_ROLE: export
+      DATABASE_USERNAME: campus_export_worker
+      DATABASE_PASSWORD: ${EXPORT_WORKER_DATABASE_PASSWORD:?Set the export worker password}
+      WORKER_DATABASE_POOL_SIZE: "3"
+      EXPORT_SPOOL_ROOT: /app/data/export-spool
+      AWS_ACCESS_KEY_ID: ${EXPORT_WORKER_ACCESS_KEY:?Set storage worker credentials}
+      AWS_SECRET_ACCESS_KEY: ${EXPORT_WORKER_SECRET_KEY:?Set storage worker credentials}
+    networks: [data]
+    mem_limit: 384m
+    cpus: 0.5
+    stop_grace_period: 35s
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      storage-init: {condition: service_completed_successfully}
+  ingress:
+    build: {context: ., target: ingress}
+    ports: ['127.0.0.1:${INGRESS_PORT:-8080}:8080']
+    networks:
+      edge: {ipv4_address: '${INGRESS_ADDRESS:-172.30.90.2}'}
+    mem_limit: 64m
+    cpus: 0.5
+    stop_grace_period: 35s
+    depends_on:
+      api-a: {condition: service_healthy}
+      api-b: {condition: service_healthy}
+networks:
+  edge:
+    ipam:
+      # Keep dynamic API addresses out of the reserved static ingress address.
+      config: [{subnet: '${INGRESS_SUBNET:-172.30.90.0/24}', ip_range: '${INGRESS_DYNAMIC_RANGE:-172.30.90.128/25}'}]
+  data: {internal: true}
+volumes:
+  database:
+  redis:
+  storage:

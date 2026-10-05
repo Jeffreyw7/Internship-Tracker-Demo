@@ -29,6 +29,17 @@ public class OperationsConfiguration {
         return registration;
     }
 
+    /** Probe health cannot depend on loading a caller's shared session or authentication budget. */
+    @Bean @Order(2) SecurityFilterChain probeSecurity(HttpSecurity http) throws Exception {
+        return http.securityMatcher("/livez", "/readyz")
+                .csrf(csrf -> csrf.disable()).requestCache(cache -> cache.disable())
+                .securityContext(context -> context.securityContextRepository(new org.springframework.security.web.context.NullSecurityContextRepository()))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth.requestMatchers(org.springframework.http.HttpMethod.GET, "/livez", "/readyz")
+                        .permitAll().anyRequest().denyAll())
+                .build();
+    }
+
     /** Scraping requires a separate secret; a normal account can never access management data. */
     @Bean @Order(1) SecurityFilterChain managementSecurity(HttpSecurity http,
             @Value("${campus.operations.metrics-token:}") String token) throws Exception {

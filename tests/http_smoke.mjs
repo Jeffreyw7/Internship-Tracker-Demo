@@ -124,6 +124,9 @@ const command = [
   '--spring.mail.host=127.0.0.1', `--spring.mail.port=${smtpPort}`,
   `--campus.mail.public-origin=${base}`, '--campus.mail.worker-enabled=true',
   '--campus.verification.rate-limits-enabled=false',
+  // Isolated local H2 has a single process; enable its bounded export worker explicitly.
+  '--campus.export.worker-enabled=true', `--campus.export.file-root=${path.join(temp,'exports')}`,
+  `--campus.export.spool-root=${path.join(temp,'export-spool')}`,
 ];
 
 async function portIsClosed() {
@@ -212,7 +215,7 @@ try {
   await call('/api/auth/login', { method: 'POST', data: identity, headers: await csrf(), form: true });
   assert.deepEqual(await call('/api/me/preferences'), { themePreference: 'dark' });
   assert.equal((await call(applicationPath)).notes, 'Survives a complete JVM restart');
-  assert.equal((await call('/api/applications')).totalElements, 11);
+  assert.equal((await call('/api/applications')).totalElements, process.env.CAMPUS_BROWSER_TEST==='true'?117:11);
   await call('/api/auth/logout', { method: 'POST', headers: await csrf(), expected: 204 });
   await call('/api/applications', { expected: 401 });
   console.log('PASS: real HTTP page/assets, email verification, authentication, theme preferences, CRUD, CSRF, conflict, delete/undo, logout, and H2 restart persistence.');

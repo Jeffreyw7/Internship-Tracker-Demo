@@ -66,6 +66,18 @@ server:
     include-stacktrace: never
 # Allow demo signup locally; the production profile changes this default.
 campus:
+  export:
+    worker-enabled: ${EXPORT_WORKER_ENABLED:false}
+    storage: ${EXPORT_STORAGE:file}
+    file-root: ${EXPORT_FILE_ROOT:./data/exports}
+    spool-root: ${EXPORT_SPOOL_ROOT:./data/export-spool}
+    max-downloads: ${EXPORT_MAX_DOWNLOADS:4}
+    s3:
+      bucket: ${EXPORT_S3_BUCKET:}
+      region: ${AWS_REGION:us-east-1}
+      endpoint: ${EXPORT_S3_ENDPOINT:}
+      path-style: ${EXPORT_S3_PATH_STYLE:false}
+      allow-insecure-endpoint: ${EXPORT_S3_ALLOW_INSECURE_ENDPOINT:false}
   operations:
     metrics-token: ${METRICS_TOKEN:}
   registration-enabled: ${REGISTRATION_ENABLED:true}

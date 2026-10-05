@@ -27,6 +27,25 @@ public class DistributedSessionConfiguration {
     }
     @Bean RedisSerializer<Object> springSessionDefaultRedisSerializer() { return new SessionValueSerializer(); }
 
+    @Bean org.springframework.session.web.http.HttpSessionIdResolver httpSessionIdResolver(DefaultCookieSerializer cookies) {
+        var delegate = new org.springframework.session.web.http.CookieHttpSessionIdResolver();
+        delegate.setCookieSerializer(cookies);
+        return new org.springframework.session.web.http.HttpSessionIdResolver() {
+            @Override public java.util.List<String> resolveSessionIds(jakarta.servlet.http.HttpServletRequest request) {
+                String path = request.getRequestURI().substring(request.getContextPath().length());
+                // Framework request inspection may call getSession(false), even on a stateless security chain.
+                if ("GET".equals(request.getMethod()) && (path.equals("/livez") || path.equals("/readyz"))) return java.util.List.of();
+                return delegate.resolveSessionIds(request);
+            }
+            @Override public void setSessionId(jakarta.servlet.http.HttpServletRequest request, jakarta.servlet.http.HttpServletResponse response, String id) {
+                delegate.setSessionId(request, response, id);
+            }
+            @Override public void expireSession(jakarta.servlet.http.HttpServletRequest request, jakarta.servlet.http.HttpServletResponse response) {
+                delegate.expireSession(request, response);
+            }
+        };
+    }
+
     @Bean DefaultCookieSerializer cookieSerializer(
             @Value("${server.servlet.session.cookie.secure:false}") boolean secure) {
         var cookie = new DefaultCookieSerializer();

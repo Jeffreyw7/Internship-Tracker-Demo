@@ -1,0 +1,58 @@
+name: Verify application and private distributed deployment
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.11.1
+          cache: npm
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+      - name: Frontend tests and strict build
+        run: |
+          npm ci
+          npm test
+          npm run build
+      - name: Java 17, real PostgreSQL / Redis / private storage and worker recovery
+        working-directory: backend
+        run: bash ./mvnw -B -Pwith-ui,postgres-it,distributed-it verify
+      - name: Bundled HTTP, SMTP and restart persistence
+        run: npm run test:smoke
+      - name: Private two-peer Compose and failed-migration gates
+        run: npm run test:distributed
+      - name: Bounded local load qualification
+        if: github.event_name == 'workflow_dispatch'
+        run: npm run test:load
+      - name: Retain test reports and immutable tested image identities
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: verification-evidence
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            backend/target/surefire-reports/*.xml
+            backend/target/failsafe-reports/*.xml
+            backend/target/campus-test-*/compose.log
+            backend/target/campus-test-*/release-manifest.json
+            backend/target/campus-test-*/measurements.json
+            backend/target/campus-test-*/measurements.md
+          # Private fixture credentials are deliberately excluded from artifacts.

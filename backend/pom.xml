@@ -6,6 +6,7 @@
   <groupId>com.campus</groupId><artifactId>campus-tracker</artifactId><version>2.0.0</version>
   <name>Campus Internship Tracker</name>
   <properties><java.version>17</java.version></properties>
+  <dependencyManagement><dependencies><dependency><groupId>software.amazon.awssdk</groupId><artifactId>bom</artifactId><version>2.55.11</version><type>pom</type><scope>import</scope></dependency></dependencies></dependencyManagement>
   <dependencies>
     <!-- Provide REST endpoints, persistence, authentication, and request validation. -->
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
@@ -17,6 +18,8 @@
     <dependency><groupId>io.micrometer</groupId><artifactId>micrometer-registry-prometheus</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-redis</artifactId></dependency>
     <dependency><groupId>org.springframework.session</groupId><artifactId>spring-session-data-redis</artifactId></dependency>
+    <dependency><groupId>software.amazon.awssdk</groupId><artifactId>s3</artifactId></dependency>
+    <dependency><groupId>software.amazon.awssdk</groupId><artifactId>apache-client</artifactId></dependency>
     <!-- Apply versioned database migrations with support for local H2 and PostgreSQL. -->
     <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-core</artifactId></dependency>
     <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-database-postgresql</artifactId></dependency>

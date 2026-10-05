@@ -22,7 +22,8 @@ GRANT SELECT (scope,subject_hash,window_start,expires_at), DELETE ON public.auth
 GRANT SELECT, INSERT ON public.export_jobs TO campus_runtime;
 GRANT UPDATE (state,lease_owner,lease_expires_at) ON public.export_jobs TO campus_runtime;
 GRANT SELECT ON public.export_jobs TO campus_export_worker;
-GRANT UPDATE (state,lease_owner,lease_expires_at,attempts,object_key,byte_count,failure_code) ON public.export_jobs TO campus_export_worker;
+GRANT UPDATE (state,lease_owner,lease_expires_at,attempts,object_key,byte_count,failure_code,next_attempt_at) ON public.export_jobs TO campus_export_worker;
+GRANT DELETE ON public.export_jobs TO campus_export_worker;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.export_objects TO campus_export_worker;
 GRANT SELECT (id,owner_id,company,role,location,status,applied_date,deadline,follow_up_date,notes,deleted,created_at) ON public.applications TO campus_export_worker;
 GRANT SELECT (id,application_id,position,name,stage_date,state) ON public.interview_stages TO campus_export_worker;

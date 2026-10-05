@@ -8,6 +8,19 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.*;
 
 class WorkerContextIntegrationTest {
+    @org.junit.jupiter.api.Test void exportRoleHasOnlyExportWorkerWithoutMailOrWebServices() {
+        try (var context = new org.springframework.boot.builder.SpringApplicationBuilder(WorkerApplication.class)
+                .web(org.springframework.boot.WebApplicationType.NONE).profiles("test", "worker")
+                .run("--campus.worker.role=export", "--campus.export.worker-enabled=true",
+                        "--spring.datasource.url=jdbc:h2:mem:workerexport" + java.util.UUID.randomUUID() + ";MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
+                        "--debug=false", "--logging.level.root=WARN")) {
+            assertThat(context.getBeansWithAnnotation(org.springframework.web.bind.annotation.RestController.class)).isEmpty();
+            assertThat(context.getBeansOfType(com.campus.tracker.mail.EmailOutboxWorker.class)).isEmpty();
+            assertThat(context.getBeansOfType(org.springframework.session.SessionRepository.class)).isEmpty();
+            assertThat(context.getBeansOfType(jakarta.persistence.EntityManagerFactory.class)).isEmpty();
+            assertThat(context.getBean(com.campus.tracker.export.ExportWorker.class)).isNotNull();
+        }
+    }
     @Test void mailProcessHasNoHttpControllersSecuritySessionsOrJpa() {
         try (var context = new SpringApplicationBuilder(WorkerApplication.class).web(WebApplicationType.NONE)
                 .profiles("test", "worker").run("--campus.worker.role=mail", "--campus.mail.worker-enabled=false",
