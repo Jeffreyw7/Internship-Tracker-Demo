@@ -69,17 +69,13 @@ New accounts require a password with at least 12 characters, including an upperc
 
 Follow-ups are displayed in the workspace. They do not send notifications or create calendar events. The app does not include email verification, password reset, admin account management or recruitment integrations.
 
-## Planned updates
+## Not currently supported
 
-The following features are planned for later updates:
-
-- Email notification system
-- Calendar integration
-- Password reset
-- Email verification
-- Admin account management
-- Dark mode
-- A friendlier user interface
+- Email notifications or calendar events for follow-ups and interviews.
+- Password reset or email verification; registration does not send email.
+- Admin account management.
+- A dark-mode theme toggle.
+- Recruitment-platform integrations.
 
 ## Database options
 
