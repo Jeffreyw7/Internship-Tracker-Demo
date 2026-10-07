@@ -11,6 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -29,8 +30,45 @@ class ApiIntegrationTest {
     @Autowired ObjectMapper json;
     @Autowired UserRepository users;
     @Autowired PasswordEncoder passwords;
+    @Autowired JdbcTemplate jdbc;
     private static final String PASSWORD = "Campus-test-123!";
     record Account(String email, MockHttpSession session) {}
+
+    @Test void preferencesAreValidatedIsolatedAndPersistAcrossSessions() throws Exception {
+        Account a = account(false), b = account(false);
+        mvc.perform(get("/api/me/preferences").session(a.session()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.themePreference").value("system"));
+        for (String preference : List.of("light", "system", "dark")) {
+            mvc.perform(put("/api/me/preferences").session(a.session()).with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(json.writeValueAsString(Map.of("themePreference", preference))))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.themePreference").value(preference));
+        }
+        mvc.perform(get("/api/me/preferences").session(b.session()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.themePreference").value("system"));
+        mvc.perform(put("/api/me/preferences").session(a.session()).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("themePreference", "light", "userId", users.findByEmail(b.email()).orElseThrow().getId()))))
+                .andExpect(status().isBadRequest());
+        for (String invalid : List.of("{}", "{\"themePreference\":null}", "{\"themePreference\":\"DARK\"}", "{\"themePreference\":\"sepia\"}")) {
+            mvc.perform(put("/api/me/preferences").session(a.session()).with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON).content(invalid)).andExpect(status().isBadRequest());
+        }
+        MvcResult login = mvc.perform(post("/api/auth/login").with(csrf()).param("email", a.email()).param("password", PASSWORD))
+                .andExpect(status().isOk()).andReturn();
+        mvc.perform(get("/api/me/preferences").session((MockHttpSession) login.getRequest().getSession(false)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.themePreference").value("dark"));
+    }
+
+    @Test void preferenceEndpointsRequireAuthenticationAndCsrf() throws Exception {
+        mvc.perform(get("/api/me/preferences")).andExpect(status().isUnauthorized());
+        mvc.perform(put("/api/me/preferences").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"themePreference\":\"dark\"}")).andExpect(status().isUnauthorized());
+        Account a = account(false);
+        mvc.perform(put("/api/me/preferences").session(a.session()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"themePreference\":\"dark\"}")).andExpect(status().isForbidden());
+        mvc.perform(get("/api/me/preferences").session(a.session()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.themePreference").value("system"));
+    }
 
     // Create a unique synthetic account and capture its authenticated session for each scenario.
     Account account(boolean samples) throws Exception {
@@ -38,7 +76,9 @@ class ApiIntegrationTest {
         mvc.perform(post("/api/auth/register").with(csrf()).contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of("email", email, "password", PASSWORD,
                         "displayName", "Test User", "includeSamples", samples))))
-                .andExpect(status().isCreated()).andExpect(jsonPath("$.passwordHash").doesNotExist());
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.status").value("VERIFICATION_REQUEST_ACCEPTED"))
+                .andExpect(jsonPath("$.passwordHash").doesNotExist());
+        jdbc.update("UPDATE campus_users SET email_verified_at=CURRENT_TIMESTAMP WHERE email=?", email);
         MvcResult result = mvc.perform(post("/api/auth/login").with(csrf()).param("email", email).param("password", PASSWORD))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.email").value(email)).andReturn();
         return new Account(email, (MockHttpSession) result.getRequest().getSession(false));
@@ -79,7 +119,8 @@ class ApiIntegrationTest {
         mvc.perform(post("/api/auth/register").session(session).header(token.get("headerName").asText(), token.get("token").asText())
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("email", email,
                         "displayName", "CSRF User", "password", PASSWORD, "includeSamples", false))))
-                .andExpect(status().isCreated());
+                .andExpect(status().isAccepted());
+        jdbc.update("UPDATE campus_users SET email_verified_at=CURRENT_TIMESTAMP WHERE email=?", email);
         mvc.perform(post("/api/auth/login").session(session).header(token.get("headerName").asText(), token.get("token").asText())
                 .param("email", email).param("password", PASSWORD)).andExpect(status().isOk());
     }
@@ -94,7 +135,9 @@ class ApiIntegrationTest {
                 .andExpect(status().isUnauthorized());
         mvc.perform(post("/api/auth/register").with(csrf()).contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of("email", a.email(), "password", PASSWORD,
-                        "displayName", "Duplicate", "includeSamples", false)))).andExpect(status().isConflict());
+                        "displayName", "Duplicate", "includeSamples", false))))
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.status").value("VERIFICATION_REQUEST_ACCEPTED"));
+        assertThat(users.findByEmail(a.email()).orElseThrow().getDisplayName()).isEqualTo("Test User");
     }
 
     // Verify each password requirement and confirm rejected requests persist no account.
@@ -119,7 +162,8 @@ class ApiIntegrationTest {
             mvc.perform(post("/api/auth/register").with(csrf()).contentType(MediaType.APPLICATION_JSON)
                     .content(json.writeValueAsString(Map.of("email", email, "password", password,
                             "displayName", "Policy Tester", "includeSamples", false))))
-                    .andExpect(status().isCreated());
+                    .andExpect(status().isAccepted());
+            jdbc.update("UPDATE campus_users SET email_verified_at=CURRENT_TIMESTAMP WHERE email=?", email);
             mvc.perform(post("/api/auth/login").with(csrf()).param("email", email).param("password", password))
                     .andExpect(status().isOk());
         }
@@ -129,6 +173,7 @@ class ApiIntegrationTest {
     @Test void existingAccountsCanStillSignInWithTheirOriginalPassword() throws Exception {
         String email = "legacy-" + UUID.randomUUID() + "@example.test";
         users.saveAndFlush(new com.campus.tracker.auth.CampusUser(email, "Existing User", passwords.encode("oldpassword")));
+        jdbc.update("UPDATE campus_users SET email_verification_exempt=TRUE WHERE email=?", email);
         mvc.perform(post("/api/auth/login").with(csrf()).param("email", email).param("password", "oldpassword"))
                 .andExpect(status().isOk());
     }

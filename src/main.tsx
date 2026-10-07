@@ -3,4 +3,5 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import AuthGate from './components/AuthGate';
 import './styles.css';
-ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><AuthGate/></React.StrictMode>);
+import { ThemeProvider } from './theme/ThemeProvider';
+ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><ThemeProvider><AuthGate/></ThemeProvider></React.StrictMode>);

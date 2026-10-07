@@ -15,9 +15,18 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class ApiErrorHandler {
+    @ExceptionHandler(com.campus.tracker.auth.abuse.AuthThrottleException.class)
+    ResponseEntity<?> throttled(com.campus.tracker.auth.abuse.AuthThrottleException e) {
+        return ResponseEntity.status(429).header("Retry-After", Long.toString(e.retryAfterSeconds()))
+                .body(Map.of("message", e.getMessage()));
+    }
     // Preserve deliberate service errors such as missing records or rejected registration.
     @ExceptionHandler(ApiException.class)
-    ResponseEntity<?> api(ApiException e) { return ResponseEntity.status(e.getStatus()).body(Map.of("message", e.getMessage())); }
+    ResponseEntity<?> api(ApiException e) {
+        Map<String, String> body = e.getCode() == null ? Map.of("message", e.getMessage())
+                : Map.of("message", e.getMessage(), "code", e.getCode());
+        return ResponseEntity.status(e.getStatus()).body(body);
+    }
 
     // Report the first invalid request field using its validation message.
     @ExceptionHandler(MethodArgumentNotValidException.class)

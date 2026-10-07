@@ -2,7 +2,7 @@
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { applicationApi, toPayload } from '../src/data/applicationApi.ts';
-import { ApiError, request, refreshCsrf } from '../src/data/api.ts';
+import { ApiError, request, refreshCsrf, authApi } from '../src/data/api.ts';
 import { blankDraft, today, activities } from '../src/domain/application.ts';
 import { filterApplications } from '../src/domain/selectors.ts';
 import { sampleApplications } from './fixtures/seed.ts';
@@ -64,4 +64,91 @@ test('saved dataset supports combined search, status, sorting and follow-up filt
 test('completed interviews and cleared follow-ups leave the activity list',()=>{
   const a=sampleApplications()[0];const initial=activities([a]);assert.equal(initial.length,2);
   assert.equal(activities([{...a,followUpDate:'',stages:a.stages.map(s=>({...s,state:'Completed'}))}]).length,0);
+});
+
+test('CSRF throttling preserves server message and retry interval',async()=>{
+  let calls=0;
+  globalThis.fetch=async()=>{calls++;return new Response(JSON.stringify({message:'Slow down'}),{
+    status:429,headers:{'Content-Type':'application/json','Retry-After':'30'}});};
+  await assert.rejects(()=>refreshCsrf(), e=>e instanceof ApiError&&e.status===429&&e.message.includes('Slow down')&&e.retryAfterSeconds===30);
+  assert.equal(calls,1);
+});
+test('login throttling is never replayed and preserves retry interval',async()=>{
+  let writes=0;
+  globalThis.fetch=async(url)=>{
+    if(url==='/api/auth/csrf')return json({token:'token',headerName:'X-CSRF-TOKEN'});
+    writes++;return new Response(JSON.stringify({message:'Slow down'}),{status:429,headers:{'Retry-After':'5'}});
+  };
+  await refreshCsrf();
+  await assert.rejects(()=>request('/auth/login',{method:'POST'}),e=>e instanceof ApiError&&e.status===429&&e.retryAfterSeconds===5);
+  assert.equal(writes,1);
+});
+test('invalid Retry-After does not hide the original API error',async()=>{
+  globalThis.fetch=async()=>new Response(JSON.stringify({message:'Slow down'}),{status:429,headers:{'Retry-After':'nonsense'}});
+  await assert.rejects(()=>request('/applications'),e=>e instanceof ApiError&&e.status===429&&e.retryAfterSeconds===undefined);
+});
+
+for(const operation of ['list','save','remove','restoreDeleted']) {
+  test(`an old application ${operation} response cannot expire a newer login`,async()=>{
+    const previousWindow=globalThis.window;
+    const events=new EventTarget();globalThis.window=events;
+    let expired=0;events.addEventListener('campus:session-expired',()=>expired++);
+    let finishOld;
+    globalThis.fetch=async(url)=>{
+      if(url==='/api/auth/csrf')return json({token:'token',headerName:'X-CSRF-TOKEN'});
+      if(url==='/api/auth/logout')return new Response(null,{status:204});
+      if(url==='/api/auth/login')return json({id:'new-account',displayName:'New',email:'new@example.test'});
+      return new Promise(resolve=>{finishOld=resolve;});
+    };
+    try {
+      await refreshCsrf();
+      const pending=operation==='list'?applicationApi.list():operation==='save'?applicationApi.save(draft(),'a',1):applicationApi[operation]({id:'a',version:1});
+      const rejected=assert.rejects(pending,e=>e instanceof ApiError&&e.status===401);
+      await authApi.logout();await authApi.login('new@example.test','Synthetic-password-123!');
+      finishOld(json({message:'Old session ended'},401));await rejected;
+      assert.equal(expired,0);
+      globalThis.fetch=async()=>json({message:'Current session ended'},401);
+      await assert.rejects(applicationApi.list(),e=>e.status===401);
+      assert.equal(expired,1);
+    } finally {if(previousWindow===undefined)delete globalThis.window;else globalThis.window=previousWindow;}
+  });
+}
+
+test('requests started during login cannot expire the completed login',async()=>{
+  const previousWindow=globalThis.window;
+  const events=new EventTarget();globalThis.window=events;
+  let expired=0;events.addEventListener('campus:session-expired',()=>expired++);
+  let finishLogin,loginStarted,finishOld;
+  const started=new Promise(resolve=>{loginStarted=resolve;});
+  globalThis.fetch=async(url)=>{
+    if(url==='/api/auth/csrf')return json({token:'token',headerName:'X-CSRF-TOKEN'});
+    if(url==='/api/auth/login')return new Promise(resolve=>{finishLogin=resolve;loginStarted();});
+    return new Promise(resolve=>{finishOld=resolve;});
+  };
+  try {
+    const login=authApi.login('new@example.test','Synthetic-password-123!');await started;
+    const pending=applicationApi.list();const rejected=assert.rejects(pending,e=>e.status===401);
+    finishLogin(json({id:'new-account',displayName:'New',email:'new@example.test'}));await login;
+    finishOld(json({message:'Old session ended'},401));await rejected;
+    assert.equal(expired,0);
+  } finally {if(previousWindow===undefined)delete globalThis.window;else globalThis.window=previousWindow;}
+});
+
+test('every page of an old history load retains its original session guard',async()=>{
+  const previousWindow=globalThis.window;
+  const events=new EventTarget();globalThis.window=events;
+  let expired=0;events.addEventListener('campus:session-expired',()=>expired++);
+  let finishFirst;
+  globalThis.fetch=async(url)=>{
+    if(url==='/api/auth/csrf')return json({token:'token',headerName:'X-CSRF-TOKEN'});
+    if(url==='/api/auth/login')return json({id:'new-account',displayName:'New',email:'new@example.test'});
+    if(url.endsWith('page=0'))return new Promise(resolve=>{finishFirst=resolve;});
+    return json({message:'Old session ended'},401);
+  };
+  try {
+    const pending=applicationApi.list();const rejected=assert.rejects(pending,e=>e.status===401);
+    await authApi.login('new@example.test','Synthetic-password-123!');
+    finishFirst(json({content:[{id:'old-app'}],totalPages:2}));await rejected;
+    assert.equal(expired,0);
+  } finally {if(previousWindow===undefined)delete globalThis.window;else globalThis.window=previousWindow;}
 });

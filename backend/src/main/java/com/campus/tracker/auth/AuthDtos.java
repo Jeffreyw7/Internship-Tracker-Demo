@@ -11,9 +11,12 @@ public final class AuthDtos {
             @NotBlank @Size(max = 80) String displayName,
             @NotBlank @Email @Size(max = 254) String email,
             @NotBlank @Size(max = 72) String password,
-            boolean includeSamples) {}
+            boolean includeSamples) {
+        @Override public String toString() { return "Registration[redacted]"; }
+    }
     // Expose only public profile fields; never serialize the password hash in a response.
     public record UserView(UUID id, String displayName, String email) {
         public static UserView from(CampusPrincipal p) { return new UserView(p.id(), p.displayName(), p.email()); }
     }
+    public record Accepted(String status, String message) {}
 }

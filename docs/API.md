@@ -6,12 +6,25 @@ All routes are under `/api`. The production JAR serves React and the API from th
 
 1. `GET /api/auth/csrf` returns `{ "token": "…", "headerName": "X-CSRF-TOKEN" }` and establishes a session.
 2. Include that header and the session cookie on every POST, PUT or DELETE.
-3. `POST /api/auth/register` accepts JSON: `displayName`, `email`, `password` (10–72 characters, at most 72 UTF-8 bytes), and `includeSamples` (boolean). Registration does not sign in automatically; the React client signs in after success.
-4. `POST /api/auth/login` accepts **form-urlencoded** `email` and `password`. It returns the signed-in user's `id`, `displayName` and `email`.
-5. Fetch `/api/auth/csrf` again after login because Spring Security rotates the session and clears the pre-login CSRF token.
-6. `GET /api/auth/me` returns the signed-in profile. `POST /api/auth/logout` invalidates the session.
+3. `POST /api/auth/register` accepts JSON: `displayName`, `email`, `password` (at least 12 characters with uppercase, lowercase, number and symbol; at most 72 UTF-8 bytes), and `includeSamples` (boolean). It returns HTTP 202 with `{"status":"VERIFICATION_REQUEST_ACCEPTED","message":"…"}`. Registration never signs in automatically.
+4. Open the verification link from the email, then `POST /api/auth/email-verification/confirm` with JSON `token` and the signup `password`. A valid, unexpired token returns `{"status":"EMAIL_VERIFIED"}`. The user signs in normally afterward.
+5. `POST /api/auth/email-verification/resend` accepts `{"email":"…"}` and returns the same HTTP 202 response for unknown, verified, exempt, pending, or recipient-throttled addresses. Global or IP throttling can return 429.
+6. `POST /api/auth/login` accepts **form-urlencoded** `email` and `password`. It returns the signed-in user's `id`, `displayName` and `email`. Correct credentials for a pending new account return HTTP 403 with code `EMAIL_VERIFICATION_REQUIRED`; invalid credentials remain a generic 401.
+7. Fetch `/api/auth/csrf` again after login because Spring Security rotates the session and clears the pre-login CSRF token.
+8. `GET /api/auth/me` returns the signed-in profile. `POST /api/auth/logout` invalidates the session.
 
 The CSRF token is kept only in frontend memory. The session cookie is HttpOnly. API authentication errors return JSON rather than an HTML login redirect.
+
+Verification links use 32 random bytes encoded as a 43-character base64url token and expire after 24 hours. Tokens are single-use. The browser removes the fragment from the address bar immediately and requires an explicit password-confirmation submission; opening or previewing the link does not activate an account. Accounts present when Flyway V3 is applied are exempt and continue to sign in without verification. Accounts created afterward are never exempt.
+
+## Appearance preference
+
+| Method | Path | Response |
+| --- | --- | --- |
+| GET | `/me/preferences` | `{ "themePreference": "system" }` |
+| PUT | `/me/preferences` | Accepts and returns `{ "themePreference": "dark" }` |
+
+`themePreference` must be exactly `system`, `light`, or `dark`. It belongs to the signed-in account; callers cannot choose a user ID. New and migrated accounts default to `system`. The PUT requires the current CSRF token. Invalid values return 400, missing authentication returns 401, and missing CSRF returns 403. Both routes bypass HTTP caching.
 
 ## Applications
 
@@ -68,9 +81,18 @@ Errors use `{ "message": "Human-readable explanation" }`:
 
 - **400**: malformed JSON, invalid fields, dates or sort values.
 - **401**: no active login session or invalid login credentials.
-- **403**: missing/invalid CSRF token or registration is disabled.
+- **403**: missing/invalid CSRF token, registration is disabled, or correct credentials belong to an account awaiting verification (`EMAIL_VERIFICATION_REQUIRED`).
 - **404**: application is missing, belongs to someone else, or is not in the required deleted state.
-- **409**: duplicate account, stale version or a database conflict.
+- **409**: a stale application version or another database conflict. Duplicate registration uses the generic accepted response and never overwrites the existing account.
+- **429**: an authentication or verification request exceeded an IP or global limit.
 - **428**: a version header is required.
 
 `GET /api/health` is a public, minimal process-health response. It does not expose database contents or infrastructure details.
+
+## Authentication throttling
+
+Login, registration, and CSRF/session-creating requests are rate-limited. Limits are process-local and reset on restart. A throttled request returns **429**, a positive integer `Retry-After` header (seconds), and the usual `{"message":"..."}` body. Clients must not automatically replay writes.
+
+The CSRF budget also applies to anonymous unsafe requests on unrelated paths, because Spring may create a session before returning 403. Login rejects missing, duplicate, or oversized email parameters with 400 before password verification. Existing-account passwords are not subjected to registration complexity rules.
+
+See [authentication security](AUTHENTICATION-SECURITY.md) for defaults, proxy configuration, and limits.

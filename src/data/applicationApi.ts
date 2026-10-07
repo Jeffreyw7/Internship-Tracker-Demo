@@ -1,6 +1,6 @@
 // Adapts editable frontend drafts and versioned API calls to persisted application records.
 import { type Application, type ApplicationDraft, validateDraft } from '../domain/application.ts';
-import { request, jsonBody } from './api.ts';
+import { request, jsonBody, sessionGuard } from './api.ts';
 // Match the server\'s paginated response envelope.
 interface ApplicationPage {content:Application[];totalElements:number;totalPages:number;page:number;size:number}
 // Whitelist editable fields and convert empty date inputs to JSON null.
@@ -12,11 +12,12 @@ export function toPayload(a:ApplicationDraft) {
 }
 export const applicationApi={
   async list():Promise<Application[]> {
+    const isCurrent=sessionGuard();
     // Cache personal history for instant cross-view filtering; the REST API supports paginated server queries.
-    const first=await request<ApplicationPage>('/applications?size=100&page=0');
+    const first=await request<ApplicationPage>('/applications?size=100&page=0',{},isCurrent);
     const apps=[...first.content];
     for(let page=1;page<first.totalPages;page++) {
-      const next=await request<ApplicationPage>(`/applications?size=100&page=${page}`);apps.push(...next.content);
+      const next=await request<ApplicationPage>(`/applications?size=100&page=${page}`,{},isCurrent);apps.push(...next.content);
     }
     // Deduplicate records if updates moved a record between pages while loading.
     return [...new Map(apps.map(a=>[a.id,a])).values()];
