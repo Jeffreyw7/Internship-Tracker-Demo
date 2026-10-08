@@ -1,0 +1,7 @@
+# Local interactive overlay for compose.scalable.yaml. Keep the verification inbox on loopback.
+services:
+  mail:
+    # An internal-only network does not publish host ports; the local inbox also needs edge.
+    networks: [edge, data]
+    ports:
+      - '127.0.0.1:${MAIL_INBOX_PORT:-8025}:8025'

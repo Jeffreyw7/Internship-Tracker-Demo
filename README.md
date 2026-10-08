@@ -82,6 +82,8 @@ The following features are planned for later updates:
 
 ## Database options
 
+For the selected local replicated environment with Redis sessions, two APIs and private export storage, see [local Docker setup](deploy/LOCAL-DOCKER.md). AWS deployment and hosted qualification are deferred for now.
+
 H2 is the default for a self-contained local project. To use local PostgreSQL with Docker:
 
 1. Copy `.env.example` to `.env` and replace all five database password placeholders with distinct secrets.

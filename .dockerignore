@@ -6,6 +6,7 @@ data
 .git
 .openai
 .env
+*.private.json
 *.zip
 .superpowers
 .codex

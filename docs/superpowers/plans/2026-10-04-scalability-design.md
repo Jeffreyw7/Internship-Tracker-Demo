@@ -190,6 +190,10 @@ Default application page size is eight to retain the current UI, with maximum 10
 
 ## Task 12: Qualify the selected hosted environment and optimize from evidence
 
+Portable preparation is now implemented in `tests/load/hosted/`: pinned k6 sustained/burst/soak mixes, private session preparation, rotating successful-auth identities, read-only synthetic inventory, strict measurement/acceptance gates and a disposable tooling rehearsal. This does not complete the hosted acceptance items below. Provider inputs, actual full-scale seeding/runs, server metrics and managed recovery still require approved infrastructure.
+
+Current execution decision (October 8): user selected local Docker. The persistent replicated project and local inbox are available through `compose.scalable.yaml` plus `compose.local.yaml`; see `deploy/LOCAL-DOCKER.md`. AWS and hosted acceptance are deferred for now.
+
 **Files:** Extend `deploy/OPERATIONS.md`, `deploy/RECOVERY.md`, `VALIDATION.md`; add cloud-specific IaC only after hosting requirements are supplied, and new migrations only for measured query/index changes.
 
 **Interfaces:** Private managed PostgreSQL with tested synchronous instance/zone failover, managed Redis with tested session/limit failure behavior, private object storage, HTTPS same-origin edge/CDN, managed container deployment across zones, secrets, metrics, and verified backup storage.

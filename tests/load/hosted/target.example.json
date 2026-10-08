@@ -1,0 +1,28 @@
+{
+  "kind": "campus-hosted-capacity-v1",
+  "runId": "11111111-1111-4111-8111-111111111111",
+  "base": "https://capacity.example.test",
+  "disposable": true,
+  "rehearsal": false,
+  "targetsApproved": false,
+  "today": "2026-10-08",
+  "dataset": {
+    "accounts": 8,
+    "applications": 5353,
+    "stages": 16059,
+    "largestHistory": 5003,
+    "observedAt": "2026-10-08T00:00:00Z",
+    "evidenceId": "replace-with-observed-inventory"
+  },
+  "deployment": {
+    "imageDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "resourcesId": "replace-with-resource-and-cost-inventory",
+    "monthlyCostUsd": 0
+  },
+  "phases": {
+    "reference": {"durationSeconds": 300, "foregroundRate": 70, "preferencesRate": 40, "authRate": 10, "foregroundVUs": 100, "preferencesVUs": 100, "authVUs": 100},
+    "sustained": {"durationSeconds": 1800, "foregroundRate": 700, "preferencesRate": 400, "authRate": 100, "foregroundVUs": 700, "preferencesVUs": 400, "authVUs": 400},
+    "burst": {"durationSeconds": 300, "foregroundRate": 1000, "preferencesRate": 600, "authRate": 100, "foregroundVUs": 1000, "preferencesVUs": 600, "authVUs": 400},
+    "soak": {"durationSeconds": 14400, "foregroundRate": 700, "preferencesRate": 400, "authRate": 100, "foregroundVUs": 700, "preferencesVUs": 400, "authVUs": 400}
+  }
+}

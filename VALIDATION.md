@@ -1,5 +1,32 @@
 # Validation record
 
+## Selected local Docker environment - October 8, 2026
+
+User selected Docker for the current phase; AWS provisioning and hosted qualification are deferred. Started the persistent `campus-local-scalable` project using `compose.scalable.yaml` plus the new `compose.local.yaml` inbox overlay. It has two healthy API replicas, PostgreSQL, Redis, private storage, separate workers and same-origin ingress. New private `.env`/storage credentials are excluded from Git and Docker build context. Existing H2 data is untouched; this environment uses separate named PostgreSQL/Redis/storage volumes.
+
+Verified live: application HTML/assets and `/readyz` return 200; Mailpit inbox at `127.0.0.1:8025` returns 200; six CSRF reads route through both APIs with the same session cookie; public `/actuator/prometheus` returns 404. Only ingress `127.0.0.1:8080` and inbox `127.0.0.1:8025` publish host ports. An initial inbox check failed because the mail service had only an internal network; adding edge access in the local overlay made its loopback publication reachable. No account or application records were created during verification. `git diff --check` passed. See [local startup/stop instructions](deploy/LOCAL-DOCKER.md).
+
+This change adds configuration/documentation only, so application suites were not repeated; the running Compose topology and HTTP behavior were checked directly. No cloud infrastructure, new commit/push or overnight automation was started. Local containers are intentionally left running for use, and saved data must not be removed with `down -v`.
+
+## Hosted capacity tooling - October 8, 2026
+
+Implemented the portable Task 12 workload/acceptance tooling in `tests/load/hosted/`: immutable k6 image, foreground/preferences/successful-auth arrival streams, bounded isolated mutation slots, an independent rotating authentication pool, guarded private session preparation, read-only synthetic database inventory and allowlisted measurement reports. Proposed runs cover 1,500 planned HTTP/s sustained, 2,000 burst and a four-hour soak; acceptance requires the foreground/polling/password mix, completed traffic, actual route samples, no drops/unexpected outcomes, representative inventory and one consistent approved deployment. These runs have not been executed on hosted infrastructure.
+
+| Fresh check | Result |
+| --- | --- |
+| `npm test` after review fixes | 71 tests passed, zero skips, including nine hosted-tooling regressions |
+| `npm run build` | Strict TypeScript/Vite build passed |
+| `npm run test:hosted-capacity:smoke` | Functional tooling rehearsal passed: actual PostgreSQL inventory, all six API routes, versioned updates, preferences, two successful login/CSRF/logout workflows, no unexpected statuses, and correct failed-capacity report/k6 exit |
+| Final real report re-evaluated with `validateRehearsal` | All six request/latency-sample coverage gates passed; local report cannot be accepted as hosted capacity |
+| `git diff --check` | Passed |
+| Owned test container/private-fixture cleanup | No `campus-test-*` containers remain; private fixture removed |
+
+The final local run completed 56 counted HTTP requests and missed 30 iterations. Its measured counter rate, including drain, was 5.55 HTTP/s. Password and several API tail-latency gates also failed. These failures remain in the report; a functional smoke pass does not claim a passing capacity workload. An earlier six-second run before the rotating-pool/inventory changes completed 96 requests and passed its local gates. Neither result establishes hosted capacity or a before/after improvement. Shared development/CI hardware is used only to validate the harness and verdict behavior.
+
+One fresh review of the new tooling identified a foreground-mix loophole (polling could replace application traffic) and incomplete functional route coverage after separating smoke success from capacity success. Both have RED/GREEN regression evidence and are fixed. Evidence: `test-results-hosted-review-red.log`, `test-results-hosted-review-green.log`, `test-results-hosted-build.log`, `test-results-hosted-tooling-final.log`, and `backend/target/campus-test-cdf44898-276e-4d0a-b3e5-700d4d30e03e/capacity/{inventory,rehearsal}.json`. Protected raw fixtures are not retained or uploaded.
+
+Not run: provider-specific IaC/provisioning, full population seeding, hosted 1,500/2,000 HTTP/s or four-hour soak, distributed source/histogram orchestration, private hosted server-resource collection, managed failover/rollback/PITR and hosted CI execution. Provider/account, region, budget, origin, managed-service/secret policy and approved operational targets are still missing. Java/application/backend code did not change in this tooling increment, so the backend suites were not repeated. New work remains uncommitted; overnight automation was not resumed.
+
 ## Final scalability review fixes - October 8, 2026
 
 One fresh-context whole-branch reviewer found four Important issues and no Critical or Minor issues. All four were addressed in one regression-tested fix pass: stale follow-up/interview completion now checks the displayed application version before writing; midnight filter changes refresh due summaries; default native local startup now processes CSV jobs; regular PostgreSQL Compose supplies a restricted export worker/private shared volume and no longer advertises its unsupported distributed shortcut. Production/distributed APIs keep embedded export processing disabled and continue requiring shared private storage.

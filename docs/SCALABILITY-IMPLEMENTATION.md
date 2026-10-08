@@ -2,6 +2,8 @@
 
 Updated October 8, 2026. Branch: `scalability-design`. Repository implementation and local qualification are complete; final deployment recovery checks passed, as recorded in [VALIDATION.md](../VALIDATION.md). Hosted large-SaaS acceptance remains pending.
 
+The user selected **local Docker** for the current phase. The persistent replicated environment is running as `campus-local-scalable`, with a loopback application and verification inbox; see [local instructions](../deploy/LOCAL-DOCKER.md). AWS provisioning and full hosted capacity/recovery qualification are deferred. Docker PostgreSQL data is separate from the preserved native H2 database.
+
 ## Implemented architecture
 
 The browser uses bounded cursor pages, whole-account SQL summaries, bounded activity feeds and on-demand details. Its account-scoped cache holds at most 20 pages and 100 details. Mutations stay serialized, owner checked, CSRF protected and versioned; stale responses cannot cross account changes. Completing an activity retains its displayed application version, so a newer schedule produces a conflict instead of being cleared. Calendar changes invalidate both pages and due summaries.
@@ -13,6 +15,8 @@ Dedicated mail and export workers claim short fenced leases. SMTP and storage op
 Native H2 startup embeds bounded export processing. Regular PostgreSQL Compose uses a restricted export worker and a shared private volume mounted read-only by the API. The scalable topology uses private shared object storage and separate workers. The unsupported regular-Compose Redis shortcut has been removed; distributed filesystem storage remains rejected.
 
 ## Verification and remaining acceptance
+
+Hosted capacity preparation now includes a [pinned k6 workload and run procedure](../tests/load/hosted/README.md), independent preference/successful-auth streams, guarded private sessions with a rotating identity pool, read-only exact synthetic inventory, safe reports and strict acceptance gates. This increment passes 71 Node tests and the strict frontend build. The real local functional rehearsal exercised all six routes and authentication; its final capacity verdict failed (56 requests, 30 dropped iterations, 5.55 measured HTTP/s and tail-latency failures). Those results remain visible and establish no hosted capacity claim. See the latest [validation section](../VALIDATION.md).
 
 Fresh final checks: 62 frontend/load-runner tests, strict TypeScript/Vite build, 112 backend tests and 12 real PostgreSQL/Redis/private-storage/worker integration scenarios. Real child JVMs are killed after SMTP acceptance and private export upload. Default local startup, regular PostgreSQL Compose exports, real Chrome/full CSV and HTTP/restart persistence are checked. See [validation](../VALIDATION.md) for final replicated deployment results and evidence paths.
 
@@ -51,5 +55,7 @@ The following records every implementation/review ruling in order, including its
 | Gate caching/search/brokers/replicas/sharding on evidence | Current measurements justify none of them | A qualified production workload may require additional architecture |
 
 ## Review disposition
+
+The later hosted-tooling review found a foreground-mix loophole and incomplete functional smoke coverage. Both are fixed with regression evidence: each target phase now preserves the required application/polling/password rates, and the local smoke requires all six route counters and real latency samples while retaining a failed capacity verdict. One workload cannot qualify by substituting cheap polling, or by hiding missed local arrivals. Platform selection, full-scale seeding, server metrics, distributed source orchestration and recovery remain pending; no provisioning/public deployment was performed.
 
 One fresh-context whole-branch reviewer found no Critical issues and four Important issues: stale activity completion, disabled default export processing, midnight summary rollover and the unsupported Compose shortcut. All four entered one fix pass with regression evidence and full-suite checks. No minor findings were deferred. The reviewer set aside the hosted, capacity, comparative-performance, lifecycle and optional-infrastructure items above; their rulings are explicitly recorded.

@@ -11,7 +11,9 @@
     "test:smoke": "node tests/http_smoke.mjs",
     "test:distributed": "node tests/distributed_smoke.mjs",
     "test:local-compose": "node tests/local_compose_smoke.mjs",
-    "test:load": "node tests/load/qualify.mjs"
+    "test:load": "node tests/load/qualify.mjs",
+    "test:hosted-capacity:smoke": "node tests/hosted_capacity_smoke.mjs",
+    "capacity:accept": "node tests/load/hosted/accept.mjs"
   },
   "dependencies": {
     "react": "19.2.6",

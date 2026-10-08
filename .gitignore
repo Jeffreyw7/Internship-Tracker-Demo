@@ -7,5 +7,6 @@ node_modules
 /backend/data/
 /data/
 .env
+*.private.json
 *.db
 *.trace.db
