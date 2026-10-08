@@ -20,7 +20,7 @@ RUN mvn -B -f backend/pom.xml -Pwith-ui verify && mvn -B -f backend/pom.xml depe
 FROM eclipse-temurin:17-jre AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-RUN mkdir /app/data && chown -R 10001:10001 /app
+RUN mkdir -p /app/data/exports && chown -R 10001:10001 /app
 
 FROM runtime AS migrate
 WORKDIR /app

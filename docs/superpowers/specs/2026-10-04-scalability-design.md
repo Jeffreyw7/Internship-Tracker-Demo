@@ -1,6 +1,6 @@
 # Scalability architecture and gap assessment
 
-Date: October 4, 2026. Status: proposed design for review; no implementation or deployment performed.
+Date: October 4, 2026. Implementation status updated October 8, 2026: repository foundations, bounded workspace reads, shared Redis state, dedicated mail/export workers and portable deployment tooling are implemented. Local recovery/load qualification and final review are tracked in `VALIDATION.md`; hosted deployment and large-SaaS capacity remain pending.
 
 ## Purpose and scope
 
@@ -8,7 +8,7 @@ Design the existing internship tracker to serve hundreds of thousands of account
 
 The recommendation is a horizontally replicated Spring Boot application with explicit module boundaries, shared session storage, managed PostgreSQL, CDN delivery of React assets, and independently scaled background workers. Account count alone does not justify splitting transactional application workflows into microservices. Actual replica counts and database sizes must come from measurements.
 
-This document distinguishes verified source behavior from proposed targets. The current baseline is `45728d1`, which includes verification-counter concurrency fixes, concurrent-registration recovery, verification-route password-work limits, and stale-session protection. Existing local regression results are recorded in `VALIDATION.md`; distributed deployment and production capacity remain unqualified. Budget, cloud provider, regions, traffic, availability, and retention have not been specified. The assumptions below make the design testable without presenting them as approved business commitments.
+This document distinguishes the original source baseline from design targets. Baseline `45728d1` includes verification-counter concurrency fixes, concurrent-registration recovery, verification-route password-work limits, and stale-session protection. The baseline gap analysis below is historical; the implemented changes and current qualification evidence are recorded in `VALIDATION.md`. Production capacity remains unqualified. Budget, cloud provider, regions, traffic, availability, and retention have not been specified. The assumptions below make the design testable without presenting them as approved business commitments.
 
 ## Planning workload and service targets
 

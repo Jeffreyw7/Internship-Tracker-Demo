@@ -5,6 +5,8 @@ spring:
     username: sa
     password:
 campus:
+  export:
+    worker-enabled: false
   registration-enabled: true
   # Legacy workflow suite shares one peer IP; focused abuse tests override these.
   auth-abuse:

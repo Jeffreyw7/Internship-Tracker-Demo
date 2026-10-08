@@ -25,8 +25,8 @@ public class ExportRepository {
         var cutoff = jdbc.query("SELECT id,created_at FROM applications WHERE owner_id=? AND deleted=false AND created_at<=? ORDER BY created_at DESC,id DESC LIMIT 1",
                 (row, index) -> new Object[]{row.getObject("id", UUID.class), row.getObject("created_at", OffsetDateTime.class)}, owner, at(now));
         UUID id = UUID.randomUUID();
-        jdbc.update("INSERT INTO export_jobs(id,owner_id,state,created_at,expires_at,cutoff_id,cutoff_at) VALUES(?,?,'PENDING',?,?,?,?)",
-                id, owner, at(now), at(now.plus(limits.retention())), cutoff.isEmpty() ? null : cutoff.get(0)[0], cutoff.isEmpty() ? null : cutoff.get(0)[1]);
+        jdbc.update("INSERT INTO export_jobs(id,owner_id,state,created_at,expires_at,cutoff_id,cutoff_at,next_attempt_at) VALUES(?,?,'PENDING',?,?,?,?,?)",
+                id, owner, at(now), at(now.plus(limits.retention())), cutoff.isEmpty() ? null : cutoff.get(0)[0], cutoff.isEmpty() ? null : cutoff.get(0)[1], at(now));
         return owned(owner, id);
     }
     Job owned(UUID owner, UUID id) {

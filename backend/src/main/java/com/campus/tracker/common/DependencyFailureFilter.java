@@ -15,7 +15,10 @@ public final class DependencyFailureFilter extends OncePerRequestFilter {
         try { chain.doFilter(request, response); }
         catch (ServletException | RuntimeException failure) {
             if (!isDependencyFailure(failure) || response.isCommitted()) throw failure;
-            response.resetBuffer();
+            String correlation = response.getHeader("X-Request-ID");
+            // resetBuffer leaves the writer/stream choice and stale content/cookie headers intact.
+            response.reset();
+            if (correlation != null) response.setHeader("X-Request-ID", correlation);
             response.setStatus(503);
             response.setHeader("Cache-Control", "no-store");
             response.setHeader("Retry-After", "3");

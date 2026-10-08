@@ -17,6 +17,8 @@ spring:
     redis:
       namespace: ${SESSION_NAMESPACE:campus:local:session:v1}
 campus:
+  export:
+    worker-enabled: false
   auth-admission:
     namespace: ${AUTH_ADMISSION_NAMESPACE:campus:local:admission:v1}
     hmac-secret: ${AUTH_ADMISSION_HMAC_SECRET}

@@ -57,7 +57,7 @@ test('mutations lock synchronously, refresh confirmed results and conflicts, and
 test('activity completion fetches full current detail; failed or changed detail never saves a draft',async()=>{
   const full=sampleApplications()[0];let writes=0;
   const {controller,calls}=fixture({detail:async()=>{calls.detail.push(full.id);return {...full,version:9};}});await controller.refresh();
-  const activity={applicationId:full.id,kind:'Interview',stageId:full.stages.find(s=>s.state==='Scheduled').id};
+  const activity={applicationId:full.id,applicationVersion:9,kind:'Interview',stageId:full.stages.find(s=>s.state==='Scheduled').id};
   const result=await completeWorkspaceActivity(controller,activity,async(draft,id,version)=>{writes++;assert.equal(version,9);assert.equal(draft.notes,full.notes);assert.equal(draft.stages.find(s=>s.id===activity.stageId).state,'Completed');return {...full,version:10};});
   assert.equal(result.before.version,9);assert.equal(writes,1);
   const broken=fixture({detail:async()=>{throw new ApiError(404,'Gone');}});await broken.controller.refresh();
@@ -65,4 +65,26 @@ test('activity completion fetches full current detail; failed or changed detail 
   const changed=fixture({detail:async()=>({...full,stages:[]})});await changed.controller.refresh();
   await assert.rejects(()=>completeWorkspaceActivity(changed.controller,activity,async()=>{writes++;}),/changed/i);
   assert.equal(writes,1);
+});
+test('changing filters across midnight refreshes the whole-account due summary',async()=>{
+  let date='2026-11-01';const listDates=[],summaryDates=[];
+  const controller=createWorkspaceController({today:()=>date,api:{
+    list:async filters=>{listDates.push(filters.today);return page();},
+    summary:async day=>{summaryDates.push(day);return {...summary,due:day==='2026-11-01'?3:6};},
+    activities:async()=>page(),detail:async()=>sampleApplications()[0]
+  }});
+  await controller.refresh();date='2026-11-02';
+  controller.setFilters({q:'new day'});await flush();
+  assert.deepEqual(summaryDates,['2026-11-01','2026-11-02']);
+  assert.deepEqual(listDates,['2026-11-01','2026-11-02']);
+  assert.equal(controller.getSnapshot().summary.due,6);
+});
+for(const kind of ['Follow-up','Interview'])test(`outdated ${kind} completion refreshes and rejects instead of clearing a newer schedule`,async()=>{
+  const full=sampleApplications()[0];const stage=full.stages.find(value=>value.state==='Scheduled');let writes=0;
+  const {controller,calls}=fixture({detail:async()=>({...full,version:12,followUpDate:'2026-11-10',
+    stages:full.stages.map(value=>value.id===stage.id?{...value,date:'2026-11-11'}:value)})});
+  await controller.refresh();
+  await assert.rejects(()=>completeWorkspaceActivity(controller,{applicationId:full.id,applicationVersion:11,kind,stageId:kind==='Interview'?stage.id:null},
+    async()=>{writes++;return full;}),error=>error instanceof ApiError&&error.status===409);
+  assert.equal(writes,0);assert.equal(calls.list.length,2);
 });

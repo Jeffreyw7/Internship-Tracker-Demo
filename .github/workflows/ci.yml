@@ -38,6 +38,8 @@ jobs:
         run: npm run test:smoke
       - name: Private two-peer Compose and failed-migration gates
         run: npm run test:distributed
+      - name: Documented local PostgreSQL Compose exports
+        run: npm run test:local-compose
       - name: Bounded local load qualification
         if: github.event_name == 'workflow_dispatch'
         run: npm run test:load

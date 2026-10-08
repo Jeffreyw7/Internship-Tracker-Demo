@@ -28,9 +28,13 @@ async function phase(name,rate,seconds,scenario='foreground',sessions){
 }
 try{
   await stack.run(['build']);await stack.run(['up','-d']);
+  document.images=await stack.manifest();
+  const topology=await stack.config();
+  document.limits=Object.fromEntries(Object.entries(topology.services).filter(([,service])=>service.mem_limit)
+    .map(([name,service])=>[name,{memoryBytes:service.mem_limit,cpus:service.cpus,pids:service.pids_limit}]));
   const seed=await seedStack(stack);document.dataset={accounts:seed.counts.length,applications:seed.total,historyCounts:seed.counts,stagesPerApplication:3};document.fixture=seed.fixture;
   const sessions=await prepareSessions(stack.base,seed.fixture);
-  await phase('baseline-20',20,20,'foreground',sessions);
+  await phase('reference-20',20,20,'foreground',sessions);
   await phase('ramp-50',50,20,'foreground',sessions);
   // Put real mail production/delivery and CSV uploads alongside foreground work.
   const capture=httpClient(stack.base);

@@ -74,11 +74,11 @@ Default application page size is eight to retain the current UI, with maximum 10
 
 **Interfaces:** Opt-in `distributed` profile uses Spring Session Redis, `JSESSIONID`, two-hour idle expiry, environment-specific namespace and versioned serializer. Ordinary local/test profiles retain container sessions. `CampusPrincipal.sessionIdentity()` returns the identity with no retained password hash; successful authentication stores it in the security context.
 
-- [ ] Write a real-Redis integration scenario starting two application processes/contexts: CSRF on A, login on B, rotated CSRF on A, create/update on B, restart A, then logout on B and `/auth/me` on A=401. Assert no sticky routing is required, no password hash is retained in stored principal, and old CSRF is rejected after login.
-- [ ] Run `./mvnw -Pdistributed-it -Dit.test=DistributedSessionIT verify`; establish the current process-local session failure using a test harness that can start both instances without enabling the missing profile.
-- [ ] Add Boot-managed Redis/session dependencies and explicit profile activation; configure cookie deletion/name together. Configure/test the chosen serializer with Spring Security types and `CampusPrincipal`, including missing/expired/malformed attributes and mixed application-version round trips.
+- [x] Write a real-Redis integration scenario starting two application processes/contexts: CSRF on A, login on B, rotated CSRF on A, create/update on B, restart A, then logout on B and `/auth/me` on A=401. Assert no sticky routing is required, no password hash is retained in stored principal, and old CSRF is rejected after login.
+- [x] Run `./mvnw -Pdistributed-it -Dit.test=DistributedSessionIT verify`; establish the current process-local session failure using a test harness that can start both instances without enabling the missing profile.
+- [x] Add Boot-managed Redis/session dependencies and explicit profile activation; configure cookie deletion/name together. Configure/test the chosen serializer with Spring Security types and `CampusPrincipal`, including missing/expired/malformed attributes and mixed application-version round trips.
 - [ ] Configure Redis private access/authentication, bounded timeouts, namespace, noeviction, and memory alerts. Verify Redis outage/session-write failure yields 503 without falling back to local sessions; test logout during failover on the selected deployment platform.
-- [ ] Run the focused distributed scenario, ordinary backend suite, and existing HTTP smoke test; local H2 startup must not require Redis.
+- [x] Run the focused distributed scenario, ordinary backend suite, and existing HTTP smoke test; local H2 startup must not require Redis.
 
 ## Task 3: Share authentication budgets and validate proxy identity
 
@@ -86,11 +86,11 @@ Default application page size is eight to retain the current UI, with maximum 10
 
 **Interfaces:** `AuthAdmissionLimiter.acquire(String key, AuthRateLimiter.Policy policy): AuthRateLimiter.Decision`; current in-memory limiter implements this interface for local mode. Distributed mode uses atomic Redis time/refill/admission, HMAC-protected keys, bounded namespace cardinality, TTL, and positive Retry-After. `campus.verification.global-mail-daily-limit` defaults to the existing 1,000 and can be raised through configuration.
 
-- [ ] Write tests asserting two independent clients share exactly the configured budget, refill timing matches token-bucket semantics, restrictions survive API restart, new keys are rejected at the cardinality limit, and Redis loss returns 503 rather than allowing work or pretending to be a policy denial.
-- [ ] Write proxy tests: untrusted X-Forwarded-For cannot change identity; a configured trusted ingress can distinguish clients; multi-hop spoofing is stripped; legitimate shared-NAT behavior is explicit. Add a configurable-mail-budget test proving default behavior remains unchanged.
-- [ ] Run the new tests before changing production behavior; retain existing abuse tests as compatibility checks.
-- [ ] Implement bounded Lua admission with a same-slot namespace/cardinality index, independent per-bucket expiry, and cleanup bounded per call. Keep per-process BCrypt permits covering all four existing password-costly routes. Retain database verification fixed windows and their committed race fixes.
-- [ ] Make trusted proxy ranges explicit for container-native forwarded-header handling; retain NONE locally and block direct API ingress in Task 10. Run backend suite, Redis profile, and request-spoof tests.
+- [x] Write tests asserting two independent clients share exactly the configured budget, refill timing matches token-bucket semantics, restrictions survive API restart, new keys are rejected at the cardinality limit, and Redis loss returns 503 rather than allowing work or pretending to be a policy denial.
+- [x] Write proxy tests: untrusted X-Forwarded-For cannot change identity; a configured trusted ingress can distinguish clients; multi-hop spoofing is stripped; legitimate shared-NAT behavior is explicit. Add a configurable-mail-budget test proving default behavior remains unchanged.
+- [x] Run the new tests before changing production behavior; retain existing abuse tests as compatibility checks.
+- [x] Implement bounded Lua admission with a same-slot namespace/cardinality index, independent per-bucket expiry, and cleanup bounded per call. Keep per-process BCrypt permits covering all four existing password-costly routes. Retain database verification fixed windows and their committed race fixes.
+- [x] Make trusted proxy ranges explicit for container-native forwarded-header handling; retain NONE locally and block direct API ingress in Task 10. Run backend suite, Redis profile, and request-spoof tests.
 
 ## Task 4: Separate and harden email delivery workers
 
@@ -98,11 +98,11 @@ Default application page size is eight to retain the current UI, with maximum 10
 
 **Interfaces:** Worker launches with `WebApplicationType.NONE` and an explicit role `mail|export`. `OutboxClaimRepository.claim(int limit, UUID leaseOwner): List<ClaimedMail>` claims PostgreSQL rows in short SKIP LOCKED transactions; H2 uses tested conditional claims. `OutboxKeyRing` selects the active encrypt key and a permitted decrypt key by ID.
 
-- [ ] Write tests for two workers claiming distinct jobs, lease takeover, fenced completion after expiry, provider timeout/retry, disabled API polling, no public worker listener, old/new key overlap, payload erasure, and repeated cleanup limited to a bounded batch.
-- [ ] Run the focused mail tests/profile to expose current embedded scheduling, key-rotation, and claim/cleanup limitations.
-- [ ] Isolate the worker context so HTTP controllers/security/session dependencies are not loaded. Retain the local embedded scheduler as a convenience; distributed API disables it. Use bounded executor/claim capacity, one leased job per available permit, and SMTP outside transactions. Do not queue leases behind busy executor threads.
-- [ ] Move maintenance to a separate schedule with bounded batches. Add queue age/backlog/retry/permanent-failure gauges without recipient labels. Preserve stable Message-ID, single-use tokens, at-least-once delivery, and eligibility rechecks.
-- [ ] Add restricted `campus_mail_worker` and `campus_export_worker` roles through the existing administrative provisioning scripts and explicit `upgrade-workers.sql`; grants are applied by the migrator's packaged grant script. Task 4 needs no schema migration. Old installations must run the administrative role upgrade before the new grant script; failure keeps new services stopped. Run mail suite, PostgreSQL privileges, and worker-termination scenarios; document keys retained until queued jobs drain/expire.
+- [x] Write tests for two workers claiming distinct jobs, lease takeover, fenced completion after expiry, provider timeout/retry, disabled API polling, no public worker listener, old/new key overlap, payload erasure, and repeated cleanup limited to a bounded batch.
+- [x] Run the focused mail tests/profile to expose current embedded scheduling, key-rotation, and claim/cleanup limitations.
+- [x] Isolate the worker context so HTTP controllers/security/session dependencies are not loaded. Retain the local embedded scheduler as a convenience; distributed API disables it. Use bounded executor/claim capacity, one leased job per available permit, and SMTP outside transactions. Do not queue leases behind busy executor threads.
+- [x] Move maintenance to a separate schedule with bounded batches. Add queue age/backlog/retry/permanent-failure gauges without recipient labels. Preserve stable Message-ID, single-use tokens, at-least-once delivery, and eligibility rechecks.
+- [x] Add restricted `campus_mail_worker` and `campus_export_worker` roles through the existing administrative provisioning scripts and explicit `upgrade-workers.sql`; grants are applied by the migrator's packaged grant script. Task 4 needs no schema migration. Old installations must run the administrative role upgrade before the new grant script; failure keeps new services stopped. Run mail suite, PostgreSQL privileges, and worker-termination scenarios; document keys retained until queued jobs drain/expire.
 
 ## Task 5: Implement bounded application listing and cursor semantics
 
@@ -169,11 +169,11 @@ Default application page size is eight to retain the current UI, with maximum 10
 
 **Interfaces:** A disposable stack exposes only same-origin ingress on loopback; two API instances, static UI, Redis sessions/limits, PostgreSQL, mail/export workers, local SMTP capture, and private S3-compatible export storage are internal. Worker launch targets and the one-shot migrator are explicit; app startup depends on successful migrations/grants.
 
-- [ ] Write distributed smoke checks for round-robin session/CSRF lifecycle, private API/database/Redis/storage ports, uncached API responses, immutable hashed assets, revalidated HTML/bootstrap, and inaccessible management endpoints. A disposable bad migration must prevent API and worker startup.
-- [ ] Run checks against the current topology to establish missing distributed functionality; no existing volume or user's database may be reused.
-- [ ] Add static/API routing that strips untrusted forwarding headers, preserves cookies/CSRF/If-Match/query/errors, limits body sizes, and does not replay failed writes. Use a pinned tested Redis/ingress/storage image version and record immutable release digests during CI packaging.
-- [ ] Configure Redis noeviction/auth/private access, separate worker credentials/pools, generated disposable secrets, resource limits, startup/readiness/drain checks, and migration failure gating. Do not claim Compose provides multi-zone PostgreSQL/Redis HA.
-- [ ] Build/run the stack and execute distributed smoke, Redis unavailable/full cases, API termination, and worker restart. Record any environment-blocked checks instead of passing them silently.
+- [x] Write distributed smoke checks for round-robin session/CSRF lifecycle, private API/database/Redis/storage ports, uncached API responses, immutable hashed assets, revalidated HTML/bootstrap, and inaccessible management endpoints. A disposable bad migration must prevent API and worker startup.
+- [x] Run checks against the current topology to establish missing distributed functionality; no existing volume or user's database may be reused.
+- [x] Add static/API routing that strips untrusted forwarding headers, preserves cookies/CSRF/If-Match/query/errors, limits body sizes, and does not replay failed writes. Use a pinned tested Redis/ingress/storage image version and record immutable release digests during CI packaging.
+- [x] Configure Redis noeviction/auth/private access, separate worker credentials/pools, generated disposable secrets, resource limits, startup/readiness/drain checks, and migration failure gating. Do not claim Compose provides multi-zone PostgreSQL/Redis HA.
+- [x] Build/run the stack and execute distributed smoke, Redis unavailable/full cases, API termination, and worker restart. Record any environment-blocked checks instead of passing them silently.
 
 ## Task 11: Add CI, representative data, open-loop load reporting, and recovery procedures
 
@@ -181,12 +181,12 @@ Default application page size is eight to retain the current UI, with maximum 10
 
 **Interfaces:** Load runner accepts explicit base URL, account fixture file, rate, duration, concurrency ceiling, and output path. It records scheduled/started/completed/dropped requests, route-template latency/error/rejection counts, and achieved arrivals. Seeder creates synthetic accounts/history in an explicitly designated disposable target, with safety checks and no raw credentials in reports.
 
-- [ ] Write runner tests showing overload reports missed arrivals instead of lowering offered load, bounded client memory, latency percentiles from real samples, and credential redaction. Test skewed seeded data and CSV/mail contention independently of CRUD timing.
-- [ ] Run runner tests before implementation, then implement rate scheduling, mixed foreground/polling/auth HTTP flows, reports, and explicit saturation/soak scenarios. Large 60-million/180-million datasets are qualification runs, not an everyday CI requirement.
-- [ ] Wire CI for Node tests/build, Maven tests, real PostgreSQL privileges/workflows, Redis/distributed tests, image/Compose migration gating, worker/storage checks, and bundled HTTP smoke. No public deployment step or registry credential is assumed.
+- [x] Write runner tests showing overload reports missed arrivals instead of lowering offered load, bounded client memory, latency percentiles from real samples, and credential redaction. Test skewed seeded data and CSV/mail contention independently of CRUD timing.
+- [x] Run runner tests before implementation, then implement rate scheduling, mixed foreground/polling/auth HTTP flows, reports, and explicit saturation/soak scenarios. Large 60-million/180-million datasets are qualification runs, not an everyday CI requirement.
+- [x] Wire CI for Node tests/build, Maven tests, real PostgreSQL privileges/workflows, Redis/distributed tests, image/Compose migration gating, worker/storage checks, and bundled HTTP smoke. No public deployment step or registry credential is assumed.
 - [ ] Record baseline and changed-stack measurements, then run ramp/burst/soak to identify saturation. Exercise rollout overlap and combined connection budgets; report actual rates, p95/p99, legitimate 429/503, pool wait, heap/GC, Redis memory, queue age, and export/mail interference.
-- [ ] Document safe backup/role/key inventory, isolated restore, record/privilege comparisons, session invalidation and duplicate-mail handling, expand/backfill/switch/contract rollback, and the cloud-managed failover requirements. Never test restore onto an existing user database.
-- [ ] Run all repository suites and available integration checks, update contracts/commands and validation evidence, and review the full diff for ownership/session/concurrency regressions. Record every test not run and why.
+- [x] Document safe backup/role/key inventory, isolated restore, record/privilege comparisons, session invalidation and duplicate-mail handling, expand/backfill/switch/contract rollback, and the cloud-managed failover requirements. Never test restore onto an existing user database.
+- [x] Run all repository suites and available integration checks, update contracts/commands and validation evidence, and review the full diff for ownership/session/concurrency regressions. Record every test not run and why.
 
 ## Task 12: Qualify the selected hosted environment and optimize from evidence
 

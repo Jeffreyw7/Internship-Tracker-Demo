@@ -69,6 +69,7 @@ export function createWorkspaceController({api,today,schedule=(fn,ms)=>setTimeou
     const changed=(Object.keys(next) as (keyof WorkspaceFilters)[]).filter(key=>next[key]!==snapshot.filters[key]);
     const onlyQuery=changed.every(key=>key==='q');
     stopTimer();resetPages();publish({filters:next,page:null,activityPage:null,ready:false,loading:true,error:''});
+    if(changed.includes('today'))void loadSummary();
     if(onlyQuery)timer=schedule(()=>{timer=undefined;void loadPage();},300);
     else void loadPage();
   }
@@ -121,9 +122,13 @@ export function createWorkspaceController({api,today,schedule=(fn,ms)=>setTimeou
     refresh,setFilters,next,previous,clearAccount,loadDetail,mutate};
 }
 export type WorkspaceController=ReturnType<typeof createWorkspaceController>;
-export async function completeWorkspaceActivity(controller:WorkspaceController,activity:Pick<ActivityItem,'applicationId'|'kind'|'stageId'>,
+export async function completeWorkspaceActivity(controller:WorkspaceController,activity:Pick<ActivityItem,'applicationId'|'applicationVersion'|'kind'|'stageId'>,
     save:(draft:ApplicationDraft,id:string,version:number)=>Promise<Application>) {
   const before=await controller.loadDetail(activity.applicationId,true);
+  if(before.version!==activity.applicationVersion) {
+    await controller.refresh();
+    throw new ApiError(409,'This activity changed. Review its current schedule before completing it.');
+  }
   let draft:ApplicationDraft;
   if(activity.kind==='Interview') {
     if(!before.stages.some(stage=>stage.id===activity.stageId&&stage.state==='Scheduled'))throw new Error('This interview changed. Refresh before completing it.');

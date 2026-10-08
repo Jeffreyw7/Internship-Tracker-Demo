@@ -37,7 +37,7 @@ Verification links use 32 random bytes encoded as a 43-character base64url token
 | DELETE | `/applications/{id}` | Soft-delete; returns the new record/version for undo |
 | POST | `/applications/{id}/restore` | Restore a deleted record; requires its current version |
 
-`sort` accepts `updated`, `company`, `deadline`, or `applied`. `status` uses the labels below. The `q` filter is case-insensitive over company, role, location and notes. The frontend additionally searches interview-stage names in its cached history. Deleted records are excluded from listing and ordinary GET.
+This v1 compatibility route accepts `sort` values `updated`, `company`, `deadline`, or `applied`. `status` uses the labels below. Its `q` filter is case-insensitive over company, role, location and notes. The workspace uses the bounded v2 routes below, whose search also covers interview-stage names. Deleted records are excluded from listing and ordinary GET.
 
 List response:
 
@@ -111,7 +111,7 @@ Updated/applied order descends; company/deadline ascends; date nulls are last an
 
 ## Durable full-history exports
 
-`POST /api/v2/exports` accepts `{}` and commits an owner-scoped job before HTTP 202. Creation and `DELETE /api/v2/exports/{id}` cancellation require authentication and CSRF. `GET /api/v2/exports/{id}` returns `{id,state,createdAt,expiresAt,failureCode,downloadPath}`; no object key, owner, lease or storage credential is exposed. States are PENDING, RUNNING, READY, FAILED, CANCELLED and EXPIRED. Guessed or foreign job IDs return 404. Two active/unexpired-ready jobs per account are admitted by default; excess returns 429. Creation/cancellation/download requests are never automatically replayed.
+`POST /api/v2/exports` accepts `{}` and commits an owner-scoped job before HTTP 202. Creation and `DELETE /api/v2/exports/{id}` cancellation require authentication and CSRF. `GET /api/v2/exports/{id}` returns `{id,state,createdAt,expiresAt,failureCode,downloadPath}`; no object key, owner, lease or storage credential is exposed. States are PENDING, RUNNING, READY, FAILED, CANCELLED and EXPIRED. Guessed or foreign job IDs return 404. Two unexpired PENDING/RUNNING jobs per account are admitted by default; excess returns 429. READY jobs remain downloadable until expiry and no longer consume generation capacity. Creation/cancellation/download requests are never automatically replayed.
 
 `GET /api/v2/exports/{id}/download` requires the owning current session and READY/unexpired output. It proxies private CSV with `Content-Disposition: attachment`, CSV content type and no-store; no public/presigned URL is returned. Four simultaneous streams per API are admitted by default; excess returns 503. Expired output returns 410. Binary clients must consume a blob/stream rather than decoding success as JSON and must discard old-account responses.
 

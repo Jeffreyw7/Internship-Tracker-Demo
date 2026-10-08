@@ -1,5 +1,44 @@
 # Validation record
 
+## Final scalability review fixes - October 8, 2026
+
+One fresh-context whole-branch reviewer found four Important issues and no Critical or Minor issues. All four were addressed in one regression-tested fix pass: stale follow-up/interview completion now checks the displayed application version before writing; midnight filter changes refresh due summaries; default native local startup now processes CSV jobs; regular PostgreSQL Compose supplies a restricted export worker/private shared volume and no longer advertises its unsupported distributed shortcut. Production/distributed APIs keep embedded export processing disabled and continue requiring shared private storage.
+
+| Final check after fixes | Result |
+| --- | --- |
+| `npm test`; `npm run build` | 62 tests passed; strict TypeScript/Vite build passed |
+| Maven `-Pwith-ui,postgres-it,distributed-it -Dpostgres.test.bin=... verify` | 112 backend and 12 real-service integration scenarios passed, zero skips; bundled JAR built |
+| Java 17 Docker image build | All 112 backend tests passed |
+| Default local startup/export integration | Actual scheduled job reached READY and its private CSV downloaded without a worker-enable override |
+| `node tests/local_compose_smoke.mjs` | Default PostgreSQL Compose processed CSV with its restricted export role; API mount read-only, worker mount read-write |
+| Real Chrome + `tests/http_smoke.mjs` | Full workspace/CSV/HTTP/restart checks passed using the ordinary local export-processing default |
+| `node tests/distributed_smoke.mjs` | Final two-peer/private-storage/worker/cache/restart/Redis stopped+full/bad-migration qualification passed |
+| `git diff --check` | Passed |
+
+Regression RED evidence: two rescheduled activity tests submitted stale actions instead of returning 409; the controlled midnight test retained yesterday's summary; default local startup had no ExportWorker bean; regular Compose topology had no export processor. GREEN checks exercise the corrected behavior. A local Compose attempt hit an upstream image-download connection reset; pinning to the already-qualified PostgreSQL 17.11 and Mailpit 1.31.3 images allowed the fresh run to finish.
+
+Final evidence: `test-results-review-final-node.log`, `test-results-review-final-build.log`, `backend/target/review-final-all.log`, `test-results-review-local-compose-green.log`, `test-results-review-final-browser.log`, and `test-results-review-final-distributed.log`. These are ignored local artifacts. The second load report, including image identities and service resource limits, is in ignored `backend/target/campus-test-d6c7ca72-e7b4-4609-b98f-9553672cfda4/measurements.json` and `measurements.md`; it preceded the final review fixes and is a modest local reference, not final hosted capacity acceptance. No further load run was needed for these local-startup/frontend correctness changes; hosted load and resilience remain pending.
+
+All architecture decisions, reviewer dispositions and qualification limits are recorded in [the implementation record](docs/SCALABILITY-IMPLEMENTATION.md). Changes remain uncommitted on `scalability-design`; no new push, merge or deployment occurred. The overnight automation remains PAUSED.
+
+## Scalability recovery qualification - October 8, 2026
+
+Repository implementation now includes shared Redis sessions/atomic admission, bounded v2 reads and frontend caches, dedicated mail/export workers, private durable CSV jobs, and the two-API portable ingress/migration topology. This supersedes the partial October 4 checkpoint below. Hosted large-SaaS capacity and managed failover remain unqualified; the overnight automation stays paused.
+
+| Fresh check | Result |
+| --- | --- |
+| `npm test`; `npm run build` | 59 passed; strict TypeScript and Vite build passed |
+| Maven `-Pwith-ui,postgres-it,distributed-it -Dpostgres.test.bin=... verify` | 111 backend tests and 12 real-service integration scenarios passed, no skips; bundled JAR built |
+| Java 17 Docker build | All 111 backend tests passed during the private deployment image build |
+| Real Chrome + `tests/http_smoke.mjs` | Bounded workspace, full 116-application CSV, editing/conflict/undo, CSRF/login/logout, assets and H2 restart passed |
+| `node tests/distributed_smoke.mjs` | Two-peer routing/session/CSRF/CRUD/logout, private ports/storage/workers, cache policy, API recovery, Redis stopped/full, and failed-migration gates passed |
+
+Tests use disposable synthetic data. PostgreSQL scenarios validate fresh/legacy privileges, keyset/summary/activity behavior, quota races and fenced worker takeover. Actual child JVMs are terminated after private export upload and after real loopback SMTP acceptance; replacement workers recover without stale completion. Duplicate mail preserves its verification token and stable Message-ID, leaves the token unconsumed, and clears encrypted payload after recorded acceptance. Single-use confirmation remains covered by the verification suite.
+
+Two regressions were reproduced before fixes: an uncommitted servlet response already using an output stream could not switch to a writer after `resetBuffer`; full reset now clears stale content/cookie headers, preserves correlation and returns safe 503. Export creation now sets retry eligibility with the same application clock used by the worker, eliminating date-dependent delayed claims. The disposable storage fixture now allocates capacity for both metadata and export collections.
+
+Evidence logs are ignored local artifacts: `backend/target/scalability-final-all.log`, `test-results-scalability-final-node.log`, `test-results-scalability-final-build.log`, `test-results-scalability-final-browser.log`, and `test-results-distributed-smoke.log`. Immutable tested image identities are recorded in the disposable project's `release-manifest.json`. GitHub Actions is configured; its hosted workflow has not been executed in this session. The load experiment and final whole-branch review are recorded separately when finished. A matched original-version performance baseline, 300,000-account dataset, 1,500/s sustained / 2,000/s burst, multi-hour soak, cloud rollback/failover and isolated PITR remain pending approved hosting resources.
+
 ## Redis integration qualification - October 5, 2026
 
 The Redis test failure reported as "Could not find a valid Docker environment" was caused by Docker Desktop's engine not running. Starting the installed Docker Desktop app made the Linux engine reachable; no application changes or Docker data reset were required.
@@ -135,3 +174,11 @@ Regression evidence: missing authentication guards initially returned 401/201 wh
 The Windows PostgreSQL harness now redirects subprocess output to files and uses a timeout. The HTTP smoke test now resolves the actual Java runtime instead of terminating only Oracle's PATH launcher; it verifies the listening port closes before restart.
 
 Security status: implementation and local verification complete. Docker rollout verification remains outstanding. No user database upgrade, public deployment, or remote push was performed. Existing PostgreSQL installations require the explicit procedure in docs/DATABASE-SECURITY.md.
+
+## Local load experiment - October 8, 2026
+
+The first complete disposable run seeded eight accounts, 5,353 applications and 16,059 stages. Reference 20/s started 400/400 offered arrivals; ramp 50/s started 999/1,000; combined mail/CSV 50/s started 1,499/1,500; one-minute overlap 50/s started 2,998/3,000. Foreground phases returned no 5xx/transport errors or 429, and their maximum route p99 was 219.6 ms initially, 16.3 ms on the ramp, 45.0 ms with mail/CSV, and 14.5 ms during overlap. Four exports reached READY and two mails reached SENT.
+
+The 200/s burst started 2,489/3,000 arrivals and missed 511 through scheduler lag, with zero client capacity drops. It **does not qualify 200/s server throughput or identify server saturation**. Invalid-password 5/s admission started 50/50 with 29 legitimate 429 responses; its mixed-outcome p99 was 862.9 ms. Overlapping three APIs recorded eight runtime, one export-worker and three mail-worker database connections, against a configured 24-connection maximum. Redis used about 1.60 MB of its 64 MB budget. Measurements are a changed-stack reference, not an original-version comparison. Evidence: ignored `backend/target/campus-test-5cfc83b5-95d4-4a0d-bd46-5ffc50e1e848/measurements.json` and `measurements.md`.
+
+Run Docker fixtures sequentially: concurrent unused-subnet discovery can collide, and concurrent stacks would distort these development-host measurements. A second run qualifies embedding the immutable image identities and explicit service CPU/memory limits directly in the measurement report. Hosted capacity, true server saturation, successful-auth peaks and multi-hour resilience still require approved load infrastructure.

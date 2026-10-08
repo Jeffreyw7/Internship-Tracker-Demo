@@ -124,8 +124,8 @@ const command = [
   '--spring.mail.host=127.0.0.1', `--spring.mail.port=${smtpPort}`,
   `--campus.mail.public-origin=${base}`, '--campus.mail.worker-enabled=true',
   '--campus.verification.rate-limits-enabled=false',
-  // Isolated local H2 has a single process; enable its bounded export worker explicitly.
-  '--campus.export.worker-enabled=true', `--campus.export.file-root=${path.join(temp,'exports')}`,
+  // Keep the ordinary local worker default; isolate only its object/spool paths.
+  `--campus.export.file-root=${path.join(temp,'exports')}`,
   `--campus.export.spool-root=${path.join(temp,'export-spool')}`,
 ];
 

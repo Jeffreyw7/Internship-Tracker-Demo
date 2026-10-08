@@ -10,6 +10,7 @@
     "test": "node --test tests/*.test.mjs",
     "test:smoke": "node tests/http_smoke.mjs",
     "test:distributed": "node tests/distributed_smoke.mjs",
+    "test:local-compose": "node tests/local_compose_smoke.mjs",
     "test:load": "node tests/load/qualify.mjs"
   },
   "dependencies": {

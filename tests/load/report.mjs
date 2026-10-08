@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import {pathToFileURL} from 'node:url';
 
 export function reportMarkdown(reports){
-  const lines=['# Disposable scalability measurements','','These measurements describe the recorded local resource limits and dataset. They do not qualify hosted scale, zone failover, or multi-hour durability.','','| Scenario | Offered/s | Started/s | Completed | Dropped | Route | p95 ms | p99 ms | 429 | 503/transport |','| --- | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: |'];
+  const lines=['# Disposable scalability measurements','','These measurements describe the recorded local resource limits and dataset. They do not qualify hosted scale, zone failover, or multi-hour durability.','','| Scenario | Offered/s | Started/s | Completed | Dropped | Route | p95 ms | p99 ms | 429 | 5xx/transport |','| --- | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: |'];
   for(const report of reports)for(const [route,stats] of Object.entries(report.routes)){
     lines.push(`| ${report.scenario} | ${report.rate} | ${report.achievedArrivalsPerSecond.toFixed(1)} | ${report.completed} | ${report.dropped} | ${route} | ${stats.p95?.toFixed(1)??'—'} | ${stats.p99?.toFixed(1)??'—'} | ${stats.rejections} | ${stats.errors} |`);
   }

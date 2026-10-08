@@ -67,6 +67,18 @@ class DistributedSessionIT {
                     if (System.getProperty("campus.test.redis.port") == null) {
                         // Even an existing anonymous session cookie must not make probes load Redis security state.
                         request(baseA, "GET", "/api/auth/csrf", null, null, 200);
+                        var redisTemplate = a.getBean(org.springframework.data.redis.core.StringRedisTemplate.class);
+                        redisTemplate.execute((org.springframework.data.redis.core.RedisCallback<Void>) connection -> {
+                            connection.serverCommands().setConfig("maxmemory", "1"); return null;
+                        });
+                        try {
+                            request(baseA, "GET", "/api/auth/csrf", null, null, 503);
+                            request(baseA, "GET", "/livez", null, null, 200);
+                        } finally {
+                            redisTemplate.execute((org.springframework.data.redis.core.RedisCallback<Void>) connection -> {
+                                connection.serverCommands().setConfig("maxmemory", "67108864"); return null;
+                            });
+                        }
                         redis.stop();
                         request(baseA, "GET", "/api/auth/csrf", null, null, 503);
                         request(baseA, "GET", "/readyz", null, null, 503);

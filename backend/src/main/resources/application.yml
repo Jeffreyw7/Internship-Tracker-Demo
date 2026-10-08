@@ -67,7 +67,7 @@ server:
 # Allow demo signup locally; the production profile changes this default.
 campus:
   export:
-    worker-enabled: ${EXPORT_WORKER_ENABLED:false}
+    worker-enabled: ${EXPORT_WORKER_ENABLED:true}
     storage: ${EXPORT_STORAGE:file}
     file-root: ${EXPORT_FILE_ROOT:./data/exports}
     spool-root: ${EXPORT_SPOOL_ROOT:./data/export-spool}

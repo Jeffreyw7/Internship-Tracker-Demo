@@ -41,6 +41,12 @@ class ExportWorkerTest {
                 id, owner, company, "Intern", "Remote", "APPLIED", "quoted \"notes\"\nline", ExportRepository.at(created), ExportRepository.at(created));
         return id;
     }
+    @Test void newJobIsImmediatelyDueUsingTheApplicationClock() {
+        var job = create();
+        assertThat(jdbc.queryForObject("SELECT next_attempt_at FROM export_jobs WHERE id=?", OffsetDateTime.class, job.id()))
+                .isEqualTo(ExportRepository.at(clock.instant()));
+        assertThat(jobs.claim(UUID.randomUUID())).isNotNull();
+    }
     @Test void producesFullHistoryWithoutLaterCreationsAndPublishesOnlyCompleteObjects() throws Exception {
         for (int i = 0; i < 205; i++) application("Company " + i, clock.instant().minusSeconds(1));
         UUID staged = application("=Formula", clock.instant().minusSeconds(1));

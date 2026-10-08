@@ -1,21 +1,8 @@
 # Runs the Java application with PostgreSQL for local development.
 services:
-  # Optional shared store; activate with --profile distributed and the distributed app profile.
-  redis:
-    profiles: [distributed]
-    image: redis:7.4-alpine
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD for distributed mode}
-      REDIS_MAX_MEMORY: ${REDIS_MAX_MEMORY:-256mb}
-    command: ["sh", "-ec", "exec redis-server --maxmemory \"$$REDIS_MAX_MEMORY\" --maxmemory-policy noeviction --requirepass \"$$REDIS_PASSWORD\""]
-    healthcheck:
-      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
 # Persist PostgreSQL data in a named volume and wait until the database is ready.
   database:
-    image: postgres:17
+    image: postgres:17.11
     environment:
       POSTGRES_DB: campus
       POSTGRES_USER: ${DATABASE_ADMIN_USERNAME:-campus_admin}
@@ -48,9 +35,32 @@ services:
     restart: "no"
 # Capture verification email locally. The web inbox is available only on loopback.
   mail:
-    image: axllent/mailpit:v1.31.1
+    image: axllent/mailpit:v1.31.3
     ports:
       - "127.0.0.1:8025:8025"
+  # Separate restricted worker shares only private object files on this local host.
+  export-worker:
+    build: {context: ., target: worker}
+    environment:
+      SPRING_PROFILES_ACTIVE: prod,worker,export-worker
+      WORKER_ROLE: export
+      DATABASE_URL: jdbc:postgresql://database:5432/campus
+      DATABASE_USERNAME: campus_export_worker
+      DATABASE_PASSWORD: ${EXPORT_WORKER_DATABASE_PASSWORD:?Set EXPORT_WORKER_DATABASE_PASSWORD in .env}
+      WORKER_DATABASE_POOL_SIZE: "3"
+      EXPORT_WORKER_ENABLED: "true"
+      EXPORT_FILE_ROOT: /app/data/exports
+      SMTP_HOST: mail
+      SMTP_USERNAME: ""
+      SMTP_PASSWORD: ""
+      SMTP_AUTH: "false"
+      SMTP_STARTTLS: "false"
+    volumes: [campus-exports:/app/data/exports]
+    mem_limit: 384m
+    cpus: 0.5
+    stop_grace_period: 35s
+    depends_on:
+      migrate: {condition: service_completed_successfully}
 # Publish only on loopback; local HTTP uses non-secure cookies and enables demo signup.
   app:
     build:
@@ -59,12 +69,9 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     environment:
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
-      REDIS_HOST: redis
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      SESSION_NAMESPACE: ${SESSION_NAMESPACE:-campus:compose:session:v1}
-      AUTH_ADMISSION_NAMESPACE: ${AUTH_ADMISSION_NAMESPACE:-campus:compose:admission:v1}
-      AUTH_ADMISSION_HMAC_SECRET: ${AUTH_ADMISSION_HMAC_SECRET:-}
+      SPRING_PROFILES_ACTIVE: prod
+      EXPORT_WORKER_ENABLED: "false"
+      EXPORT_FILE_ROOT: /app/data/exports
       DATABASE_URL: jdbc:postgresql://database:5432/campus
       DATABASE_USERNAME: campus_runtime
       DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
@@ -89,8 +96,7 @@ services:
         condition: service_completed_successfully
       mail:
         condition: service_started
-      redis:
-        condition: service_healthy
-        required: false
+    volumes: [campus-exports:/app/data/exports:ro]
 volumes:
   campus-postgres:
+  campus-exports:

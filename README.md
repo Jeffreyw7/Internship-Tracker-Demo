@@ -84,12 +84,12 @@ The following features are planned for later updates:
 
 H2 is the default for a self-contained local project. To use local PostgreSQL with Docker:
 
-1. Copy `.env.example` to `.env` and replace all three database password placeholders with distinct secrets.
+1. Copy `.env.example` to `.env` and replace all five database password placeholders with distinct secrets.
 2. Run `docker compose up --build`.
 3. Open http://localhost:8080 and create an account.
 4. Open the local capture inbox at http://localhost:8025, follow the verification link, and enter the signup password to activate the account.
 
-The Compose stack binds the app and Mailpit inbox only to **127.0.0.1** and does not expose the database port. Its named PostgreSQL volume survives container restarts. The Compose verification keys are synthetic local values; use independent secrets in every hosted environment. Do not run `docker compose down -v` if you want to retain data.
+The Compose stack binds the app and Mailpit inbox only to **127.0.0.1** and does not expose the database or export-worker port. A restricted export worker writes CSV files to a private named volume mounted read-only by the API. Its PostgreSQL and export volumes survive container restarts. The Compose verification keys are synthetic local values; use independent secrets in every hosted environment. Do not run `docker compose down -v` if you want to retain data. For replicated Redis sessions/limits and shared object storage, use the complete `compose.scalable.yaml` topology described in [operations](deploy/OPERATIONS.md).
 
 For an existing PostgreSQL instance, select `SPRING_PROFILES_ACTIVE=prod` and set:
 
@@ -131,9 +131,9 @@ Source comments explain each main code section. See [docs/CODE_GUIDE.md](docs/CO
 
 The API uses server-side pagination, optional search/status filters, bounded page sizes and stable sorting. Indexes cover owner/status, owner/updated time, follow-up dates and deadlines. Stage collections are batched rather than joined into paginated parent queries. Every write compares `If-Match` with a JPA version field and returns HTTP 409 for a stale edit. Soft-deleted records are retained for undo; no retention/purge policy is implemented.
 
-The UI currently fetches the user's paginated history into memory to keep its existing cross-view filtering and summaries immediate. For very large histories, connect the table directly to server-side queries and add separate aggregate/activity endpoints. The API boundary already supports that change; this project has not been load-tested.
+The UI requests bounded cursor pages, whole-account summaries and bounded activities from v2 endpoints, and loads full application details on demand. Its cache holds at most 20 pages and 100 details. Full CSV jobs use bounded processing: native H2 startup embeds the worker, while PostgreSQL Compose and distributed deployments use a separate worker. Downloads use authenticated, owner-scoped jobs. Export contents remain a live traversal with a creation cutoff, rather than a point-in-time snapshot.
 
-Sessions are in memory for this single-instance version. A multi-instance deployment needs shared sessions (for example Spring Session/Redis) or sticky routing, plus PostgreSQL, HTTPS, coordinated worker capacity and database backups. Add password reset before opening public self-service registration.
+Local H2 mode uses in-memory sessions. The distributed profile uses Redis for shared sessions and atomic authentication limits, PostgreSQL with separate API/migration/worker roles, and private object storage. `compose.scalable.yaml` provides a loopback qualification stack with two API instances, same-origin static ingress and separate mail/export workers. Production still requires HTTPS, managed failover, tested backups and capacity qualification on the selected hosting environment. Password reset remains a separate public-service lifecycle gap.
 
 See [docs/API.md](docs/API.md) for request examples and the endpoint contract.
 

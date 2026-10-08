@@ -38,4 +38,33 @@ class DependencyFailureFilterTest {
         assertThat(response.getStatus()).isEqualTo(503);
         assertThat(response.getContentAsString()).doesNotContain("payload");
     }
+
+    @Test void uncommittedStreamFailureResetsOutputModeAndStaleHeaders() throws Exception {
+        // MockHttpServletResponse allows both accessors; a real servlet container forbids mixing them until reset().
+        var response = new MockHttpServletResponse() {
+            private boolean streamSelected;
+            @Override public jakarta.servlet.ServletOutputStream getOutputStream() {
+                streamSelected = true; return super.getOutputStream();
+            }
+            @Override public java.io.PrintWriter getWriter() throws java.io.UnsupportedEncodingException {
+                if (streamSelected) throw new IllegalStateException("getOutputStream already selected");
+                return super.getWriter();
+            }
+            @Override public void reset() { super.reset(); streamSelected = false; }
+        };
+        response.setHeader("X-Request-ID", "trace-outage");
+        new DependencyFailureFilter().doFilter(new MockHttpServletRequest(), response, (request, result) -> {
+            response.setHeader("Content-Length", "99999");
+            response.setHeader("Content-Disposition", "attachment; filename=private.csv");
+            response.addHeader("Set-Cookie", "JSESSIONID=unpersisted; HttpOnly");
+            result.getOutputStream().write("partial private response".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            throw new org.springframework.data.redis.RedisSystemException("Session save rejected", new IllegalStateException("OOM"));
+        });
+        assertThat(response.getStatus()).isEqualTo(503);
+        assertThat(response.getHeader("X-Request-ID")).isEqualTo("trace-outage");
+        assertThat(response.getHeader("Content-Length")).isNull();
+        assertThat(response.getHeader("Content-Disposition")).isNull();
+        assertThat(response.getHeader("Set-Cookie")).isNull();
+        assertThat(response.getContentAsString()).contains("DEPENDENCY_UNAVAILABLE").doesNotContain("private response");
+    }
 }

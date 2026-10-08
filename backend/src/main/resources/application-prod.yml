@@ -26,6 +26,8 @@ server:
       cookie:
         secure: ${COOKIE_SECURE:true}
 campus:
+  export:
+    worker-enabled: ${EXPORT_WORKER_ENABLED:false}
   registration-enabled: ${REGISTRATION_ENABLED:false}
   mail:
     public-origin: ${PUBLIC_ORIGIN}

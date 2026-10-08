@@ -113,8 +113,8 @@ services:
       retries: 30
   storage:
     image: chrislusf/seaweedfs:4.48
-    command: [server, -s3, -s3.config=/etc/exports-auth.json, -dir=/data, -ip=storage, -ip.bind=0.0.0.0, -volume.max=1, -master.telemetry=false]
-    volumes: [storage:/data, '${S3_CREDENTIALS_FILE:?Set a private fixture credential file}:/etc/exports-auth.json:ro']
+    command: [server, -s3, -s3.config=/etc/exports-auth.json, -dir=/data, -ip=storage, -ip.bind=0.0.0.0, -volume.max=8, -master.telemetry=false]
+    volumes: [storage:/data, '${S3_CREDENTIALS_FILE:?Set a private fixture credential file}:/etc/exports-auth.json:ro', './deploy/storage/master.toml:/etc/seaweedfs/master.toml:ro']
     networks: [data]
     mem_limit: 512m
     cpus: 0.5
