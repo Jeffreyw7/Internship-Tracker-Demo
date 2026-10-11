@@ -8,6 +8,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
+import java.util.concurrent.*;
+import jakarta.annotation.PreDestroy;
 
 @Configuration
 @EnableConfigurationProperties(MailProperties.class)
@@ -30,8 +32,16 @@ public class MailConfiguration {
     @ConditionalOnProperty(name = "campus.mail.worker-enabled", havingValue = "true", matchIfMissing = true)
     static class Scheduler {
         private final EmailOutboxWorker worker;
+        private final ThreadPoolExecutor deliveries = new ThreadPoolExecutor(0, 2, 30, TimeUnit.SECONDS,
+                new SynchronousQueue<>(), task -> { Thread thread = new Thread(task, "campus-mail-worker"); thread.setDaemon(true); return thread; });
         Scheduler(EmailOutboxWorker worker) { this.worker = worker; }
         @Scheduled(fixedDelayString = "${campus.mail.poll-interval-ms:5000}")
-        public void deliver() { worker.deliverPending(); }
+        public void deliver() {
+            for(int i=0;i<2;i++) {
+                try { deliveries.execute(worker::deliverPending); }
+                catch(RejectedExecutionException saturated) { break; }
+            }
+        }
+        @PreDestroy public void stop() { deliveries.shutdown(); }
     }
 }

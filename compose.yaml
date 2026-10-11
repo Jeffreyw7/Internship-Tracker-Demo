@@ -9,6 +9,7 @@ services:
       POSTGRES_PASSWORD: ${DATABASE_ADMIN_PASSWORD:?Set DATABASE_ADMIN_PASSWORD in .env}
       MIGRATION_DATABASE_PASSWORD: ${MIGRATION_DATABASE_PASSWORD:?Set MIGRATION_DATABASE_PASSWORD in .env}
       RUNTIME_DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
+      RETENTION_DATABASE_PASSWORD: ${RETENTION_DATABASE_PASSWORD:?Set RETENTION_DATABASE_PASSWORD in .env}
     # Keep database storage across container restarts.
     volumes:
       - campus-postgres:/var/lib/postgresql/data
@@ -61,6 +62,9 @@ services:
       OUTBOX_KEY_ID: compose-local-capture
       OUTBOX_ENCRYPTION_KEY: AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=
       VERIFICATION_RATE_LIMIT_SECRET: compose-local-verification-rate-secret
+      HELP_DESTINATION: http://127.0.0.1:8080
+      RESET_AUDIT_SECRET: compose-local-audit-secret-not-for-hosting
+      RESET_AUDIT_KEY_ID: compose-local-audit
       CAMPUS_MAIL_PRODUCTION: "false"
     depends_on:
       database:

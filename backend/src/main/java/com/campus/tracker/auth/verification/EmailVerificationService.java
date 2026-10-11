@@ -85,7 +85,7 @@ public class EmailVerificationService {
         jdbc.update("UPDATE email_verification_tokens SET revoked_at=? WHERE user_id=? AND id<>? AND consumed_at IS NULL AND revoked_at IS NULL",
                 Timestamp.from(verifiedAt), user.getId(), challenge.id());
         jdbc.update("UPDATE email_outbox SET status='CANCELLED',payload=NULL,key_id=NULL,nonce=NULL,lease_owner=NULL,lease_expires_at=NULL,next_attempt_at=? "
-                        + "WHERE verification_token_id IN (SELECT id FROM email_verification_tokens WHERE user_id=?) "
+                        + "WHERE message_type='EMAIL_VERIFICATION' AND verification_token_id IN (SELECT id FROM email_verification_tokens WHERE user_id=?) "
                         + "AND status IN ('PENDING','SENDING')",
                 Timestamp.from(verifiedAt), user.getId());
         return new AuthDtos.Accepted("EMAIL_VERIFIED", "Your email is verified. Sign in to continue.");

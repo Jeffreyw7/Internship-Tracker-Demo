@@ -14,11 +14,11 @@ afterEach(()=>{globalThis.fetch=originalFetch;});
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
 const draft=()=>({...blankDraft(),company:' Example Labs ',role:'Java Intern',status:'Applied',appliedDate:today()});
 
-test('signup password policy checks complexity, character count, and UTF-8 boundaries',()=>{
-  for(const value of ['', 'Abcdefghi1!', 'abcdefghij1!', 'ABCDEFGHIJ1!', 'Abcdefghijk!', 'Abcdefghijk1', 'Abcdefghij1 ', 'Ab1!'+'a'.repeat(69), 'Ab1!'+'é'.repeat(35), 'Ab1!'+'😀'.repeat(7)]) {
+test('password creation accepts passphrases and checks Unicode count and UTF-8 boundaries',()=>{
+  for(const value of ['', 'a'.repeat(14), '\u{1f600}'.repeat(14), 'a'.repeat(73), '\u00e9'.repeat(37), '\u{1f600}'.repeat(19)]) {
     assert.ok(passwordError(value), 'Expected rejected password');
   }
-  for(const value of ['Abcdefghij1!', 'Ab1!'+'a'.repeat(68), 'Ab1!'+'é'.repeat(34), 'Ab1!'+'😀'.repeat(8), 'Àbcdefghij1!']) {
+  for(const value of ['a'.repeat(15), 'A'.repeat(15), 'correct horse battery staple', 'a'.repeat(72), '\u00e9'.repeat(36), '\u{1f600}'.repeat(18)]) {
     assert.equal(passwordError(value), null);
   }
 });

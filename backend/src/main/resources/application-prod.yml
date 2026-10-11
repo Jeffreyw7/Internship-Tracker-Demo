@@ -12,6 +12,8 @@ spring:
       mail.smtp.starttls.enable: ${SMTP_STARTTLS:true}
       mail.smtp.starttls.required: ${SMTP_STARTTLS:true}
   datasource:
+    hikari:
+      connection-init-sql: "SET lock_timeout = '1s'; SET statement_timeout = '2s'"
     url: ${DATABASE_URL}
     username: ${DATABASE_USERNAME}
     password: ${DATABASE_PASSWORD}
@@ -27,6 +29,10 @@ campus:
     sender: ${MAIL_SENDER}
     key-id: ${OUTBOX_KEY_ID}
     encryption-key: ${OUTBOX_ENCRYPTION_KEY}
+    help-destination: ${HELP_DESTINATION}
     production: ${CAMPUS_MAIL_PRODUCTION:true}
   verification:
     rate-limit-secret: ${VERIFICATION_RATE_LIMIT_SECRET}
+  reset:
+    audit-secret: ${RESET_AUDIT_SECRET}
+    audit-key-id: ${RESET_AUDIT_KEY_ID}
