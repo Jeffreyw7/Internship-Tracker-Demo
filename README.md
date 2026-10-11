@@ -1,4 +1,4 @@
-# Campus Internship Tracker â€” Java + React
+# Campus Internship Tracker — Java + React
 
 The complete Java edition of the Campus workspace: a **Java 17 / Spring Boot 3.5.16 REST backend**, a **React + TypeScript frontend**, and a relational database. Application data is stored in the Java database; there is no localStorage fallback.
 
@@ -32,7 +32,22 @@ Open **http://localhost:8080**. Choose **Create an account**, enter your own nam
 
 The default H2 database is saved in `backend/data/` when you run from `backend/`. Stop with Ctrl+C. Your accounts and applications remain after restarting. Browser reloads do not reset data. Sessions end on a backend restart; sign in again.
 
-For live frontend development, run the backend with `./mvnw spring-boot:run` (Windows: `.\mvnw.cmd spring-boot:run`), then run `npm run dev` in a second terminal at the project root. Vite proxies `/api` to Spring Boot on port 8080. Open the Vite URL printed in the terminal.
+For live frontend development, run `npm run dev` in a terminal at the project root and note the Vite URL. In a second terminal, start the backend from `backend/` with `PUBLIC_ORIGIN` set to that exact frontend origin so verification emails open the React verification screen. For example, if Vite prints `http://127.0.0.1:5173`:
+
+On **Windows PowerShell**, from `backend/`:
+
+```powershell
+$env:PUBLIC_ORIGIN = 'http://127.0.0.1:5173'
+.\mvnw.cmd spring-boot:run
+```
+
+On **macOS/Linux**, from `backend/`:
+
+```sh
+PUBLIC_ORIGIN=http://127.0.0.1:5173 ./mvnw spring-boot:run
+```
+
+Open the printed Vite URL; Vite proxies `/api` to Spring Boot on port 8080. Keep the local SMTP capture server running for verification emails. When running the bundled UI, use the Java-served origin for `PUBLIC_ORIGIN` instead (the default is `http://127.0.0.1:8080`).
 
 ### Startup says "Process terminated with exit code: 1"
 
@@ -72,15 +87,9 @@ Follow-ups are displayed in the workspace. They do not send notifications or cre
 
 ## Not currently supported
 
-- Follow-up email notifications
-- Calendar integration
-- Password reset
-- Admin account management
-- A friendlier user interface
 - Email notifications or calendar events for follow-ups and interviews.
-- Password reset or email verification; registration does not send email.
+- Password reset.
 - Admin account management.
-- A dark-mode theme toggle.
 - Recruitment-platform integrations.
 
 ## Database options
