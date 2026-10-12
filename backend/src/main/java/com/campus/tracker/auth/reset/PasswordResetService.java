@@ -44,7 +44,8 @@ public class PasswordResetService {
 
     public AuthDtos.Accepted request(String submittedEmail,String ip) {
         // No campus_users read is allowed on this acceptance path, even for unknown addresses.
-        try (var ingress=capacity.ingress();var database=capacity.database()) {
+        // HTTP admission is held by ResetInputFilter before any body reads.
+        try (var database=capacity.database()) {
             control.requireEnabled(true);
             limits.requireResetRequestAllowed(ip);
             String email=submittedEmail.trim().toLowerCase(Locale.ROOT);

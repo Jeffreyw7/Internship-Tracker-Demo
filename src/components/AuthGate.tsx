@@ -53,7 +53,8 @@ export default function AuthGate() {
     loadProfile();
     const expired=()=>{revision.current++;transitioning.current=false;setBusy(false);setLoading(false);setUser(null);setPassword('');setError('Your session ended. Sign in to continue.');};
     const changed=()=>{setUser(null);setPassword('');setBusy(false);transitioning.current=false;setLoading(true);setError('');loadProfile();};
-    const refresh=()=>{if(!transitioning.current)changed();};
+    // A focus refresh must preserve recovery input and pending submissions until the account actually changes.
+    const refresh=()=>{if(!transitioning.current)loadProfile();};
     const unsubscribe=subscribeSessionChanges(changed);
     window.addEventListener('campus:session-expired',expired);
     window.addEventListener('focus',refresh);

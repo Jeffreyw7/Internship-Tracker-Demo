@@ -45,7 +45,15 @@ public final class ResetInputFilter extends OncePerRequestFilter {
                 || (request.getHeader("Content-Encoding")!=null && !"identity".equalsIgnoreCase(request.getHeader("Content-Encoding")))) {
             error(response,415,"Use an uncompressed JSON request."); return;
         }
-        byte[] body=readBody(request.getInputStream());
+        byte[] body;
+        try { body=readBody(request.getInputStream()); }
+        catch (IOException failure) {
+            // Tomcat wraps a socket read timeout in ClientAbortException.
+            for (Throwable cause=failure;cause!=null;cause=cause.getCause()) {
+                if (cause instanceof SocketTimeoutException) throw new SocketTimeoutException();
+            }
+            throw failure;
+        }
         if (body.length>4096) { response.setHeader("Connection","close"); error(response,413,"The request is too large."); return; }
         try {
             try (JsonParser parser=strict.createParser(body)) {

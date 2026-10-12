@@ -27,7 +27,9 @@ class ResetInputFilterTest {
         var request=new MockHttpServletRequest("POST","/api/auth/password-reset/request") {
             @Override public ServletInputStream getInputStream() {
                 return new ServletInputStream() {
-                    public int read() throws java.io.IOException { throw new SocketTimeoutException(); }
+                    public int read() throws java.io.IOException {
+                        throw new org.apache.catalina.connector.ClientAbortException(new SocketTimeoutException());
+                    }
                     public boolean isFinished() { return false; }
                     public boolean isReady() { return true; }
                     public void setReadListener(ReadListener listener) { }

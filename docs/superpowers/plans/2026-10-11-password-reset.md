@@ -28,41 +28,41 @@
 
 ## Task 1: Schema, admission and completion core
 
-- [ ] Add failing HTTP tests: known/unknown equal acceptance, no account lookup at intake, CSRF, strict fields/size/token errors, successful atomic completion, pending-account preservation, sibling/concurrent single use, cutoff and rollback.
-- [ ] Add V4 account epochs/cutoff, intake/control/challenge/audit and generalized outbox schema, indexes and lifecycle constraints.
-- [ ] Implement `DatabaseTime.now(): Instant`, `PasswordResetService.request(email, ip): Accepted`, `confirm(token, newPassword, ip): Accepted`, and `PasswordResetRequestWorker.processPending(): void` with explicit transaction boundaries, leased retries and terminal payload erasure.
-- [ ] Implement shared password policy and packaged/supplemental blocklist; test policy parity and legacy login compatibility.
-- [ ] Run targeted tests then backend suite. Capture failure/pass evidence.
+- [x] Add failing HTTP tests: known/unknown equal acceptance, no account lookup at intake, CSRF, strict fields/size/token errors, successful atomic completion, pending-account preservation, sibling/concurrent single use, cutoff and rollback.
+- [x] Add V4 account epochs/cutoff, intake/control/challenge/audit and generalized outbox schema, indexes and lifecycle constraints.
+- [x] Implement `DatabaseTime.now(): Instant`, `PasswordResetService.request(email, ip): Accepted`, `confirm(token, newPassword, ip): Accepted`, and `PasswordResetRequestWorker.processPending(): void` with explicit transaction boundaries, leased retries and terminal payload erasure.
+- [x] Implement shared password policy and packaged/supplemental blocklist; test policy parity and legacy login compatibility.
+- [x] Run targeted tests then backend suite. Capture failure/pass evidence.
 
 ## Task 2: Generalized mail and committed quotas
 
-- [ ] Test suppressed recipient traffic leaves global issuance capacity, key-ring legacy/new/tampered jobs, reset/notice eligibility, notice template/report path, retry lease fencing and erasure.
-- [ ] Expose verification limiter `requireResetRequestAllowed(ip)`, `reserveResetAddress(email)`, `requireResetConfirmationAllowed(token, ip)`, `reserveLinkMail()`, `reserveNoticeMail()`, and `subjectHash(value)`; reset limits always enabled and primary database time.
-- [ ] Expose `EmailOutbox.enqueueReset(tokenId,email,token)` and `enqueuePasswordChanged(tokenId,email,occurredAt)` in mandatory caller transactions. Typed encrypted purposes must match database purpose; legacy verification payloads remain readable.
-- [ ] Generalize worker and sender without changing verification behavior; use a decrypt key ring, bounded retries and separate notice budget/deadline. No DB transaction during SMTP.
-- [ ] Run targeted mail/limiter tests; report integration assumptions.
+- [x] Test suppressed recipient traffic leaves global issuance capacity, key-ring legacy/new/tampered jobs, reset/notice eligibility, notice template/report path, retry lease fencing and erasure.
+- [x] Expose verification limiter `requireResetRequestAllowed(ip)`, `reserveResetAddress(email)`, `requireResetConfirmationAllowed(token, ip)`, `reserveLinkMail()`, `reserveNoticeMail()`, and `subjectHash(value)`; reset limits always enabled and primary database time.
+- [x] Expose `EmailOutbox.enqueueReset(tokenId,email,token)` and `enqueuePasswordChanged(tokenId,email,occurredAt)` in mandatory caller transactions. Typed encrypted purposes must match database purpose; legacy verification payloads remain readable.
+- [x] Generalize worker and sender without changing verification behavior; use a decrypt key ring, bounded retries and separate notice budget/deadline. No DB transaction during SMTP.
+- [x] Run targeted mail/limiter tests; report integration assumptions.
 
 ## Task 3: Session epoch and PostgreSQL privileges
 
-- [ ] Test old-session rejection, other account preservation, missing/legacy epochs, database failures, login/reset race and absence of stale-response cookie deletion.
-- [ ] Add CampusUser credential getters and `replacePassword(hash,cutoff)` plus principal epoch snapshot/redacted toString. Read current epoch uncached on primary before protected API dispatch; recheck after authentication.
-- [ ] Permit public reset POST routes while retaining CSRF; harden reset/root response headers, body errors and filter ordering.
-- [ ] Update exact credential-column grants, sequence USAGE, reset table DML, audit SELECT/INSERT, control health-only UPDATE; separate retention SELECT(id,occurred_at)/DELETE identity and positive/negative PostgreSQL tests.
-- [ ] Run backend and real PostgreSQL checks where available.
+- [x] Test old-session rejection, other account preservation, missing/legacy epochs, database failures, login/reset race and absence of stale-response cookie deletion.
+- [x] Add CampusUser credential getters and `replacePassword(hash,cutoff)` plus principal epoch snapshot/redacted toString. Read current epoch uncached on primary before protected API dispatch; recheck after authentication.
+- [x] Permit public reset POST routes while retaining CSRF; harden reset/root response headers, body errors and filter ordering.
+- [x] Update exact credential-column grants, sequence USAGE, reset table DML, audit SELECT/INSERT, control health-only UPDATE; separate retention SELECT(id,occurred_at)/DELETE identity and positive/negative PostgreSQL tests.
+- [x] Run backend and real PostgreSQL checks where available.
 
 ## Task 4: Frontend recovery and authentication coordination
 
-- [ ] Test strict canonical fragment capture/scrubbing, hash changes/StrictMode, no persistence; typed request/confirm contracts, no automatic replay, failed writes, stale CSRF and auth transition ordering.
-- [ ] Add `passwordResetApi.requestReset(email)` and `.confirmReset(token,newPassword)`, ForgotPassword/ResetPassword screens, explicit logout for authenticated link visitors, neutral recovery/help/verification guidance and success memory erasure.
-- [ ] Serialize intentional auth/session-creating transitions through a browser-wide Web Lock with local fallback; token-free cross-tab invalidation/refetch. Keep passive stale rejection cookie-free on server.
-- [ ] Update frontend password policy and existing policy tests. Run npm test and npm run build.
+- [x] Test strict canonical fragment capture/scrubbing, hash changes/StrictMode, no persistence; typed request/confirm contracts, no automatic replay, failed writes, stale CSRF and auth transition ordering.
+- [x] Add `passwordResetApi.requestReset(email)` and `.confirmReset(token,newPassword)`, ForgotPassword/ResetPassword screens, explicit logout for authenticated link visitors, neutral recovery/help/verification guidance and success memory erasure.
+- [x] Serialize intentional auth/session-creating transitions through a browser-wide Web Lock with local fallback; token-free cross-tab invalidation/refetch. Keep passive stale rejection cookie-free on server.
+- [x] Update frontend password policy and existing policy tests. Run npm test and npm run build.
 
 ## Task 5: Integration, maintenance and evidence
 
-- [ ] Add bounded separate maintenance phases for deadlines/ciphertext/retention and private worker health admission pause; use stable locking and fail-closed errors.
-- [ ] Configure worker capacities, primary DB time/timeouts, feature control and key/HMAC overlap support; document safe activation, rotation, retention, rollback and restore.
-- [ ] Run frontend/backend suites, real PostgreSQL privileges/locking, bundled HTTP/restart smoke with synthetic accounts. Record environmental limits rather than claim unmeasured SLO/deliverability.
-- [ ] Obtain independent whole-change review using GPT-6.1 Sol High; fix substantive findings with regression tests and rerun affected/full suites.
+- [x] Add bounded separate maintenance phases for deadlines/ciphertext/retention and private worker health admission pause; use stable locking and fail-closed errors.
+- [x] Configure worker capacities, primary DB time/timeouts, feature control and key/HMAC overlap support; document safe activation, rotation, retention, rollback and restore.
+- [x] Run frontend/backend suites, real PostgreSQL privileges/locking, bundled HTTP/restart smoke with synthetic accounts. Record environmental limits rather than claim unmeasured SLO/deliverability.
+- [x] Obtain independent whole-change review using GPT-6.1 Sol High; fix substantive findings with regression tests and rerun affected/full suites.
 
 ## Review focus
 
@@ -75,3 +75,5 @@
 ## Execution record
 
 Plan self-review: schema, flows, mail, sessions, privacy, operations and release requirements mapped above. Deployment SLOs, provider/domain configuration, production restore/failover and supported mail-client behavior require operator evidence; local implementation cannot establish them. Parallel tasks have disjoint file ownership and the interfaces above. Parent integrates and verifies all results.
+
+Implementation verified October 12, 2026: 61 frontend tests, TypeScript/Vite build, 112 backend unit/H2 tests, and three PostgreSQL18 privilege/recovery checks passed. Independent review completed; four findings addressed with startup, post-commit failure, body-admission/timeout and mounted-focus regressions. Bundled real HTTP/SMTP-capture/restart recovery passed. Final packaging includes the patched Vite8.0.16 toolchain and wrapped socket-timeout regression. No deployment or user database migration performed. External release gates remain in docs/PASSWORD-RESET.md; checked tasks mean local engineering work completed, not operational production certification.

@@ -108,3 +108,26 @@ Regression evidence: missing authentication guards initially returned 401/201 wh
 The Windows PostgreSQL harness now redirects subprocess output to files and uses a timeout. The HTTP smoke test now resolves the actual Java runtime instead of terminating only Oracle's PATH launcher; it verifies the listening port closes before restart.
 
 Security status: implementation and local verification complete. Docker rollout verification remains outstanding. No user database upgrade, public deployment, or remote push was performed. Existing PostgreSQL installations require the explicit procedure in docs/DATABASE-SECURITY.md.
+
+## Password reset verification - October 12, 2026
+
+Environment: Node25.2.0, Java21.0.12.1 compiling the Java17 target, cached Maven3.9.11, Spring Boot3.5.16, Vite8.0.16, disposable PostgreSQL18.6 clusters.
+
+| Check | Result |
+| --- | --- |
+| Frontend/API and mounted UI tests | 61 passed; no failures/skips |
+| TypeScript and Vite build | Passed |
+| Backend unit/H2 integration suite | 112 passed; no failures/errors/skips |
+| PostgreSQL fresh/legacy/V3 upgrades, restricted roles, HTTP recovery and lock-sensitive expiry | 3 passed; no failures/errors/skips |
+| Wrapped socket-timeout and saturated pre-body admission regression | 2 passed in final packaging check |
+| Bundled real HTTP and loopback SMTP capture | Passed reset link/notice, stalled body408, single use, session revocation, old/new password login, data/theme preservation and H2 JVM-restart persistence |
+| Dependency audit after patched Vite/source-map-js updates | Zero reported vulnerabilities |
+| Independent source review | Four P2 findings addressed; category/file references in docs/PASSWORD-RESET.md |
+
+The startup test uses fresh JVMs with valid and unreadable supplemental blocklists. Other regressions cover post-commit database failure, completion rollback, concurrent single use, cutoff/primary-clock expiry, stale-cookie protection, mail-purpose/key tampering, suppression budgets, disabled dispatch, notification failure and recovery health pause. The mounted jsdom regression verifies focus during password entry/pending confirmation and preserves uncertain and successful completion results.
+
+Commands: `npm.cmd test`, `npm.cmd run build`, `npm.cmd audit --json`, cached Maven `test`, `-Pwith-ui,postgres-it '-Dpostgres.test.bin=C:/Program Files/PostgreSQL/18/bin' verify`, final `-Pwith-ui -Dtest=ResetInputFilterTest package`, and `npm.cmd run test:smoke`. Maven used explicit local repository/user-home arguments because the wrapper/cache paths were inaccessible inside the sandbox; authorized elevated execution ran the installed cached Maven. All data and SMTP recipients were synthetic. Logs and test clusters remain ignored build outputs.
+
+Limits: PostgreSQL17, Docker/Compose rollout, actual browser rendering and supported mail-client fragment handling, hosted/external SMTP delivery, production load/SLO monitoring, and backup/failover/restore exercises were not run. CUA exposed no browser surface; jsdom is mounted DOM verification, not a browser visual check. Flyway warns that PostgreSQL18 exceeds its tested17 support range; passing local18 tests does not replace testing the deployed database version. Recovery is disabled in production pending the runbook release gates. No user database upgrade, public deployment or remote push was performed.
+
+Additional regression evidence: temporarily restoring the prior focus handler made the mounted test fail with both password fields cleared; restoring the fix passed7/7. The bundled smoke initially reproduced400 instead of408 for Tomcat's wrapped socket timeout; normalization plus the wrapped-exception unit test and final bundled smoke passed.

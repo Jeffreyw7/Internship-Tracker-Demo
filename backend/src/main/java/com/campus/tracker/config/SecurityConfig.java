@@ -21,7 +21,6 @@ import org.springframework.security.authentication.dao.DaoAuthenticationProvider
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.boot.ApplicationRunner;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
@@ -32,12 +31,11 @@ import java.util.Map;
 
 @Configuration
 public class SecurityConfig {
-    @Bean ApplicationRunner passwordPolicyStartupCheck() {
-        return args -> PasswordPolicy.verifyConfiguration();
-    }
-
     // Hash passwords with BCrypt cost 12; plaintext passwords are never stored.
-    @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(12); }
+    @Bean PasswordEncoder passwordEncoder() {
+        PasswordPolicy.verifyConfiguration();
+        return new BCryptPasswordEncoder(12);
+    }
 
     // Normalize the login email and load the stored account for Spring Security.
     @Bean UserDetailsService userDetailsService(UserRepository users) {

@@ -4,8 +4,9 @@ import { mkdtemp, readdir, readFile, writeFile, mkdir, rm } from 'node:fs/promis
 import { resolve, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
-import { createElement } from 'react';
+import { act, createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { JSDOM } from 'jsdom';
 
 // Compile real components using the repository's TypeScript dependency; no UI mocks.
 const workspace = resolve(import.meta.dirname,'..');
@@ -88,4 +89,85 @@ test('completion keeps verification help neutral and clears the password form', 
   assert.match(html,/Sign in with your new password/);
   assert.match(html,/verification/i);
   assert.doesNotMatch(html,/autoComplete="new-password"/i);
+});
+
+test('window focus preserves recovery input, pending confirmation, and its result', async () => {
+  const token='a'.repeat(42)+'A';
+  const dom=new JSDOM(`<!doctype html><div id="root"></div>`,{url:`http://localhost/#reset-password=${token}`});
+  const previous={window:globalThis.window,document:globalThis.document,HTMLElement:globalThis.HTMLElement,
+    Event:globalThis.Event,fetch:globalThis.fetch,actEnvironment:globalThis.IS_REACT_ACT_ENVIRONMENT};
+  const previousNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator');
+  Object.assign(globalThis,{window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,
+    Event:dom.window.Event,IS_REACT_ACT_ENVIRONMENT:true});
+  Object.defineProperty(globalThis,'navigator',{configurable:true,value:dom.window.navigator});
+  let finishConfirmation;
+  let profileCalls=0;
+  globalThis.fetch=async url=>{
+    if(url==='/api/auth/me') { profileCalls++; return new Response(JSON.stringify({message:'Sign in required'}),{status:401,headers:{'Content-Type':'application/json'}}); }
+    if(url==='/api/auth/csrf') return new Response(JSON.stringify({token:'fresh',headerName:'X-CSRF-TOKEN'}),{headers:{'Content-Type':'application/json'}});
+    if(url==='/api/auth/password-reset/confirm') return new Promise(resolve=>{finishConfirmation=resolve;});
+    throw new Error(`Unexpected request: ${url}`);
+  };
+  const container=dom.window.document.getElementById('root');
+  const {createRoot}=await import('react-dom/client');
+  const root=createRoot(container);
+  try {
+    const authModule=await import(pathToFileURL(join(temporary,'src/components/AuthGate.mjs')).href);
+    const {ThemeContext}=await import(pathToFileURL(join(temporary,'src/theme/ThemeProvider.mjs')).href);
+    const theme={preference:'system',canEdit:true,syncState:'idle',syncError:null,setPreference:()=>{},retrySync:()=>{},bindAccount:()=>{}};
+    await act(async()=>{root.render(createElement(ThemeContext.Provider,{value:theme},createElement(authModule.default)));});
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0));});
+
+    const passwordInputs=()=>Array.from(container.querySelectorAll('input[type="password"]'));
+    const setInput=(input,value)=>{
+      Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value').set.call(input,value);
+      input.dispatchEvent(new dom.window.Event('input',{bubbles:true}));
+    };
+    let [password,confirmation]=passwordInputs();
+    assert.ok(password&&confirmation,'the reset form should mount after the unauthenticated profile check');
+    const secret='a sufficiently long passphrase';
+    await act(async()=>{setInput(password,secret);});
+    await act(async()=>{dom.window.dispatchEvent(new dom.window.Event('focus'));await new Promise(resolve=>setTimeout(resolve,0));});
+    [password,confirmation]=passwordInputs();
+    assert.deepEqual([password.value,confirmation.value],[secret,''],'a focus profile refresh must preserve text entered in the recovery form');
+
+    await act(async()=>{setInput(confirmation,secret);});
+    await act(async()=>{container.querySelector('form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));});
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0));});
+    assert.equal(typeof finishConfirmation,'function','the reset request should be pending');
+    assert.match(container.textContent,/Resetting/);
+    const callsBeforePendingFocus=profileCalls;
+    await act(async()=>{dom.window.dispatchEvent(new dom.window.Event('focus'));});
+    assert.equal(profileCalls,callsBeforePendingFocus+1,'a focus profile refresh may run while reset confirmation is pending');
+    [password,confirmation]=passwordInputs();
+    assert.deepEqual([password.value,confirmation.value],[secret,secret]);
+
+    await act(async()=>{finishConfirmation(new Response(JSON.stringify({message:'Temporary reset failure'}),{status:503,headers:{'Content-Type':'application/json'}}));});
+    assert.match(container.textContent,/may already have changed/);
+    await act(async()=>{dom.window.dispatchEvent(new dom.window.Event('focus'));await new Promise(resolve=>setTimeout(resolve,0));});
+    assert.match(container.textContent,/may already have changed/,'a focus refresh after the request settles must preserve its result message');
+    assert.equal(profileCalls,callsBeforePendingFocus+2,'settled recovery forms may refresh the profile without unmounting');
+
+    [password,confirmation]=passwordInputs();
+    await act(async()=>{setInput(password,secret);setInput(confirmation,secret);});
+    await act(async()=>{container.querySelector('form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));});
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0));});
+    assert.equal(typeof finishConfirmation,'function','a second reset request should also be pending');
+    const callsBeforeSuccessFocus=profileCalls;
+    await act(async()=>{dom.window.dispatchEvent(new dom.window.Event('focus'));});
+    assert.equal(profileCalls,callsBeforeSuccessFocus+1);
+    [password,confirmation]=passwordInputs();
+    assert.deepEqual([password.value,confirmation.value],[secret,secret],'focus must preserve both fields during the committed attempt');
+    await act(async()=>{finishConfirmation(new Response(JSON.stringify({status:'PASSWORD_RESET_COMPLETE',message:'Password reset successfully.'}),{headers:{'Content-Type':'application/json'}}));});
+    assert.match(container.textContent,/Sign in with your new password/);
+    await act(async()=>{dom.window.dispatchEvent(new dom.window.Event('focus'));await new Promise(resolve=>setTimeout(resolve,0));});
+    assert.match(container.textContent,/Sign in with your new password/,'focus must keep the committed reset result visible');
+  } finally {
+    await act(async()=>root.unmount());
+    dom.window.close();
+    for(const [key,value] of Object.entries(previous)) {
+      if(value===undefined) delete globalThis[key]; else globalThis[key]=value;
+    }
+    if(previousNavigator) Object.defineProperty(globalThis,'navigator',previousNavigator); else delete globalThis.navigator;
+  }
 });

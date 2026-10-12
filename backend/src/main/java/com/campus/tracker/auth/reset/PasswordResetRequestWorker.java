@@ -29,6 +29,7 @@ public class PasswordResetRequestWorker {
     private final Semaphore workers=new Semaphore(2);
     private volatile long lastHealthy=System.nanoTime();
     private volatile boolean failed;
+    private volatile boolean stopping;
     private static final long[] RETRY={1,5,15,60};
 
     public PasswordResetRequestWorker(JdbcTemplate jdbc,DatabaseTime time,ResetControl control,RecoveryCapacity capacity,
@@ -38,13 +39,14 @@ public class PasswordResetRequestWorker {
         transaction.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);transaction.setTimeout(5);
     }
     public boolean healthy() { return !failed && System.nanoTime()-lastHealthy<TimeUnit.SECONDS.toNanos(120); }
+    @jakarta.annotation.PreDestroy public void stop() { stopping=true; }
     public void processPending() {
-        if (!workers.tryAcquire()) return;
+        if (stopping || !workers.tryAcquire()) return;
         try (var database=capacity.database()) {
             if (!control.enabled()) { failed=false;lastHealthy=System.nanoTime();return; }
             Instant now=time.now();
             var ids=jdbc.queryForList("SELECT id FROM password_reset_requests WHERE attempts<5 AND expires_at>? AND ((status='PENDING' AND next_attempt_at<=?) OR (status='PROCESSING' AND lease_expires_at<=?)) ORDER BY next_attempt_at,id LIMIT 25",UUID.class,stamp(now),stamp(now),stamp(now));
-            for (UUID id:ids) process(id);
+            for (UUID id:ids) { if (stopping) break; process(id); }
             failed=false;lastHealthy=System.nanoTime();
         } catch (RuntimeException failure) {
             failed=true;

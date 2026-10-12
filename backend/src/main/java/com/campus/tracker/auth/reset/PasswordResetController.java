@@ -29,7 +29,11 @@ public class PasswordResetController {
         var auth=SecurityContextHolder.getContext().getAuthentication();
         if (auth!=null && auth.getPrincipal() instanceof CampusPrincipal principal
                 && principal.id().equals(completed.userId())) {
-            var session=request.getSession(false);if (session!=null) session.invalidate();
+            var session=request.getSession(false);
+            if (session!=null) {
+                try { session.invalidate(); }
+                catch (IllegalStateException alreadyInvalidated) { /* Another request may have invalidated it after commit. */ }
+            }
             SecurityContextHolder.clearContext();
         }
         return ResponseEntity.ok().header("Cache-Control","no-store").body(completed.response());

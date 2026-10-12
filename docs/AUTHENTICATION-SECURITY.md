@@ -64,3 +64,5 @@ npm run build
 ```
 
 See [VALIDATION.md](../VALIDATION.md) for the actual verification record and [database security](DATABASE-SECURITY.md) for role separation.
+
+Password-reset controls, key rotation, strict body bounds and production activation are documented in [PASSWORD-RESET.md](PASSWORD-RESET.md). Recovery quotas remain active even when local verification quotas are disabled. Passive epoch rejection returns401 without deleting a session cookie; intentional auth transitions are serialized across tabs where Web Locks are supported.

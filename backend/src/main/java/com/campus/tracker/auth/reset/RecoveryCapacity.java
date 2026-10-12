@@ -9,7 +9,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Component
 public final class RecoveryCapacity {
     private final Semaphore ingress=new Semaphore(4);
-    private final Semaphore database=new Semaphore(8);
+    // Mail independently admits two workers. Reserve their two database phases within the total bound of eight.
+    private final Semaphore database=new Semaphore(6);
     public Permit ingress() { return acquire(ingress); }
     public Permit database() { return acquire(database); }
     private Permit acquire(Semaphore permits) {
