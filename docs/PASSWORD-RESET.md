@@ -11,8 +11,11 @@ The [system design](superpowers/specs/2026-10-10-password-reset-design.md) recor
 | Maintainability | Explicit short transactions, purpose-bound encryption, bounded retries and cleanup: `mail/OutboxCrypto.java`, `EmailOutboxWorker.java`, `auth/reset/ResetMaintenance.java` |
 | Admission | Recipient suppression preserves global mail capacity, separate notice budget, bounded body processing: `verification/AuthRateLimiter.java`, `ResetInputFilter.java`, `RecoveryCapacity.java` |
 | Independent review | Removed post-commit database read, validated blocklist at startup, bounded slow bodies, preserved recovery forms during focus refresh: `PasswordResetController.java`, `config/SecurityConfig.java`, `config/RequestReadLimits.java`, `src/components/AuthGate.tsx` |
+| October 15 follow-up review | Three parallel GPT-6.1 Sol High reviews checked recovery practices, maintainability and security. One low-severity finding was fixed: health/maintenance fallback writes now acquire database admission; saturation defers work. `auth/reset/ResetHealth.java`, `ResetMaintenance.java`, `ResetBackgroundAdmissionTest.java` |
 
 Java source paths are relative to `backend/src/main/java/com/campus/tracker/`; tests are under `backend/src/test/java/com/campus/tracker/`.
+
+The follow-up reviewers found no additional concrete recovery-practices or maintainability defect in the inspected scope. Research checked [OWASP recovery guidance](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html), [Spring programmatic transactions](https://docs.spring.io/spring-framework/reference/6.2/data-access/transaction/programmatic.html), and PostgreSQL [transaction isolation](https://www.postgresql.org/docs/17/transaction-iso.html), [wall-clock timestamps](https://www.postgresql.org/docs/17/functions-datetime.html) and [column grants](https://www.postgresql.org/docs/17/sql-grant.html). The security reviewer inspected the admission fix and confirmed that it addresses the finding. These are scoped source reviews; deployment release gates remain below.
 
 ## Activation
 

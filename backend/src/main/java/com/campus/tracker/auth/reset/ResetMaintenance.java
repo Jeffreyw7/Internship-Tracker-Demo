@@ -9,6 +9,7 @@ import java.time.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import static com.campus.tracker.auth.reset.PasswordResetService.stamp;
+import com.campus.tracker.auth.abuse.AuthThrottleException;
 
 /** Independent bounded phases never hold mail-row locks while acquiring token/account locks. */
 @Service
@@ -55,10 +56,14 @@ public class ResetMaintenance {
                 for (UUID id:ids) jdbc.update("DELETE FROM password_reset_requests WHERE id=? AND completed_at<? AND NOT EXISTS(SELECT 1 FROM password_reset_tokens t WHERE t.request_id=password_reset_requests.id)",id,stamp(now.minusSeconds(86400)));
             });
             failed=false;lastCompleted=System.nanoTime();
+        } catch (AuthThrottleException saturated) {
+            // A saturated pool is retried next poll without an unadmitted pause write.
         } catch (RuntimeException failure) {
             failed=true;
             LoggerFactory.getLogger(getClass()).error("Recovery maintenance failed category=DATABASE_OR_CAPACITY");
-            try { jdbc.update("UPDATE password_reset_control SET health_intake_paused=TRUE WHERE id=1"); } catch (RuntimeException ignored) { /* DB admission itself fails closed. */ }
+            try (var database=capacity.database()) {
+                jdbc.update("UPDATE password_reset_control SET health_intake_paused=TRUE WHERE id=1");
+            } catch (RuntimeException ignored) { /* DB admission itself fails closed. */ }
         } finally { running.set(false); }
     }
     private void phase(Runnable work) { transaction.executeWithoutResult(status->work.run()); }

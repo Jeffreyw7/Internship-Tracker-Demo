@@ -8,6 +8,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.*;
 import org.slf4j.LoggerFactory;
 import java.time.Instant;
+import com.campus.tracker.auth.abuse.AuthThrottleException;
 
 /** Separate health scheduling still pauses admission when intake or maintenance stops running. */
 @Service
@@ -28,9 +29,13 @@ public class ResetHealth {
             Instant oldest=jdbc.query("SELECT MIN(created_at) FROM password_reset_requests WHERE status IN ('PENDING','PROCESSING')",rs->{rs.next();var value=rs.getTimestamp(1);return value==null?null:value.toInstant();});
             boolean pause=!workerEnabled || !worker.healthy() || !maintenance.healthy() || (oldest!=null && oldest.isBefore(now.minusSeconds(120)));
             jdbc.update("UPDATE password_reset_control SET health_intake_paused=? WHERE id=1",pause);
+        } catch (AuthThrottleException saturated) {
+            // Defer until the next poll; even failure reporting must respect database admission.
         } catch (RuntimeException failure) {
             LoggerFactory.getLogger(getClass()).error("Recovery health check failed category=DATABASE_OR_CAPACITY");
-            try { jdbc.update("UPDATE password_reset_control SET health_intake_paused=TRUE WHERE id=1"); } catch (RuntimeException ignored) { /* Missing quota/primary state fails admission closed. */ }
+            try (var database=capacity.database()) {
+                jdbc.update("UPDATE password_reset_control SET health_intake_paused=TRUE WHERE id=1");
+            } catch (RuntimeException ignored) { /* Missing quota/primary state fails admission closed. */ }
         }
     }
     @Configuration
