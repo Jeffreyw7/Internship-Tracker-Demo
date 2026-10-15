@@ -96,3 +96,65 @@ Login, registration, and CSRF/session-creating requests are rate-limited. Limits
 The CSRF budget also applies to anonymous unsafe requests on unrelated paths, because Spring may create a session before returning 403. Login rejects missing, duplicate, or oversized email parameters with 400 before password verification. Existing-account passwords are not subjected to registration complexity rules.
 
 See [authentication security](AUTHENTICATION-SECURITY.md) for defaults, proxy configuration, and limits.
+
+## CSV imports
+
+Imports use the same authenticated session and `X-CSRF-TOKEN` header as ordinary application changes. Every import response bypasses HTTP caches. Uploaded values are rendered as text and never evaluated as formulas.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/application-imports/preview` | Parse a CSV and persist an immutable owner-bound review |
+| POST | `/application-imports/{id}/commit` | Atomically apply the reviewed batch and save its completion receipt |
+| GET | `/application-imports/{id}` | Read the review, successor reference, original receipt, or unresolved status |
+
+Preview accepts `multipart/form-data` with one `file` part and an optional JSON `options` part. Source column indices are strings, starting at zero; row numbers start at one after the header. Example options:
+
+```json
+{
+  "schemaVersion": 1,
+  "mapping": {"0": "applicationId", "1": "company", "2": "role", "3": "notes"},
+  "dateFormat": "ISO",
+  "rows": [
+    {"rowNumber": 2, "action": "Skip"},
+    {"rowNumber": 3, "clears": ["notes"], "stageMode": "KEEP"}
+  ],
+  "supersedesPreviewId": null
+}
+```
+
+Mapping destinations are `applicationId`, `company`, `role`, `location`, `status`, `appliedDate`, `deadline`, `followUpDate`, `notes`, `stages`, `legacyStages`, and `ignore`. Every column must be mapped or explicitly ignored before commit. A file-only preview returns the columns and validation issues for mapping; it changes no applications.
+
+Row corrections can specify `action` (`Add`, `Update`, `Skip`), `targetId`, `values` (editable field names to literal strings), `clears`, `stageMode` (`KEEP`, `REPLACE`), and `acknowledgeLegacy`. Blank/unmapped update cells preserve existing values. Clearing optional dates produces null; clearing optional text produces an empty string. Required fields cannot be cleared. The full normalized record must satisfy ordinary application validation.
+
+Application ID is a lookup control, not an editable ID. Unavailable, foreign or deleted IDs are rejected without falling back to Add. Normalized company/role matches only suggest candidates; Update requires an ID or explicit target selection. Multiple included rows cannot target one application, including rows that would be Unchanged.
+
+Dates use `YYYY-MM-DD` by default. Alternative file policies are `MDY` (`MM/DD/YYYY`) and `DMY` (`DD/MM/YYYY`), with strict parsing and no locale guessing. `Interview stages JSON` maps to `stages` and accepts an array of `{ "name": "Screen", "date": null, "state": "Planned" }` objects without IDs. Existing stages are preserved unless REPLACE is chosen. An explicit replacement `[]` clears stages. Legacy flattened stages cannot be reconstructed reliably; acknowledge excluding them or provide structured replacements. Imported owner IDs, versions, timestamps, sample/deleted flags and stage IDs are forbidden.
+
+Preview returns HTTP 201 and `{id,schemaVersion,policyVersion,createdAt,expiresAt,reviewDigest,committable,headers,rows,counts,issues}`. Rows include actions, field intents, server-captured target versions, normalized before/after values, differences, candidates and issues. A row-error review is persisted but cannot commit until corrected or explicitly excluded. Any edit needs a new preview. Pass the previous `supersedesPreviewId` when revising: successor creation and predecessor retirement share one transaction and quota reservation. GET of a retired predecessor identifies its successor if the response was lost.
+
+Commit accepts only the review digest and an explicit update acknowledgement:
+
+```json
+{
+  "reviewDigest": "the digest returned by preview",
+  "acknowledgement": {"existingApplicationsToUpdate": 2}
+}
+```
+
+The exact count is required even for zero updates. Commit rechecks ownership, deletion state, target versions, complete validation, expiry and policy compatibility. All included application changes and the minimal receipt commit together, or none do. Skip and Unchanged rows do not write applications. Repeated commits return the original receipt without repeating changes. A new preview ID is a new import and can create duplicates; candidate matching is advisory.
+
+GET returns `PREVIEW`, `COMPLETED` with its receipt, or `SUPERSEDED` with a successor ID. A locked status check that cannot establish terminal expiry returns HTTP 202 `UNRESOLVED` with Retry-After. An unlocked PREVIEW response does not prove a previously dispatched commit failed. After a lost/truncated/malformed commit response, reconcile using GET; never automatically replay POST or create a replacement import. Explicit retry uses the same reviewed ID. The frontend keeps only an owner-bound recovery reference in per-tab sessionStorage and blocks further application writes while the outcome remains unknown.
+
+Previews expire after 30 minutes. Their payload is erased on successful commit; minimal receipts remain for 30 days. Expiry cannot release a reservation while an admitted commit still holds the metadata row. Terminal 410 requires synchronized expiry determination; foreign/missing/purged IDs return 404 and never initiate work. Cleanup deletes metadata in bounded batches.
+
+Default ceilings are 2 MiB file, 500 data records, 32 columns, 64 KiB scalar cells, 256-byte headers, 256 KiB options, 3 MiB multipart request, 8 MiB canonical review and 128 KiB receipt. Limits include ignored columns and excluded rows. Admission also enforces persisted owner/global quotas and rates. Imports initially require fixed-length HTTP/1.1 at the application connector; chunked bodies, compressed bodies, absent length and direct HTTP/2 are rejected before body admission. A proxy must enforce bounded bytes and an absolute upload deadline, then forward fixed-length HTTP/1.1. Browser-generated FormData must supply its own Content-Type/boundary; do not set that header manually.
+
+The upload uses bounded in-memory parts, with no temporary files. One preview per owner and four per process may execute concurrently. The absolute preview/upload deadline is 30 seconds; a blocked socket read has a 5-second timeout, bounding permit recovery to 35 seconds. A connector-owned timeout may return an empty HTTP 408 rather than the application JSON error envelope. Parsing also has a 10-second CPU/work deadline. `campus.imports` configuration can lower the input/time/concurrency defaults listed in `application.yml`; startup rejects increases above protocol ceilings. Commit transactions are bounded to 30 seconds, import JDBC statements to 5 seconds and application target-lock queries to 2 seconds.
+
+Persisted admission defaults are 5/100 active previews and 40/800 MiB preview payload bytes per owner/globally; 2,000/100,000 retained receipts and 64 MiB/2 GiB receipt bytes including reservations; and 300/10,000 uncommitted metadata rows including superseded tombstones. Every PREVIEW reserves 128 KiB for a receipt, including expired previews until a safe locked transition. These storage quotas are configurable through the corresponding `campus.imports.owner-*` / `global-*` properties. Lower limits can reject new work while existing metadata drains through normal expiry; they do not erase existing records.
+
+Persisted one-minute rate windows default to 10/60 previews, 10/60 commits and 60/600 status requests per owner/globally (`owner-preview-rate`, `global-preview-rate`, and the corresponding `commit`/`status` properties under `campus.imports`). Cleanup runs every 60 seconds by default (`cleanup-delay-ms`) and deletes at most 100 eligible imports per pass, skipping busy rows. Receipt and preview retention are fixed policy values, not browser-clock decisions.
+
+Import errors include 400 malformed/forbidden content, 401 authentication, 403 CSRF, 404 unavailable metadata, 409 changed targets/policy/review, 410 expired/superseded preview, 411 required length, 413 resource limit, 422 invalid/unacknowledged review, 429 rate/storage/work capacity, and 503 busy database work. Treat ambiguous failures after commit dispatch as unknown outcomes and check status. Successful commit plus a failed history refresh is still a successful import; retry only the read.
+
+Exports now include Application ID and structured stages without stage IDs. Exports and downloaded reports quote CSV and prefix formula-leading text to reduce spreadsheet risk. Spreadsheet behavior varies, and a reimport can preserve that literal safety apostrophe; lossless round trips are not promised.

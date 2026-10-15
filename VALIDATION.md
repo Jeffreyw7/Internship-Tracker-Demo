@@ -1,5 +1,30 @@
 # Validation record
 
+## CSV import - October 15, 2026
+
+Implemented the approved CSV import workflow: selection/mapping/correction/exclusion, complete before/after review and update acknowledgement, immutable owner-bound previews with safe supersession, atomic application changes and durable receipts, status-only automatic recovery, retention/cleanup and persisted admission quotas. Application ID/structured-stage exports and import reports share spreadsheet-risk reduction. V4 and explicit runtime grants cover the new metadata tables. See the [API contract](docs/API.md#csv-imports), [implementation adjustments](docs/superpowers/specs/2026-10-15-csv-import-design.md#9-implementation-adjustments-and-verification-boundaries), and [consolidated independent review](docs/superpowers/reviews/2026-10-15-csv-import-implementation-review.md).
+
+| Final check | Result |
+| --- | --- |
+| `npm.cmd test` | 68 passed; no failures or skips, including 12 real React/JSDOM component/hook tests |
+| `npm.cmd run build` | Strict TypeScript and production Vite build passed |
+| Cached Maven 3.9.11, `-Pwith-ui,postgres-it '-Dpostgres.test.bin=C:/Program Files/PostgreSQL/18/bin' -B clean verify` from `backend/` | 129 backend tests and 2 PostgreSQL integration scenarios passed; no failures/errors/skips; rebuilt UI bundled in the JAR |
+| `node tests/http_smoke.mjs` against the final rebuilt JAR | Passed HTTP/assets, SMTP-capture verification/authentication, preferences/CRUD/undo, real multipart CSV Add/Update/preservation, native Node FormData through bundled serving and Vite proxy, CSRF, atomic conflicts, duplicate receipts, discarded-response GET reconciliation and application/import persistence through a full JVM restart |
+| Three independent reviews and focused fix rechecks | Completed; both P2 findings and the P3 finding fixed, with regression tests; no outstanding actionable finding |
+| `git diff --check` | Passed |
+
+Backend coverage includes full-source parsing/limits, strict options/stages, preservation/explicit clearing, advisory versus explicit owner-scoped matching, validation and ownership, atomic rollback including an injected second-write failure, stale ordinary/stage edits, duplicate same-ID and different-preview target races, repeated correction supersession, synchronized expiry/reservations, consistent quota races, 500-row Add/Update/Unchanged receipts, canonical integrity/schema rejection, and locked 30-day receipt purge. Real-controller socket tests cover encoded route aliases, missing/blank/invalid CSRF with zero parameter/input/servlet-part access, unsupported transport before admission, wrong-endpoint multipart/error dispatches, same-owner capacity, stalled/dripping bodies, and headers with zero body bytes. The latter exposed decoder retries after a failed socket read; retaining the first I/O failure now prevents another underlying read, with capacity available at six seconds and terminal 408 below eight seconds. The original 30-second elapsed upload deadline/35-second recovery bound remains covered.
+
+The PostgreSQL scenarios use fresh and legacy security-upgrade clusters, exercise V3-to-V4 migration and idempotent grants, and run HTTP imports with the restricted runtime role. Checks include supersession, update/status/duplicate commits, target lock cancellation and retry, foreign/deleted targets, locked expiry/cleanup, concurrent admission and receipt reservations, and 500-row batches. They also retain existing denied user/application deletion, schema/role/Flyway-history privilege checks. No user database was migrated.
+
+Frontend regression coverage includes exact update acknowledgement, literal uploaded markup, error descriptions and cross-page focus, draft/replacement invalidation, lost/malformed responses, read-only reconciliation without automatic POST replay, unresolved mutation locking, full-history refresh, stale accounts/session guards and receipt reopening after 404/410 retirement. JSDOM deliberately shims native dialog and scrolling APIs; these checks do not establish browser modal behavior.
+
+The three reviewers worked independently using GPT-6.1 Sol / High. All reports finished before fixes began; each reviewer then rechecked the changes in their scope. Backend review also identified four test-coverage gaps, addressed by five additional passing lifecycle tests. Security review found the encoded-route admission discrepancy; frontend review found stale retirement hiding new receipts and unresolved replacement previews retaining confirmation. A further real-socket regression found the failed-read retry issue, independently rechecked by the security reviewer.
+
+Checks used Node 25.2.0, Java 21.0.12.1 (Java 17 compilation target), cached Maven 3.9.11 and disposable PostgreSQL 18.6. The Windows Maven wrapper still fails before launch (`Cannot index into a null array`); cached Maven was invoked directly with an explicit workspace-local repository under ignored `.superpowers/sdd/2026-10-15-csv-import/m2`. Restricted javac ZipFS access required approved execution outside the sandbox. `npm.ps1` is blocked by execution policy, so `npm.cmd` was used. The maintained Node HTTP smoke runner is used because the Python launcher is unavailable.
+
+Actual browser visual/reflow/theme checks, native modal Tab/Shift+Tab/Escape behavior and screen-reader announcements remain **blocked**: computer-use inventory had no browsers, and both in-app and Chrome launch attempts returned unavailable. Native Node FormData and JSDOM are separate evidence, not browser verification. PostgreSQL 17 and a Java 17 runtime were not tested; Flyway warns that PostgreSQL 18 is newer than its tested support range. Hosted proxy/deployment behavior and external SMTP delivery were not verified.
+
 ## Main review fixes - October 4, 2026
 
 Fixed the four review findings on local `main`: verification counter lock contention/deadlock, verification requests bypassing the shared authentication work cap, stale application responses expiring a newer session, and concurrent duplicate registration returning a conflict instead of acceptance.

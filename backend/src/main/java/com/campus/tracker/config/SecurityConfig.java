@@ -3,6 +3,9 @@ package com.campus.tracker.config;
 
 import com.campus.tracker.auth.*;
 import com.campus.tracker.auth.abuse.*;
+import com.campus.tracker.application.importing.*;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
+import org.springframework.security.web.header.HeaderWriterFilter;
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -53,12 +56,16 @@ public class SecurityConfig {
 
     // Apply security checks before requests reach the REST controllers.
     @Bean SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper json, AuthRateLimiter limiter,
-            AuthWorkLimiter work, AuthAbuseProperties policies, AuthenticationProvider authenticationProvider) throws Exception {
+            AuthWorkLimiter work, AuthAbuseProperties policies, AuthenticationProvider authenticationProvider,
+            ImportAdmissionService importAdmission, ImportWorkLimiter importWork, ImportInputLimits importLimits) throws Exception {
         return http
                 .authenticationProvider(authenticationProvider)
                 // Store CSRF tokens in the session so writes require both the token and session cookie.
                 .csrf(csrf -> csrf.csrfTokenRepository(new HttpSessionCsrfTokenRepository()))
-                .addFilterBefore(new AuthAbuseFilter(limiter, policies, json), CsrfFilter.class)
+                .addFilterBefore(new ImportNoStoreFilter(), HeaderWriterFilter.class)
+                .addFilterBefore(new ImportHeaderFilter(json), CsrfFilter.class)
+                .addFilterBefore(new AuthAbuseFilter(limiter, policies, json), ImportHeaderFilter.class)
+                .addFilterAfter(new ImportRequestFilter(importAdmission, importWork, json, importLimits), AuthorizationFilter.class)
                 .addFilterBefore(new LoginWorkFilter(limiter, work, policies, json), UsernamePasswordAuthenticationFilter.class)
                 // Allow account setup and health checks; require a signed-in user for other API routes.
                 .authorizeHttpRequests(auth -> auth

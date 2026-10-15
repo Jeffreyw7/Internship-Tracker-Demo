@@ -10,7 +10,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.*;
 import static com.campus.tracker.application.ApplicationDtos.*;
 
@@ -18,8 +17,9 @@ import static com.campus.tracker.application.ApplicationDtos.*;
 @Transactional
 public class ApplicationService {
     private final ApplicationRepository repository;
+    private final ApplicationRules rules;
     // Receive the repository used by all reads and writes.
-    public ApplicationService(ApplicationRepository repository) { this.repository = repository; }
+    public ApplicationService(ApplicationRepository repository, ApplicationRules rules) { this.repository = repository; this.rules = rules; }
 
     // Build an owner-scoped search and return one page of response objects.
     @Transactional(readOnly = true)
@@ -57,6 +57,29 @@ public class ApplicationService {
     // Load a visible record using the same ownership rule as mutations.
     @Transactional(readOnly = true)
     public ApplicationView get(UUID ownerId, UUID id) { return ApplicationView.from(owned(ownerId, id, false)); }
+
+    // The outer import transaction owns these sorted locks through receipt persistence and commit.
+    public Map<UUID, ApplicationView> lockForImport(UUID ownerId, Collection<UUID> ids) {
+        Map<UUID, ApplicationView> result = new LinkedHashMap<>();
+        ids.stream().distinct().sorted().forEach(id -> repository.lockOwnedActive(id, ownerId)
+                .ifPresent(a -> result.put(id, ApplicationView.from(a))));
+        return result;
+    }
+
+    @Transactional(readOnly = true)
+    public Map<UUID, ApplicationView> findForImport(UUID ownerId, Collection<UUID> ids) {
+        if (ids.size() > 500) throw new ApiException(HttpStatus.BAD_REQUEST, "Too many import targets.");
+        Map<UUID, ApplicationView> result = new LinkedHashMap<>();
+        if (!ids.isEmpty()) repository.findImportTargets(ownerId, ids).forEach(a -> result.put(a.id, ApplicationView.from(a)));
+        return result;
+    }
+
+    @Transactional(readOnly = true)
+    public List<ApplicationView> findImportCandidates(UUID ownerId, String company, String role) {
+        if (company == null || role == null || company.trim().isEmpty() || role.trim().isEmpty()) return List.of();
+        return repository.findImportCandidates(ownerId, company.trim().toLowerCase(Locale.ROOT),
+                        role.trim().toLowerCase(Locale.ROOT), PageRequest.of(0, 6)).stream().map(ApplicationView::from).toList();
+    }
 
     // Create an ordinary user record; sample seeding uses the internal overload.
     public ApplicationView create(UUID ownerId, ApplicationRequest input) { return create(ownerId, input, false); }
@@ -113,17 +136,7 @@ public class ApplicationService {
 
     // Enforce date and interview rules before copying editable fields into the entity.
     private void apply(InternshipApplication a, ApplicationRequest input) {
-        if (input.status() != ApplicationStatus.SAVED && input.appliedDate() == null)
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Add the date you applied.");
-        if (input.appliedDate() != null && input.appliedDate().isAfter(LocalDate.now()))
-            throw new ApiException(HttpStatus.BAD_REQUEST, "The application date cannot be in the future.");
-        if (input.stages().stream().anyMatch(s -> s.state() == StageState.SCHEDULED && s.date() == null))
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Choose a date for each scheduled interview.");
-        // Reject duplicate submitted stage IDs before reconciling the stage collection.
-        Set<UUID> stageIds = new HashSet<>();
-        for (StageRequest s : input.stages()) {
-            if (s.id() != null && !stageIds.add(s.id())) throw new ApiException(HttpStatus.BAD_REQUEST, "Duplicate interview stage ID.");
-        }
+        input = rules.normalizeAndValidate(input);
         a.company = input.company().trim(); a.role = input.role().trim(); a.location = input.location().trim();
         a.status = input.status(); a.appliedDate = input.appliedDate(); a.deadline = input.deadline();
         a.followUpDate = input.followUpDate(); a.notes = input.notes(); a.updatedAt = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);

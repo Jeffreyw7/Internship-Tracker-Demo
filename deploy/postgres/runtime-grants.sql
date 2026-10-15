@@ -8,4 +8,5 @@ GRANT UPDATE (theme_preference, email_verified_at) ON TABLE public.campus_users 
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.email_verification_tokens, public.email_outbox, public.auth_rate_limits TO campus_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.applications TO campus_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.interview_stages TO campus_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.application_imports, public.application_import_quota_locks, public.application_import_rates TO campus_runtime;
 REVOKE ALL ON TABLE public.flyway_schema_history FROM campus_runtime;

@@ -4,8 +4,10 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;
   readonly retryAfterSeconds?: number;
-  constructor(status: number, message: string, retryAfterSeconds?: number, code?: string) {
-    super(message); this.name='ApiError'; this.status=status; this.retryAfterSeconds=retryAfterSeconds; this.code=code;
+  readonly details?: {rowNumber:number;field:string;message:string}[];
+  readonly authoritative:boolean;
+  constructor(status: number, message: string, retryAfterSeconds?: number, code?: string, details?:{rowNumber:number;field:string;message:string}[], authoritative=false) {
+    super(message); this.name='ApiError'; this.status=status; this.retryAfterSeconds=retryAfterSeconds; this.code=code;this.details=details;this.authoritative=authoritative;
   }
 }
 async function responseError(response:Response, fallback:string):Promise<ApiError> {
@@ -23,9 +25,12 @@ async function responseError(response:Response, fallback:string):Promise<ApiErro
   }
   const display=response.status===429 && retryAfterSeconds!==undefined
     ? `${message} Try again in ${retryAfterSeconds} seconds.` : message;
-  const code=data && typeof data==='object' && 'code' in data && typeof data.code==='string' ? data.code : undefined;
-  return new ApiError(response.status,display,retryAfterSeconds,code);
+  const code=data && typeof data==='object' && 'code' in data && typeof data.code==='string'&&data.code.length<=128 ? data.code : undefined;
+  const details=data&&typeof data==='object'&&'details' in data&&Array.isArray(data.details)?data.details.slice(0,500).filter((d):d is {rowNumber:number;field:string;message:string}=>!!d&&typeof d==='object'&&Number.isSafeInteger(d.rowNumber)&&typeof d.field==='string'&&typeof d.message==='string').map(d=>({rowNumber:d.rowNumber,field:d.field.slice(0,128),message:d.message.slice(0,2048)})):undefined;
+  return new ApiError(response.status,display,retryAfterSeconds,code,details,!!code&&code.startsWith('IMPORT_'));
 }
+export class StaleSessionError extends Error {constructor(){super('This operation belongs to an earlier workspace. Reopen it in your current account.');this.name='StaleSessionError';}}
+export function assertCurrent(isCurrent:()=>boolean) {if(!isCurrent())throw new StaleSessionError();}
 // Keep the CSRF token in memory only; the browser manages the HttpOnly session cookie.
 let csrf: { token: string; headerName: string } | null = null;
 // Invalidate expiration side effects from requests belonging to an older login.
@@ -36,19 +41,24 @@ export function sessionGuard():()=>boolean {
   return ()=>generation===sessionGeneration;
 }
 // Fetch the session token and detect when a static server is answering instead of Java.
-export async function refreshCsrf() {
+export async function refreshCsrf(isCurrent:()=>boolean=()=>true) {
+  const generation=sessionGeneration;assertCurrent(isCurrent);
   const response = await fetch('/api/auth/csrf', { credentials:'same-origin', cache:'no-store' });
   // Translate HTTP failures and notify the authentication gate when a protected session expires.
   if(!response.ok) throw await responseError(response, 'Cannot connect to the Java server. Start the backend and try again.');
   if(!response.headers.get('content-type')?.includes('application/json')) throw new ApiError(503, 'The Java API is not running. Start Spring Boot and try again.');
-  csrf=await response.json();
+  const token:unknown=await response.json();assertCurrent(()=>generation===sessionGeneration&&isCurrent());
+  if(!token||typeof token!=='object'||!('token' in token)||typeof token.token!=='string'||!token.token||!('headerName' in token)||typeof token.headerName!=='string'||!token.headerName)throw new ApiError(503,'The server returned an invalid security token. Refresh your connection and try again.');
+  csrf={token:token.token,headerName:token.headerName};
 }
 // Attach CSRF headers to writes and include same-origin session credentials.
 export async function request<T>(path:string, init:RequestInit={}, isCurrent:()=>boolean=()=>true):Promise<T> {
   const generation = sessionGeneration;
   const method=init.method ?? 'GET';
   const write=!['GET','HEAD','OPTIONS'].includes(method);
-  if(write&&!csrf) await refreshCsrf();
+  const current=()=>generation===sessionGeneration&&isCurrent();assertCurrent(current);
+  if(write&&!csrf) await refreshCsrf(current);
+  assertCurrent(current);
   const headers=new Headers(init.headers);
   if(write && csrf) headers.set(csrf.headerName,csrf.token);
   headers.set('Accept','application/json');
@@ -69,7 +79,7 @@ export async function request<T>(path:string, init:RequestInit={}, isCurrent:()=
   // Handle successful responses with no JSON body, such as logout.
   if(response.status===204) return undefined as T;
   if(!response.headers.get('content-type')?.includes('application/json')) throw new ApiError(503,'The Java API is unavailable. Start Spring Boot and try again.');
-  return response.json() as Promise<T>;
+  const data:unknown=await response.json();assertCurrent(current);return data as T;
 }
 // Serialize JSON consistently with its content-type header.
 export const jsonBody=(value:unknown)=>({headers:{'Content-Type':'application/json'},body:JSON.stringify(value)});

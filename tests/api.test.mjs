@@ -2,7 +2,7 @@
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { applicationApi, toPayload } from '../src/data/applicationApi.ts';
-import { ApiError, request, refreshCsrf, authApi } from '../src/data/api.ts';
+import { ApiError, StaleSessionError, request, refreshCsrf, authApi } from '../src/data/api.ts';
 import { blankDraft, today, activities } from '../src/domain/application.ts';
 import { filterApplications } from '../src/domain/selectors.ts';
 import { sampleApplications } from './fixtures/seed.ts';
@@ -134,21 +134,21 @@ test('requests started during login cannot expire the completed login',async()=>
   } finally {if(previousWindow===undefined)delete globalThis.window;else globalThis.window=previousWindow;}
 });
 
-test('every page of an old history load retains its original session guard',async()=>{
+test('an account switch stops old history pagination before its next dispatch',async()=>{
   const previousWindow=globalThis.window;
   const events=new EventTarget();globalThis.window=events;
   let expired=0;events.addEventListener('campus:session-expired',()=>expired++);
-  let finishFirst;
+  let finishFirst;let nextPageCalls=0;
   globalThis.fetch=async(url)=>{
     if(url==='/api/auth/csrf')return json({token:'token',headerName:'X-CSRF-TOKEN'});
     if(url==='/api/auth/login')return json({id:'new-account',displayName:'New',email:'new@example.test'});
     if(url.endsWith('page=0'))return new Promise(resolve=>{finishFirst=resolve;});
-    return json({message:'Old session ended'},401);
+    nextPageCalls++;return json({message:'Old session ended'},401);
   };
   try {
-    const pending=applicationApi.list();const rejected=assert.rejects(pending,e=>e.status===401);
+    const pending=applicationApi.list();const rejected=assert.rejects(pending,StaleSessionError);
     await authApi.login('new@example.test','Synthetic-password-123!');
     finishFirst(json({content:[{id:'old-app'}],totalPages:2}));await rejected;
-    assert.equal(expired,0);
+    assert.equal(expired,0);assert.equal(nextPageCalls,0);
   } finally {if(previousWindow===undefined)delete globalThis.window;else globalThis.window=previousWindow;}
 });
