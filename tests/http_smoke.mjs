@@ -317,7 +317,7 @@ try {
   process.exitCode = 1;
 } finally {
   await vite?.close();
-  await stop(server).catch(error => console.error(error));
+  await stop(server).catch(error => { console.error(error); process.exitCode = 1; });
   fs.closeSync(log);
   for (const socket of smtpSockets) socket.destroy();
   await new Promise(resolve => smtp.close(resolve));
