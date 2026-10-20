@@ -1,0 +1,182 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  verify:
+    name: Application verification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Check out the tested revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Set up Temurin 17
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+          cache-dependency-path: |
+            backend/pom.xml
+            backend/.mvn/wrapper/maven-wrapper.properties
+
+      - name: Verify CI guard failure cases
+        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py' -v
+
+      # Smoke imports Vite, so its development dependencies must be installed.
+      - name: Install frontend dependencies
+        timeout-minutes: 5
+        run: npm ci --include=dev
+
+      - name: Test frontend
+        timeout-minutes: 5
+        run: npm test
+
+      - name: Build frontend
+        timeout-minutes: 5
+        run: |
+          npm run build
+          test -s dist/index.html
+
+      - name: Verify Docker and Java prerequisites
+        timeout-minutes: 2
+        run: |
+          docker version
+          docker info
+          java -XshowSettings:properties -version 2>&1 | tee "$RUNNER_TEMP/ci-java-version.log"
+          grep -Eq 'java.specification.version = 17$' "$RUNNER_TEMP/ci-java-version.log"
+
+      - name: Verify backend, PostgreSQL privileges, and bundled JAR
+        timeout-minutes: 25
+        working-directory: backend
+        run: sh ./mvnw -B -ntp -Pwith-ui,postgres-it clean verify
+
+      - name: Require executed backend and PostgreSQL tests
+        run: python3 .github/scripts/check_ci.py reports backend
+
+      - name: Exercise bundled application over HTTP and SMTP
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ci-logs"
+          npm run test:smoke 2>&1 | tee "$RUNNER_TEMP/ci-logs/smoke.log"
+
+      - name: Keep selected verification diagnostics on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: verification-failure-${{ github.run_attempt }}
+          path: |
+            backend/target/surefire-reports/TEST-*.xml
+            backend/target/failsafe-reports/TEST-*.xml
+            backend/target/failsafe-reports/failsafe-summary.xml
+            ${{ runner.temp }}/ci-logs/smoke.log
+          if-no-files-found: warn
+          retention-days: 3
+
+  containers:
+    name: Container builds
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      DOCKER_BUILDKIT: '1'
+    steps:
+      - name: Check out the tested revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify Docker and Compose prerequisites
+        timeout-minutes: 2
+        run: |
+          docker version
+          docker info
+          docker compose version
+
+      - name: Validate Compose with synthetic CI credentials
+        timeout-minutes: 2
+        env:
+          DATABASE_ADMIN_PASSWORD: ci-only-admin-password
+          MIGRATION_DATABASE_PASSWORD: ci-only-migrator-password
+          DATABASE_PASSWORD: ci-only-runtime-password
+        run: docker compose --file compose.yaml config --quiet
+
+      # Both builds use the same daemon, preserving their shared verified stages.
+      # No image or BuildKit cache is published or restored from another run.
+      - name: Build migration image
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ci-logs"
+          docker build --progress=plain --target migrate --tag campus-ci-migrate . 2>&1 | tee "$RUNNER_TEMP/ci-logs/migrate-build.log"
+
+      - name: Build application image
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          docker build --progress=plain --target app --tag campus-ci-app . 2>&1 | tee "$RUNNER_TEMP/ci-logs/app-build.log"
+
+      - name: Verify non-root Java 17 image runtimes
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          for image in campus-ci-migrate campus-ci-app; do
+            docker image inspect --format '{{.Config.User}}' "$image"
+            test "$(docker run --rm --entrypoint id "$image" -u)" -ne 0
+            docker run --rm --entrypoint java "$image" -version 2>&1 | tee "$RUNNER_TEMP/ci-logs/$image-java.log"
+            grep -Eq 'version "17([.]|")' "$RUNNER_TEMP/ci-logs/$image-java.log"
+          done
+
+      - name: Keep selected container diagnostics on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: containers-failure-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-logs/*.log
+          if-no-files-found: warn
+          retention-days: 3
+
+  required:
+    name: CI required
+    if: ${{ always() }}
+    needs: [verify, containers]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out gate policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify gate failure cases
+        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py' -v
+
+      - name: Require both jobs to have succeeded
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python3 .github/scripts/check_ci.py required

@@ -92,7 +92,7 @@ npm run build
 npm run test:smoke
 ```
 
-The Node smoke runner uses only built-in modules and required project runtimes. The older Python runner remains available for environments that already use it.
+The Node smoke runner uses built-in Node modules and dynamically imports the project's Vite development dependency for proxy checks. Install development dependencies with `npm ci` (or explicitly `npm ci --include=dev`) before running it. The older Python runner remains available for environments that already use it.
 
 ## Security implementation verification â€” September 17, 2026
 
@@ -174,3 +174,46 @@ git diff --check
 Environment adaptations: PowerShell blocks the `npm.ps1` shim, so `npm.cmd` was used. The Maven wrapper's Windows path resolution failed; the cached Maven executable with an explicit local repository was used. One compilation attempt reported a dependency-path error; the subsequent focused tests, full suite, and packaging succeeded. Local PostgreSQL launch required execution outside the restricted process sandbox; it initialized and stopped only disposable test clusters under `backend/target`.
 
 Limits: PostgreSQL checks used installed PostgreSQL 18.6; Flyway emitted its existing warning that this version is newer than its tested support range. The Docker/PostgreSQL 17 path, production load tests, and browser UI QA were not run for this patch. The request reviewer noted that a deliberately paused commit transaction is not a separate new HTTP test; permit lifetime through completion/rollback was checked by source review, while existing lifecycle/PostgreSQL tests cover transaction rollback. No source-backed bypass or regression remained in either review.
+
+## Continuous integration implementation — 2026-10-20
+
+Added GitHub Actions application verification and container-build jobs with the exact-success `CI required` gate. Coverage, trust boundaries, timeouts, reproduction commands and the separate branch-protection recommendation are documented in [docs/CI.md](docs/CI.md). No branch-protection or other repository setting was changed.
+
+The results below are new local evidence from Windows for this CI change. They are separate from the historical runs above. Execution used checksum-verified portable Temurin **17.0.20.1+1** and Node **22.23.3** with npm **10.9.9**, plus Maven **3.9.11** and actionlint **1.7.12**. Backend execution and the packaged-JAR smoke used the actual Java 17 runtime, rather than a newer JDK with a Java 17 compilation target.
+
+| Check | Actual result |
+| --- | --- |
+| `npm ci --include=dev` | Passed after repairing two missing package-lock records; see installation note below |
+| `npm test` | 68 passed, no failures or skips |
+| `npm run build` | Strict TypeScript and production Vite build passed |
+| Maven `clean test` on actual Java 17 | 138 passed, no failures/errors/skips; local Windows unit-suite runtime was approximately 2 minutes 32 seconds |
+| Maven `-Pwith-ui -DskipTests package` after the successful test run | Passed against the same unchanged backend source; skipping applied only to this packaging step |
+| Bundled frontend verification | All 5 files in the rebuilt `dist` were byte-identical to their copies in the executable JAR |
+| `npm run test:smoke` on Node 22 / Java 17 | Passed, exit 0; real HTTP/assets, SMTP verification/authentication, preferences, CRUD/undo, multipart CSV Add/Update/preservation, native FormData through bundled serving and the Vite proxy, CSRF, atomic conflict, duplicate receipts, lost-response GET reconciliation, and application/import recovery across a JVM restart |
+| CI guard tests | 16 passed, including real CLI exit codes, missing/failing/cancelled/skipped job results, invalid reports, and each missing PostgreSQL scenario |
+| actionlint 1.7.12 | Passed |
+| Bash syntax checks | All 7 multiline workflow Bash blocks passed `bash -n`; Maven wrapper and PostgreSQL provisioning-script syntax checks passed |
+| Node smoke-runner syntax | `node --check tests/http_smoke.mjs` passed |
+| Actual `postgres-it` Failsafe invocation | Failed as required, exit 1: 3 discovered tests, 3 errors, 0 skips because Docker is absent; this establishes failure propagation, not PostgreSQL correctness |
+| CI report guard against those actual failed PostgreSQL reports | Rejected the reports with exit 1 |
+| Compose validation and both image builds/runtime checks | Unavailable locally because Docker is absent; no passing result claimed |
+| Fresh independent reviews | CI correctness/reproducibility and security/resource reviews found no actionable findings; the security reviewer independently reran all 16 guard tests successfully |
+
+The initial `npm ci` failed because `package-lock.json` omitted the required `@emnapi/core` and `@emnapi/runtime` **1.10.0** records. The lockfile repair adds only those two records and changes no dependency version. The subsequent `npm ci --include=dev`, tests and build all passed. npm audit also reported **2 existing high-severity advisories** involving `source-map-js` and `vite`; their versions remain unchanged. Resolving those advisories is outside this CI change.
+
+The Maven commands used with the verified Java 17 runtime, from `backend/`, were:
+
+```powershell
+mvn -B -ntp '-Dmaven.repo.local=C:/Users/jeffr/.m2/repository' clean test
+mvn -B -ntp '-Dmaven.repo.local=C:/Users/jeffr/.m2/repository' '-Pwith-ui' '-DskipTests' package
+# Expected failure here: this machine has no Docker daemon.
+mvn -B -ntp '-Dmaven.repo.local=C:/Users/jeffr/.m2/repository' '-Ppostgres-it' failsafe:integration-test failsafe:verify
+```
+
+The local 138-test backend result includes the two pre-existing, uncommitted `ImportCommitPermitServerTest` cases. The isolated CI-only publication excludes that test class and its plan while preserving the local work, so 136 backend tests are expected for that published snapshot. This expected count is a source-scope distinction, not a hosted passing result; the workflow does not hard-code backend test counts.
+
+The successful test run precedes the packaging-only skip above. CI itself does not skip tests: it uses one `sh ./mvnw -B -ntp -Pwith-ui,postgres-it clean verify` invocation, then requires valid executed test reports before running smoke.
+
+Limits: real PostgreSQL 17 Testcontainers correctness, Compose parsing, image builds and container runtime checks still require a Docker-capable environment. Full Compose rollout and migration-failure startup gating are separate from the selected CI build checks and were not run. Browser visual/accessibility checks, hosted deployment and external SMTP delivery were not run. Local Windows timings do not measure hosted workflow runtime; the 5–15 minute estimate in docs/CI.md is explicitly unmeasured.
+
+Hosted execution is pending. Although the GitHub CLI credential lacks workflow publication permission, a separate, existing Git Credential Manager credential has `gist`, `repo` and `workflow` permissions and is available for isolated CI-branch and draft-PR publication. No hosted result is claimed yet. Publication uses a temporary index containing only the CI changes; the current branch, index and pre-existing uncommitted regression test/plan remain untouched. No image is published and no repository setting is changed.
