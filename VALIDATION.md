@@ -196,7 +196,7 @@ The results below are new local evidence from Windows for this CI change. They a
 | Node smoke-runner syntax | `node --check tests/http_smoke.mjs` passed |
 | Actual `postgres-it` Failsafe invocation | Failed as required, exit 1: 3 discovered tests, 3 errors, 0 skips because Docker is absent; this establishes failure propagation, not PostgreSQL correctness |
 | CI report guard against those actual failed PostgreSQL reports | Rejected the reports with exit 1 |
-| Compose validation and both image builds/runtime checks | Unavailable locally because Docker is absent; no passing result claimed |
+| Local Compose validation and both image builds/runtime checks | Unavailable locally because Docker is absent; the hosted results are recorded separately below |
 | Fresh independent reviews | CI correctness/reproducibility and security/resource reviews found no actionable findings; the security reviewer independently reran all 16 guard tests successfully |
 
 The initial `npm ci` failed because `package-lock.json` omitted the required `@emnapi/core` and `@emnapi/runtime` **1.10.0** records. The lockfile repair adds only those two records and changes no dependency version. The subsequent `npm ci --include=dev`, tests and build all passed. npm audit also reported **2 existing high-severity advisories** involving `source-map-js` and `vite`; their versions remain unchanged. Resolving those advisories is outside this CI change.
@@ -210,10 +210,27 @@ mvn -B -ntp '-Dmaven.repo.local=C:/Users/jeffr/.m2/repository' '-Pwith-ui' '-Dsk
 mvn -B -ntp '-Dmaven.repo.local=C:/Users/jeffr/.m2/repository' '-Ppostgres-it' failsafe:integration-test failsafe:verify
 ```
 
-The local 138-test backend result includes the two pre-existing, uncommitted `ImportCommitPermitServerTest` cases. The isolated CI-only publication excludes that test class and its plan while preserving the local work, so 136 backend tests are expected for that published snapshot. This expected count is a source-scope distinction, not a hosted passing result; the workflow does not hard-code backend test counts.
+The local 138-test backend result includes the two pre-existing, uncommitted `ImportCommitPermitServerTest` cases. The isolated CI-only publication excludes that test class and its plan while preserving the local work, so that published snapshot contains 136 backend tests, as confirmed by the hosted run below. This count difference reflects source scope; the workflow does not hard-code backend test counts.
 
 The successful test run precedes the packaging-only skip above. CI itself does not skip tests: it uses one `sh ./mvnw -B -ntp -Pwith-ui,postgres-it clean verify` invocation, then requires valid executed test reports before running smoke.
 
-Limits: real PostgreSQL 17 Testcontainers correctness, Compose parsing, image builds and container runtime checks still require a Docker-capable environment. Full Compose rollout and migration-failure startup gating are separate from the selected CI build checks and were not run. Browser visual/accessibility checks, hosted deployment and external SMTP delivery were not run. Local Windows timings do not measure hosted workflow runtime; the 5–15 minute estimate in docs/CI.md is explicitly unmeasured.
+Local Docker remains absent; the failed local PostgreSQL attempt above is separate from the successful hosted PostgreSQL/container execution below. Full Compose rollout and migration-failure startup gating are separate from the selected CI build checks and were not run. Browser visual/accessibility checks, hosted deployment and external SMTP delivery were not run. Local Windows timings do not measure hosted workflow runtime.
 
-Hosted execution is pending. Although the GitHub CLI credential lacks workflow publication permission, a separate, existing Git Credential Manager credential has `gist`, `repo` and `workflow` permissions and is available for isolated CI-branch and draft-PR publication. No hosted result is claimed yet. Publication uses a temporary index containing only the CI changes; the current branch, index and pre-existing uncommitted regression test/plan remain untouched. No image is published and no repository setting is changed.
+### Hosted verification
+
+[GitHub Actions run 39469068417](https://github.com/Jeffreyw7/Internship-Tracker-Demo/actions/runs/39469068417) **succeeded** for CI source commit [`6e47873f0812b634cd0c6c446b3d91bc300ee705`](https://github.com/Jeffreyw7/Internship-Tracker-Demo/commit/6e47873f0812b634cd0c6c446b3d91bc300ee705) in [draft PR #1](https://github.com/Jeffreyw7/Internship-Tracker-Demo/pull/1), targeting `CSV-import`. It ran on Ubuntu 24.04 with Node 22 and actual Temurin **17.0.20.1**.
+
+| Hosted check | Actual result |
+| --- | --- |
+| Frontend tests/build | 68 tests passed; production build passed |
+| Backend unit suite | 136 passed, no failures/errors/skips |
+| Real PostgreSQL 17 Testcontainers integration | All 3 scenarios passed against PostgreSQL **17.11**, no failures/errors/skips; 52.08 seconds |
+| Required Maven report guard | Verified 136 backend tests and all 3 PostgreSQL scenarios |
+| Bundled HTTP/SMTP/Vite/H2 restart smoke | Passed |
+| Compose configuration | Passed |
+| Both `migrate` and `app` image builds/runtime checks | Passed; both runtime users were non-root and Java 17 |
+| `Application verification` / `Container builds` / `CI required` | All succeeded; respective job durations were **4 minutes 25 seconds**, **3 minutes 21 seconds**, and **6 seconds** |
+
+The PostgreSQL scenarios exercised provisioning, legacy upgrade, runtime grants and import behavior. This run establishes the PostgreSQL 17 and container-build coverage that could not execute locally. It does not establish full Compose rollout or migration-failure startup gating.
+
+A separate, existing Git Credential Manager credential supplied workflow publication permission; the GitHub CLI credential alone lacked that permission. The isolated CI publication used a temporary index, preserving the current branch/index and the pre-existing uncommitted regression test/plan. No image was published and no repository setting was changed. The hosted evidence above applies to the linked source commit; later documentation or formatting updates have their own run.
