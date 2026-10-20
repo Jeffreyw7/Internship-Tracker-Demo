@@ -173,7 +173,45 @@ git diff --check
 
 Environment adaptations: PowerShell blocks the `npm.ps1` shim, so `npm.cmd` was used. The Maven wrapper's Windows path resolution failed; the cached Maven executable with an explicit local repository was used. One compilation attempt reported a dependency-path error; the subsequent focused tests, full suite, and packaging succeeded. Local PostgreSQL launch required execution outside the restricted process sandbox; it initialized and stopped only disposable test clusters under `backend/target`.
 
-Limits: PostgreSQL checks used installed PostgreSQL 18.6; Flyway emitted its existing warning that this version is newer than its tested support range. The Docker/PostgreSQL 17 path, production load tests, and browser UI QA were not run for this patch. The request reviewer noted that a deliberately paused commit transaction is not a separate new HTTP test; permit lifetime through completion/rollback was checked by source review, while existing lifecycle/PostgreSQL tests cover transaction rollback. No source-backed bypass or regression remained in either review.
+Limits: PostgreSQL checks used installed PostgreSQL 18.6; Flyway emitted its existing warning that this version is newer than its tested support range. The Docker/PostgreSQL 17 path, production load tests, and browser UI QA were not run for this patch. The transaction permit-lifetime coverage gap was subsequently closed by the dedicated real-HTTP tests recorded below. No source-backed bypass or regression remained in either review.
+
+## CSV import transaction permit lifetime — 2026-10-20
+
+Added `ImportCommitPermitServerTest` against baseline `fbbcd589454321f30bb39c7adb172c5b29a9c91b`. The final patch changes only tests and documentation. Runtime admission, parsing, persistence, grants and transaction behavior are unchanged.
+
+The test-only repository advisor proceeds with the real `ImportPreviewRepository.complete` SQL before registering transaction synchronization. In `beforeCommit`, each test verifies the active transaction is `ImportCommitService.commit`, observes the flushed application rows and pending COMPLETED receipt on the transaction-bound connection, then holds completion with a bounded latch. An outer HTTP observer proves the full advertised confirmation body was read and later signals after the security/admission filter has returned. An outside database snapshot simultaneously sees only the original PREVIEW and no new applications or receipt, establishing that real SQL ran but has not committed.
+
+Both success and rollback scenarios use real authenticated, CSRF-protected HTTP confirmations and a test-only process limit of one. While the transaction is paused, valid same-owner and different-owner confirmations return 429 with exact `IMPORT_BUSY`; GET returns the original PREVIEW without a receipt. Success verifies the durable receipt, application IDs/versions, metadata cleanup, duplicate receipt and later writes by both owners. Rollback throws a controlled test-only `TEST_FORCED_ROLLBACK` ApiException from `beforeCommit`, verifies `STATUS_ROLLED_BACK`, exact original metadata/canonical payload and reservation preservation, no partial applications/receipt, then successfully retries the identical confirmation. Recovery probes await outer request completion, not merely transaction completion. Gates are released in finally blocks and outstanding response futures are cancelled on cleanup; no arbitrary sleeps or manually acquired work permits are used.
+
+Mutation sensitivity was executed, not inferred: the controller was temporarily constructor-injected with the real work limiter and released its owner permit immediately after `confirmations.read(request)`. Both tests failed at the intended `assertBusy` assertion because a competing valid import returned a successful receipt while the original transaction was still paused. The mutant Maven run exited 1 with 2 assertion failures, 0 errors and 0 skips. A finally block restored the controller's exact original bytes; SHA256 before/after was `556E647F96EF2B0E4C32483E3F4DE5F96B4BDD91CCD4AB87234F3094AADB719B`. Production sources have no diff against the baseline after restoration.
+
+| Check | Actual result |
+| --- | --- |
+| New test class before mutation | 2 passed, 0 failures/errors/skips |
+| Deliberate early-release mutation | Both tests failed as intended; mutation removed |
+| Restored new tests plus confirmation transport and lifecycle tests | 27 passed, 0 failures/errors/skips |
+| Full backend suite after restoration | 138 passed, 0 failures/errors/skips |
+| Independent parallel reviews | Transaction/test correctness and resource/compatibility: no actionable defects |
+| Final patch whitespace check | `git diff --check` passed |
+
+Execution used the documented cached Maven fallback, from `backend/`:
+
+```powershell
+$taskMaven = 'C:/Users/jeffr/.m2/wrapper/dists/apache-maven-3.9.11/03d7e36a140982eea48e22c1dcac01d8862b2550b2939e09a0809bbc5182a5bc/bin/mvn.cmd'
+& $taskMaven '-Dmaven.repo.local=C:/Users/jeffr/.m2/repository' '-Dtest=ImportCommitPermitServerTest' test
+& $taskMaven '-Dmaven.repo.local=C:/Users/jeffr/.m2/repository' '-Dtest=ImportCommitPermitServerTest,ImportConfirmationTransportServerTest,ImportLifecycleTest' test
+& $taskMaven '-Dmaven.repo.local=C:/Users/jeffr/.m2/repository' test
+# Repository root
+git diff --check
+```
+
+Local execution evidence and the reversible mutation runner are ignored outputs under `backend/target/sdd/import-transaction-permit-tests/`: `early-release-mutation.log`, copied `mutation-*` JUnit reports, `focused-restored.log`, and `backend-suite.log`. These are disposable local evidence, not required runtime files.
+
+Subagent work: one read-only boundary investigator, one exclusive test implementer, and two fresh independent parallel reviewers; all used GPT-6.1 Sol High. The parent independently checked code/results, ran the mutation and restored suites, and owned documentation/integration.
+
+Review disposition: both reviewers noted that process capacity one makes the new class's same-owner rejection also a consequence of process saturation. This is complementary coverage rather than a new runtime defect: existing `ImportConfirmationTransportServerTest.decodedCommitAliasesShareOwnerAdmissionWithPreview` uses two process slots and holds only one while checking same-owner exclusion; it passed in the 27-test and full runs. The new tests specifically establish permit lifetime through actual commit and rollback, as requested.
+
+Limits: the new transaction tests use isolated in-memory H2 and add no PostgreSQL-specific claim. PostgreSQL integration, frontend build/tests, bundled smoke and browser checks were not rerun for this test/documentation-only patch; their earlier recorded results above remain historical. No infrastructure blocked the requested checks, no production behavior change was needed, and no mutation remains.
 
 ## Continuous integration implementation — 2026-10-20
 
@@ -234,3 +272,9 @@ Local Docker remains absent; the failed local PostgreSQL attempt above is separa
 The PostgreSQL scenarios exercised provisioning, legacy upgrade, runtime grants and import behavior. This run establishes the PostgreSQL 17 and container-build coverage that could not execute locally. It does not establish full Compose rollout or migration-failure startup gating.
 
 A separate, existing Git Credential Manager credential supplied workflow publication permission; the GitHub CLI credential alone lacked that permission. The isolated CI publication used a temporary index, preserving the current branch/index and the pre-existing uncommitted regression test/plan. No image was published and no repository setting was changed. The hosted evidence above applies to the linked source commit; later documentation or formatting updates have their own run.
+
+Final published revision `e4c23169fac13474d0ff84c93e7afe0ce3b1b44e` was independently rerun after the documentation/formatting update: [run 39470045165](https://github.com/Jeffreyw7/Internship-Tracker-Demo/actions/runs/39470045165) passed all three jobs. Application verification took 4m45s, container builds 3m23s, and CI required 6s. The final logs again confirm 136 backend tests plus all 3 PostgreSQL tests without skips, bundled smoke success and exact-success required results. The preceding hosted run remains valid evidence for the original CI snapshot; the latest run confirms the final PR head. Existing Spring Security AntPathRequestMatcher deprecation warnings remain non-failing and outside this CI change.
+
+### Publication follow-up
+
+The subsequent commit-and-push request includes the previously preserved `ImportCommitPermitServerTest` class and its plan, along with the CI design/plan/review records. The 136-test hosted results above apply to the linked earlier CI-only snapshots; the complete published source now includes the two locally verified regression cases. Its hosted backend suite is expected to contain 138 tests. The new head's CI result must be read from PR #1 checks; this publication note does not claim a new passing run.
