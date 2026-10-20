@@ -7,9 +7,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.http.*;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-import java.io.IOException;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import static com.campus.tracker.application.importing.ImportDtos.*;
 
@@ -21,8 +19,9 @@ public class ApplicationImportController {
     private final ImportCommitService commits;
     private final ImportStatusService statuses;
     private final ImportCanonicalizer canonical;
-    public ApplicationImportController(ImportMultipartReader reader,ImportPreviewService previews,ImportCommitService commits,ImportStatusService statuses,ImportCanonicalizer canonical) {
-        this.reader=reader;this.previews=previews;this.commits=commits;this.statuses=statuses;this.canonical=canonical;
+    private final ImportConfirmationReader confirmations;
+    public ApplicationImportController(ImportMultipartReader reader,ImportPreviewService previews,ImportCommitService commits,ImportStatusService statuses,ImportCanonicalizer canonical,ImportConfirmationReader confirmations) {
+        this.reader=reader;this.previews=previews;this.commits=commits;this.statuses=statuses;this.canonical=canonical;this.confirmations=confirmations;
     }
     @PostMapping(value="/preview",consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Preview> preview(@AuthenticationPrincipal CampusPrincipal owner,HttpServletRequest request) {
@@ -31,11 +30,9 @@ public class ApplicationImportController {
         return ResponseEntity.created(URI.create("/api/application-imports/"+preview.id())).cacheControl(CacheControl.noStore()).body(preview);
     }
     @PostMapping(value="/{id}/commit",consumes=MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Receipt> commit(@AuthenticationPrincipal CampusPrincipal owner,@PathVariable UUID id,HttpServletRequest request) throws IOException {
+    public ResponseEntity<Receipt> commit(@AuthenticationPrincipal CampusPrincipal owner,@PathVariable UUID id,HttpServletRequest request) {
         // Small strict body parsing also protects duplicate-key/depth semantics outside ordinary MVC binding.
-        if(request.getContentLengthLong()>4096) throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE,"IMPORT_SIZE_LIMIT","Import confirmation exceeds its size limit.");
-        byte[] body=request.getInputStream().readNBytes(4097);
-        if(body.length>4096) throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE,"IMPORT_SIZE_LIMIT","Import confirmation exceeds its size limit.");
+        byte[] body=confirmations.read(request);
         var confirmation=canonical.read(body,CommitRequest.class);
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(commits.commit(owner.id(),id,confirmation));
     }

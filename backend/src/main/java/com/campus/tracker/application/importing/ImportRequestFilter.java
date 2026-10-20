@@ -31,13 +31,14 @@ public final class ImportRequestFilter extends OncePerRequestFilter {
         boolean acquired = false;
         try {
             if (ImportUploadPolicy.isPreview(request)) ImportUploadPolicy.checkTransport(request, limits);
+            if (ImportUploadPolicy.isCommit(request)) ImportUploadPolicy.checkConfirmationTransport(request);
             String operation = "GET".equals(request.getMethod()) ? "status" : ImportUploadPolicy.isPreview(request) ? "preview" : "commit";
             try { admission.checkRate(principal.id(), operation); }
             catch (DataAccessException e) { throw ImportUploadPolicy.error(HttpStatus.TOO_MANY_REQUESTS,
                     "IMPORT_RATE_UNAVAILABLE", "Import admission is temporarily unavailable. Try again shortly."); }
-            if (ImportUploadPolicy.isPreview(request)) {
-                ImportUploadPolicy.begin(request, limits);
+            if (ImportUploadPolicy.isPreview(request) || ImportUploadPolicy.isCommit(request)) {
                 work.acquire(principal.id()); acquired = true;
+                ImportUploadPolicy.begin(request, limits);
             }
             chain.doFilter(request, response);
         } catch (ApiException e) {

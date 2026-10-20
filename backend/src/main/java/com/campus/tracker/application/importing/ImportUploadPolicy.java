@@ -18,11 +18,13 @@ public final class ImportUploadPolicy {
     public static final int FILE_BYTES = 2 * 1024 * 1024;
     public static final int OPTIONS_BYTES = 256 * 1024;
     public static final int REQUEST_BYTES = 3 * 1024 * 1024;
+    public static final int CONFIRMATION_BYTES = 4096;
     static final String DEADLINE = ImportUploadPolicy.class.getName() + ".deadline";
     private static final String IMPORT_REQUEST = ImportUploadPolicy.class.getName() + ".importRequest";
     private static final PathPattern ROOT = PathPatternParser.defaultInstance.parse("/api/application-imports");
     private static final PathPattern FAMILY = PathPatternParser.defaultInstance.parse("/api/application-imports/{*remaining}");
     private static final PathPattern PREVIEW = PathPatternParser.defaultInstance.parse("/api/application-imports/preview");
+    private static final PathPattern COMMIT = PathPatternParser.defaultInstance.parse("/api/application-imports/{id}/commit");
     /** Match the same decoded path segments as MVC, never a raw-URI approximation. */
     public static boolean isImport(HttpServletRequest request) {
         if (Boolean.TRUE.equals(request.getAttribute(IMPORT_REQUEST))) return true;
@@ -35,6 +37,9 @@ public final class ImportUploadPolicy {
     public static boolean isPreview(HttpServletRequest request) {
         return "POST".equals(request.getMethod()) && PREVIEW.matches(decodedPath(request));
     }
+    public static boolean isCommit(HttpServletRequest request) {
+        return "POST".equals(request.getMethod()) && COMMIT.matches(decodedPath(request));
+    }
     private static boolean importPath(PathContainer path) { return ROOT.matches(path) || FAMILY.matches(path); }
     private static PathContainer decodedPath(HttpServletRequest request) {
         RequestPath path = ServletRequestPathUtils.hasParsedRequestPath(request)
@@ -45,12 +50,7 @@ public final class ImportUploadPolicy {
         checkTransport(request, new ImportInputLimits());
     }
     public static void checkTransport(HttpServletRequest request, ImportInputLimits limits) {
-        if (!"HTTP/1.1".equals(request.getProtocol()) || request.getHeader("Transfer-Encoding") != null
-                || (request.getHeader("Content-Encoding") != null && !"identity".equalsIgnoreCase(request.getHeader("Content-Encoding"))))
-            throw error(HttpStatus.BAD_REQUEST, "IMPORT_UNSUPPORTED_TRANSPORT", "Use an unencoded fixed-length HTTP/1.1 upload.");
-        String length = request.getHeader("Content-Length");
-        if (length == null || !length.matches("[0-9]{1,10}")) throw error(HttpStatus.LENGTH_REQUIRED, "IMPORT_LENGTH_REQUIRED", "A valid Content-Length is required.");
-        if (Long.parseLong(length) > limits.requestBytes()) throw error(HttpStatus.PAYLOAD_TOO_LARGE, "IMPORT_REQUEST_LIMIT", "The upload exceeds the request limit.");
+        checkBodyTransport(request, limits.requestBytes(), "IMPORT_REQUEST_LIMIT", "The upload exceeds the request limit.");
         String contentType = request.getContentType();
         if (contentType == null || contentType.length() > 256) throw malformed();
         try {
@@ -59,6 +59,17 @@ public final class ImportUploadPolicy {
             if (!"multipart".equalsIgnoreCase(type.getType()) || !"form-data".equalsIgnoreCase(type.getSubtype())
                     || boundary == null || boundary.isEmpty() || boundary.length() > 72) throw malformed();
         } catch (IllegalArgumentException e) { throw malformed(); }
+    }
+    public static void checkConfirmationTransport(HttpServletRequest request) {
+        checkBodyTransport(request, CONFIRMATION_BYTES, "IMPORT_SIZE_LIMIT", "Import confirmation exceeds its size limit.");
+    }
+    private static void checkBodyTransport(HttpServletRequest request, int maximum, String sizeCode, String sizeMessage) {
+        if (!"HTTP/1.1".equals(request.getProtocol()) || request.getHeader("Transfer-Encoding") != null
+                || (request.getHeader("Content-Encoding") != null && !"identity".equalsIgnoreCase(request.getHeader("Content-Encoding"))))
+            throw error(HttpStatus.BAD_REQUEST, "IMPORT_UNSUPPORTED_TRANSPORT", "Use an unencoded fixed-length HTTP/1.1 upload.");
+        String length = request.getHeader("Content-Length");
+        if (length == null || !length.matches("[0-9]{1,10}")) throw error(HttpStatus.LENGTH_REQUIRED, "IMPORT_LENGTH_REQUIRED", "A valid Content-Length is required.");
+        if (Long.parseLong(length) > maximum) throw error(HttpStatus.PAYLOAD_TOO_LARGE, sizeCode, sizeMessage);
     }
     public static void begin(HttpServletRequest request) { begin(request, new ImportInputLimits()); }
     public static void begin(HttpServletRequest request, ImportInputLimits limits) {

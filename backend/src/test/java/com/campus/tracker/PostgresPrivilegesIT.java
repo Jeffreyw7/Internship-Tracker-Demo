@@ -18,6 +18,45 @@ import static org.assertj.core.api.Assertions.*;
 class PostgresPrivilegesIT {
  @Test void freshDatabaseHasOnlyRequiredRuntimePrivileges() throws Exception { verify(false); }
  @Test void legacyUpgradePreservesRecordsAndMigrationHistory() throws Exception { verify(true); }
+ @Test void verifierRejectsEveryMissingRequiredDmlPrivilege() throws Exception {
+  try(var db=new TestDatabase(false)) {
+   var provision=db.psql("psql","-X","-v","ON_ERROR_STOP=1","-U",db.getUsername(),"-d","campus","-f","provision.sql");
+   assertThat(provision.getExitCode()).withFailMessage(provision.getStderr()).isZero();
+   MigrationMain.run(Map.of("MIGRATION_DATABASE_URL",db.getJdbcUrl(),"MIGRATION_DATABASE_USERNAME","campus_migrator","MIGRATION_DATABASE_PASSWORD","migration-'quote-password"));
+   var baseline=verifyRuntime(db);
+   assertThat(baseline.getExitCode()).withFailMessage(baseline.getStderr()).isZero();
+   // Revoke one grant at a time: a verifier must reject even a single missing permission.
+   String[][] required={
+       {"campus_users","SELECT","INSERT","UPDATE (theme_preference)","UPDATE (email_verified_at)"},
+       {"applications","SELECT","INSERT","UPDATE"},
+       {"interview_stages","SELECT","INSERT","UPDATE","DELETE"},
+       {"application_imports","SELECT","INSERT","UPDATE","DELETE"},
+       {"application_import_quota_locks","SELECT","INSERT","UPDATE","DELETE"},
+       {"application_import_rates","SELECT","INSERT","UPDATE","DELETE"},
+       {"email_verification_tokens","SELECT","INSERT","UPDATE","DELETE"},
+       {"email_outbox","SELECT","INSERT","UPDATE","DELETE"},
+       {"auth_rate_limits","SELECT","INSERT","UPDATE","DELETE"}
+   };
+   var softly=new org.assertj.core.api.SoftAssertions();
+   try(var c=DriverManager.getConnection(db.getJdbcUrl(),db.getUsername(),db.getPassword());var s=c.createStatement()) {
+    for(String[] table:required) for(int i=1;i<table.length;i++) {
+     String privilege=table[i], target=" ON TABLE public."+table[0]+" TO campus_runtime";
+     s.execute("REVOKE "+privilege+" ON TABLE public."+table[0]+" FROM campus_runtime");
+     try {
+      var missing=verifyRuntime(db);
+      softly.assertThat(missing.getExitCode()).as("verifier rejects missing %s on %s: %s",privilege,table[0],missing.getStderr()).isNotZero();
+      softly.assertThat(missing.getStderr()).as("missing %s on %s reports a privilege failure",privilege,table[0]).contains("Missing");
+     } finally {s.execute("GRANT "+privilege+target);}
+    }
+   }
+   var restored=verifyRuntime(db);
+   assertThat(restored.getExitCode()).withFailMessage(restored.getStderr()).isZero();
+   softly.assertAll();
+  }
+ }
+ private Result verifyRuntime(TestDatabase db) throws Exception {
+  return db.psql("psql","-X","-v","ON_ERROR_STOP=1","-U",db.getUsername(),"-d","campus","-f","verify-runtime.sql");
+ }
  private void verify(boolean legacy) throws Exception {
   try (var db = new TestDatabase(legacy)) {
    if (legacy) {

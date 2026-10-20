@@ -133,3 +133,44 @@ Regression evidence: missing authentication guards initially returned 401/201 wh
 The Windows PostgreSQL harness now redirects subprocess output to files and uses a timeout. The HTTP smoke test now resolves the actual Java runtime instead of terminating only Oracle's PATH launcher; it verifies the listening port closes before restart.
 
 Security status: implementation and local verification complete. Docker rollout verification remains outstanding. No user database upgrade, public deployment, or remote push was performed. Existing PostgreSQL installations require the explicit procedure in docs/DATABASE-SECURITY.md.
+
+## CSV import review fixes — 2026-10-20
+
+Fixed the confirmation resource-control gap and the runtime privilege verifier's any-versus-all DML checks from the review of `2b52a702bfcdae251834b22246689ec62e0ff104`.
+
+Confirmation POSTs now share the existing owner/process write permits with previews. Authentication and CSRF precede admission and body reads. A bounded incremental reader checks the existing absolute deadline between underlying socket reads; fixed-length HTTP/1.1, the 4096-byte confirmation ceiling, and strict JSON remain enforced. Status reads remain outside work permits. Persisted reservations and commit/receipt transactions were not changed.
+
+Regression evidence before the fix: a continuously dripping confirmation produced no response within the test's 4.5-second observation window despite its configured 1.5-second deadline; a same-owner confirmation reached validation (HTTP 400) while another body was pending instead of returning 429. After the fix, raw-socket tests return 408 for a continuous drip, release capacity after idle timeout/disconnect, reject owner/process excess work, and permit status reads. Tests also cover decoded route aliases, body-free authentication/CSRF/transport/size rejection, malformed JSON, a valid exact-4096-byte confirmation, and duplicate receipts. The test tightens existing configuration rather than changing production defaults.
+
+The PostgreSQL regression independently removes each of 35 required table/column grants, invokes the real `psql` verifier, and restores the grant in `finally`. Before the fix, 29 missing grants were incorrectly accepted. After the fix, every omission fails verification; the provisioned and restored roles pass. Prohibited-privilege checks and grants are unchanged.
+
+| Check | Result |
+| --- | --- |
+| Backend suite | 136 passed, no failures/errors/skips; includes 7 new real HTTP confirmation tests |
+| Real PostgreSQL integration | 3 passed: fresh provisioning, legacy upgrade, and 35 independent grant-removal cases |
+| Frontend suite | 68 passed |
+| TypeScript/Vite build | Passed |
+| Executable JAR with rebuilt UI | Packaged successfully after the frontend build |
+| Bundled real HTTP/SMTP/H2 restart smoke | Passed, including assets, verification, authentication, CSRF, conflicts, undo and restart persistence |
+| Parallel independent reviews | Request/resource controls and PostgreSQL verifier: no actionable findings |
+| Patch whitespace check | `git diff --check` passed |
+
+Commands used (`taskMaven` is the cached Maven 3.9.11 executable):
+
+```powershell
+# Repository root
+npm.cmd test
+npm.cmd run build
+# backend/
+$taskMaven = 'C:/Users/jeffr/.m2/wrapper/dists/apache-maven-3.9.11/03d7e36a140982eea48e22c1dcac01d8862b2550b2939e09a0809bbc5182a5bc/bin/mvn.cmd'
+& $taskMaven '-Dmaven.repo.local=C:/Users/jeffr/.m2/repository' test
+& $taskMaven '-Dmaven.repo.local=C:/Users/jeffr/.m2/repository' '-Dtest=PostgresPrivilegesIT' '-Dpostgres.test.bin=C:/Program Files/PostgreSQL/18/bin' test
+& $taskMaven '-Dmaven.repo.local=C:/Users/jeffr/.m2/repository' '-Pwith-ui' '-DskipTests' package
+# Repository root; installed Python executable avoids the WindowsApps alias
+& 'C:/Users/jeffr/AppData/Local/Programs/DeepSeek Harness/resources/runtime/primary-runtime/dependencies/python/python.exe' tests/http_smoke.py
+git diff --check
+```
+
+Environment adaptations: PowerShell blocks the `npm.ps1` shim, so `npm.cmd` was used. The Maven wrapper's Windows path resolution failed; the cached Maven executable with an explicit local repository was used. One compilation attempt reported a dependency-path error; the subsequent focused tests, full suite, and packaging succeeded. Local PostgreSQL launch required execution outside the restricted process sandbox; it initialized and stopped only disposable test clusters under `backend/target`.
+
+Limits: PostgreSQL checks used installed PostgreSQL 18.6; Flyway emitted its existing warning that this version is newer than its tested support range. The Docker/PostgreSQL 17 path, production load tests, and browser UI QA were not run for this patch. The request reviewer noted that a deliberately paused commit transaction is not a separate new HTTP test; permit lifetime through completion/rollback was checked by source review, while existing lifecycle/PostgreSQL tests cover transaction rollback. No source-backed bypass or regression remained in either review.
