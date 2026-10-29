@@ -1,13 +1,13 @@
 package com.campus.tracker.auth.abuse;
 
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 
-@SuppressWarnings("deprecation")
 final class AuthEndpoints {
-    // Same servletPath/pathInfo matching used by Spring form login.
-    static final RequestMatcher LOGIN = new AntPathRequestMatcher("/api/auth/login", "POST");
-    static final RequestMatcher REGISTER = new AntPathRequestMatcher("/api/auth/register", "POST");
-    static final RequestMatcher CSRF = new AntPathRequestMatcher("/api/auth/csrf");
+    // Match exact application paths relative to the context path; retain the original method restrictions.
+    static final RequestMatcher LOGIN = PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/api/auth/login");
+    static final RequestMatcher REGISTER = PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/api/auth/register");
+    static final RequestMatcher CSRF = PathPatternRequestMatcher.withDefaults().matcher("/api/auth/csrf");
     private AuthEndpoints() {}
 }

@@ -289,3 +289,12 @@ See [review findings, fixes, and complete verification limits](docs/superpowers/
 - Backend validation used Java 21.0.12.1 and local disposable PostgreSQL 18.6, not the CI Java 17/PostgreSQL 17 Docker matrix. Docker was unavailable, and the cached Java 17 installation was incomplete.
 - The final UI was rebundled; all 5 dist files matched the executable JAR. The bundled HTTP/multipart/Vite/restart smoke test passed.
 - One independent reviewer checked the fixes twice; the final pass reported no actionable findings. Cross-tab UI behavior was covered in JSDOM, not a native browser.
+
+
+## 2026-10-29 Spring Security endpoint matcher migration
+
+- Replaced the three deprecated `AntPathRequestMatcher` instances in `AuthEndpoints` with `PathPatternRequestMatcher`. Login and registration remain POST-only; the CSRF path matcher retains all-method matching so the abuse filter's existing GET/HEAD and unsafe-request accounting remains unchanged.
+- Three characterization tests passed against the original implementation and the replacement: exact case-sensitive paths, HTTP methods, trailing/extra segments, context paths, query independence, and servlet-path/path-info splits.
+- Clean `mvn -Pwith-ui clean verify` passed all 143 backend tests with no failures or skips on local Java 21. Existing authentication, CSRF, context-path throttling, work-limit and session tests passed. No `AntPathRequestMatcher` compiler warnings remained; unrelated deprecation/runtime notices remain outside this change.
+- The bundled HTTP/SMTP/native multipart/Vite proxy/restart smoke test passed. Frontend sources did not change. Java 17, PostgreSQL 17 and container builds are verified separately by this branch's hosted CI.
+- The same independent read-only reviewer found no actionable findings or concrete bypass on firewall-accepted paths. Native encoded-path browser probes were not performed locally.
