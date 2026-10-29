@@ -19,6 +19,7 @@ export default function AuthGate() {
   // Track authentication, form input, and request state independently.
   const [user,setUser]=useState<User|null>(null);
   const [loading,setLoading]=useState(true);
+  const [profileRetry,setProfileRetry]=useState(0);
   const [mode,setMode]=useState<'login'|'register'>('login');
   const [checkEmail,setCheckEmail]=useState(false);
   const [forgotPassword,setForgotPassword]=useState(false);
@@ -44,11 +45,13 @@ export default function AuthGate() {
       const current=++revision.current;
       const guard=sessionGuard();
       const active=()=>alive && current===revision.current && guard();
-      authApi.me().then(u=>{if(active())setUser(u);}).catch(e=>{
+      authApi.me().then(u=>{if(active()){setUser(u);setLoading(false);}}).catch(e=>{
         if(!active())return;
-        setUser(null);
-        if(!(e instanceof ApiError&&e.status===401))setError(e instanceof Error?e.message:'Unable to check your session.');
-      }).finally(()=>{if(active())setLoading(false);});
+        // Only an explicit unauthenticated response establishes an anonymous session.
+        // A transient failure must preserve a known account and keep initial recovery gated.
+        if(e instanceof ApiError&&e.status===401){setUser(null);setLoading(false);}
+        else setError(e instanceof Error?e.message:'Unable to check your session.');
+      });
     }
     loadProfile();
     const expired=()=>{revision.current++;transitioning.current=false;setBusy(false);setLoading(false);setUser(null);setPassword('');setError('Your session ended. Sign in to continue.');};
@@ -59,7 +62,7 @@ export default function AuthGate() {
     window.addEventListener('campus:session-expired',expired);
     window.addEventListener('focus',refresh);
     return()=>{alive=false;revision.current++;unsubscribe();window.removeEventListener('campus:session-expired',expired);window.removeEventListener('focus',refresh);};
-  },[]);
+  },[profileRetry]);
   // Validate new passwords locally, perform the selected auth action, and clear credentials on success.
   async function submit(e:FormEvent) {
     e.preventDefault();if(busy)return;
@@ -89,7 +92,7 @@ export default function AuthGate() {
   }
   function returnToSignIn(){verificationLinks?.dismiss();passwordResetLinks?.dismiss();setForgotPassword(false);setCheckEmail(false);setMode('login');setPassword('');setError('');}
   // Avoid showing the sign-in screen until the initial session lookup finishes.
-  if(loading)return <div className="auth-shell"><div className="auth-appearance"><ThemeSelect/></div><div className="auth-card" role="status">Opening your workspace…</div></div>;
+  if(loading)return <div className="auth-shell"><div className="auth-appearance"><ThemeSelect/></div><div className="auth-card">{error?<><div className="error-box" role="alert">{error}</div><button className="button primary" onClick={()=>{setError('');setProfileRetry(value=>value+1);}}>Retry session check</button></>:<div role="status">Opening your workspace…</div>}</div></div>;
   if(reset)return <ResetPassword token={reset.token} completed={reset.completed??false} user={user} onReturn={returnToSignIn} onRequest={()=>{returnToSignIn();setForgotPassword(true);}} onSignOut={logout} onComplete={()=>{passwordResetLinks?.complete();setPassword('');}}/>;
   if(verification)return <EmailVerification key={verification.token??'invalid'} token={verification.token} user={user} onReturn={returnToSignIn} onSwitchAccount={async()=>{await logout();returnToSignIn();}}/>;
   if(user)return <App key={user.id} user={user} onLogout={logout}/>;

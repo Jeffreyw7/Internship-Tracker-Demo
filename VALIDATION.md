@@ -141,3 +141,25 @@ Four parameterized cases in `ResetBackgroundAdmissionTest` reproduced the defect
 Source references and research links are recorded by category in `docs/PASSWORD-RESET.md`. Frontend and PostgreSQL suites were not repeated because this follow-up changes only background Java admission/failure handling; their October12 results above are historical evidence, not new runs. Production deployment, provider/browser checks, load/monitoring and restore/failover gates remain unchanged.
 
 The final bundled `npm.cmd run test:smoke` passed on October15 using disposable file-backed H2 and local SMTP capture: reset link/notice, slow-body408, single use, session revocation, old/new login, preserved data/theme, and JVM-restart persistence. No user database or external mailbox was used.
+
+## Repeated review and fixes - October 29, 2026
+
+Continued `Password-Reset` from `1d8d528` in the current Internship Tracker workspace. Independent GPT-6.1 Sol High reviews covered backend/session security, recovery UI and operations. The first pass found shared-session invalidation races, session-check failures incorrectly treated as anonymous, and overdue issued links missing from the health pause. The second security pass found that an older rejected login could overwrite a newer login before the success-handler fence. Final independent reviews of the corrected files found no remaining actionable findings in those scopes.
+
+Regression evidence: delayed API and login rejection tests first invalidated the replacement session; the BCrypt race first returned 401 for the newer login's next request; two overdue-mail cases first failed to pause intake. The first login persistence configuration failed two regressions because Spring replaced the fluent repository setting. Configuring the built login filter through `ObjectPostProcessor` fixed that override. Login now checks the epoch and publishes authentication under one session mutex, while passive rejection and reset completion clear only request-local context. Existing API epoch checks enforce logical session revocation.
+
+| Fresh check | Result |
+| --- | --- |
+| Frontend/API and mounted recovery UI tests | 61 passed; no failures/skips |
+| TypeScript and Vite production build | Passed |
+| Full backend unit/H2 integration suite | 129 passed; no failures/errors/skips |
+| PostgreSQL 18.6 integration scenarios | 3 passed; no failures/errors/skips |
+| Bundled executable JAR | Packaged successfully with current frontend assets |
+| Bundled HTTP/loopback SMTP smoke | Passed reset link/notice, slow-body deadline, single use, session revocation, old/new credentials, data/theme preservation and H2 JVM-restart persistence |
+| Independent final review | No remaining actionable findings in frontend, operations or security/concurrency scopes |
+
+The PostgreSQL tests include the new fresh/overdue/drained link-health assertions using the restricted runtime role, as well as existing migration/privilege, real HTTP recovery and lock-sensitive expiry coverage. H2 regressions also cover pending/sending mail, consumed/revoked/expired or mismatched links, deferred notices, session races and a primary-read outage preserving another account's session.
+
+Commands: `npm.cmd test`, `npm.cmd run build`, focused Maven regression runs, cached Maven `-Pwith-ui,postgres-it '-Dpostgres.test.bin=C:/Program Files/PostgreSQL/18/bin' verify`, and `npm.cmd run test:smoke`. Maven used the existing explicit local-repository/user-home arguments with authorized cache access. Build/test logs and disposable database clusters are ignored outputs; the smoke test removed its own temporary H2 database and used only a loopback SMTP capture server.
+
+Production activation remains gated by the runbook. PostgreSQL 17, Docker rollout, real browser/mail-client behavior, external SMTP delivery, production load/monitoring and restore/failover drills were not established by these local checks. Flyway still warns that PostgreSQL 18 is beyond its tested 17 support range. No user database, external mailbox or production deployment was changed.

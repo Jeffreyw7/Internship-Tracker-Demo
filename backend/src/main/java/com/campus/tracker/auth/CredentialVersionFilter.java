@@ -55,7 +55,9 @@ public final class CredentialVersionFilter extends OncePerRequestFilter {
                 return;
             }
             if (!current) {
-                discardSession(request);
+                // A newer login may have rotated this same session while the epoch read was in flight.
+                // Reject this request's snapshot; every later old snapshot is checked again.
+                SecurityContextHolder.clearContext();
                 if (!publicAuthentication(request)) {
                     respond(response, 401, "Sign in to continue.");
                     return;
@@ -63,12 +65,6 @@ public final class CredentialVersionFilter extends OncePerRequestFilter {
             }
         }
         chain.doFilter(request, response);
-    }
-    public static void discardSession(HttpServletRequest request) {
-        SecurityContextHolder.clearContext();
-        var session = request.getSession(false);
-        if (session != null) session.invalidate();
-        // A delayed passive response must never delete a newer browser session's HttpOnly cookie.
     }
     private boolean publicAuthentication(HttpServletRequest request) {
         if (new AntPathRequestMatcher("/api/auth/csrf").matches(request)) return true;

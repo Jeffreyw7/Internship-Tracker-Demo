@@ -91,7 +91,7 @@ test('completion keeps verification help neutral and clears the password form', 
   assert.doesNotMatch(html,/autoComplete="new-password"/i);
 });
 
-test('window focus preserves recovery input, pending confirmation, and its result', async () => {
+test('recovery session checks preserve account boundaries, input, and pending results', async () => {
   const token='a'.repeat(42)+'A';
   const dom=new JSDOM(`<!doctype html><div id="root"></div>`,{url:`http://localhost/#reset-password=${token}`});
   const previous={window:globalThis.window,document:globalThis.document,HTMLElement:globalThis.HTMLElement,
@@ -102,8 +102,13 @@ test('window focus preserves recovery input, pending confirmation, and its resul
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:dom.window.navigator});
   let finishConfirmation;
   let profileCalls=0;
+  let profileStatus=503;
+  const profile={id:'signed-in-account',displayName:'Student',email:'student@example.test'};
   globalThis.fetch=async url=>{
-    if(url==='/api/auth/me') { profileCalls++; return new Response(JSON.stringify({message:'Sign in required'}),{status:401,headers:{'Content-Type':'application/json'}}); }
+    if(url==='/api/auth/me') {
+      profileCalls++;
+      return new Response(JSON.stringify(profileStatus===200?profile:{message:profileStatus===401?'Sign in required':'Session service unavailable'}),{status:profileStatus,headers:{'Content-Type':'application/json'}});
+    }
     if(url==='/api/auth/csrf') return new Response(JSON.stringify({token:'fresh',headerName:'X-CSRF-TOKEN'}),{headers:{'Content-Type':'application/json'}});
     if(url==='/api/auth/password-reset/confirm') return new Promise(resolve=>{finishConfirmation=resolve;});
     throw new Error(`Unexpected request: ${url}`);
@@ -123,6 +128,12 @@ test('window focus preserves recovery input, pending confirmation, and its resul
       Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value').set.call(input,value);
       input.dispatchEvent(new dom.window.Event('input',{bubbles:true}));
     };
+    assert.equal(passwordInputs().length,0,'an unavailable initial profile check must not assume an anonymous session');
+    assert.match(container.textContent,/Session service unavailable/);
+    const retry=Array.from(container.querySelectorAll('button')).find(button=>/retry/i.test(button.textContent));
+    assert.ok(retry,'a failed initial session check must offer an explicit retry');
+    profileStatus=401;
+    await act(async()=>{retry.click();await new Promise(resolve=>setTimeout(resolve,0));});
     let [password,confirmation]=passwordInputs();
     assert.ok(password&&confirmation,'the reset form should mount after the unauthenticated profile check');
     const secret='a sufficiently long passphrase';
@@ -162,6 +173,22 @@ test('window focus preserves recovery input, pending confirmation, and its resul
     assert.match(container.textContent,/Sign in with your new password/);
     await act(async()=>{dom.window.dispatchEvent(new dom.window.Event('focus'));await new Promise(resolve=>setTimeout(resolve,0));});
     assert.match(container.textContent,/Sign in with your new password/,'focus must keep the committed reset result visible');
+
+    profileStatus=200;
+    await act(async()=>{
+      dom.window.location.hash='#reset-password='+token;
+      dom.window.dispatchEvent(new dom.window.Event('hashchange'));
+      dom.window.dispatchEvent(new dom.window.Event('focus'));
+      await new Promise(resolve=>setTimeout(resolve,0));
+    });
+    assert.match(container.textContent,/Sign out to reset a password/);
+    profileStatus=503;
+    await act(async()=>{dom.window.dispatchEvent(new dom.window.Event('focus'));await new Promise(resolve=>setTimeout(resolve,0));});
+    assert.match(container.textContent,/Sign out to reset a password/,'a transient profile failure must preserve the known signed-in account');
+    assert.equal(passwordInputs().length,0,'a transient profile failure must not bypass explicit sign-out');
+    profileStatus=401;
+    await act(async()=>{dom.window.dispatchEvent(new dom.window.Event('focus'));await new Promise(resolve=>setTimeout(resolve,0));});
+    assert.equal(passwordInputs().length,2,'a confirmed expired session may enable recovery');
   } finally {
     await act(async()=>root.unmount());
     dom.window.close();

@@ -163,6 +163,7 @@ class PostgresPrivilegesIT {
   context.getBean(com.campus.tracker.auth.reset.PasswordResetRequestWorker.class).processPending();
   var job=jdbc.queryForMap("SELECT o.id,o.payload,o.nonce,o.key_id,o.password_reset_token_id FROM email_outbox o "
       +"JOIN password_reset_tokens t ON t.id=o.password_reset_token_id WHERE t.email=? AND o.message_type='PASSWORD_RESET_LINK'",email);
+  verifyResetLinkHealth(context,(java.util.UUID)job.get("id"));
   var message=context.getBean(com.campus.tracker.mail.OutboxCrypto.class).decrypt((java.util.UUID)job.get("id"),
       com.campus.tracker.mail.EmailMessage.Type.PASSWORD_RESET_LINK,(String)job.get("payload"),(String)job.get("nonce"),(String)job.get("key_id"));
   assertThat(message.recipient()).isEqualTo(email);
@@ -191,6 +192,22 @@ class PostgresPrivilegesIT {
   assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM email_outbox WHERE id=? AND status='CANCELLED' AND payload IS NULL AND key_id IS NULL AND nonce IS NULL",Long.class,job.get("id"))).isEqualTo(1);
   assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM password_reset_requests r JOIN password_reset_tokens t ON t.request_id=r.id WHERE t.id=? AND r.status='DONE' AND r.payload IS NULL AND r.key_id IS NULL AND r.nonce IS NULL",Long.class,challenge)).isEqualTo(1);
   verifyExpiryAfterAccountLockWait(db,context,email);
+ }
+ private void verifyResetLinkHealth(org.springframework.context.ConfigurableApplicationContext context,java.util.UUID jobId) {
+  var jdbc=context.getBean(org.springframework.jdbc.core.JdbcTemplate.class);
+  var health=new com.campus.tracker.auth.reset.ResetHealth(jdbc,
+      context.getBean(com.campus.tracker.auth.reset.DatabaseTime.class),
+      context.getBean(com.campus.tracker.auth.reset.PasswordResetRequestWorker.class),
+      context.getBean(com.campus.tracker.auth.reset.ResetMaintenance.class),
+      context.getBean(com.campus.tracker.auth.reset.RecoveryCapacity.class),true);
+  health.check();
+  assertThat(jdbc.queryForObject("SELECT health_intake_paused FROM password_reset_control WHERE id=1",Boolean.class)).isFalse();
+  assertThat(jdbc.update("UPDATE email_outbox SET created_at=created_at-INTERVAL '3 minutes' WHERE id=? AND message_type='PASSWORD_RESET_LINK'",jobId)).isEqualTo(1);
+  health.check();
+  assertThat(jdbc.queryForObject("SELECT health_intake_paused FROM password_reset_control WHERE id=1",Boolean.class)).isTrue();
+  assertThat(jdbc.update("UPDATE email_outbox SET created_at=created_at+INTERVAL '3 minutes' WHERE id=? AND message_type='PASSWORD_RESET_LINK'",jobId)).isEqualTo(1);
+  health.check();
+  assertThat(jdbc.queryForObject("SELECT health_intake_paused FROM password_reset_control WHERE id=1",Boolean.class)).isFalse();
  }
  private void verifyExpiryAfterAccountLockWait(TestDatabase db,org.springframework.context.ConfigurableApplicationContext context,String email) throws Exception {
   var jdbc=context.getBean(org.springframework.jdbc.core.JdbcTemplate.class);

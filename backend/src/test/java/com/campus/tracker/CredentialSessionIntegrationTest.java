@@ -50,7 +50,7 @@ class CredentialSessionIntegrationTest {
         var old = session(new CampusPrincipal(user.getId(), user.getDisplayName(), user.getEmail(), user.getPasswordHash(), true));
         mvc.perform(get("/api/auth/me").session(old)).andExpect(status().isUnauthorized())
                 .andExpect(header().doesNotExist("Set-Cookie"));
-        assertThat(old.isInvalid()).isTrue();
+        assertThat(old.isInvalid()).isFalse();
     }
     @Test void oldEpochIsRejectedWhileDifferentAccountAndNewSnapshotRemainUsable() throws Exception {
         var first = account();
@@ -71,7 +71,7 @@ class CredentialSessionIntegrationTest {
         jdbc.update("UPDATE campus_users SET credential_version=1 WHERE id=?", user.getId());
         mvc.perform(get("/api/auth/csrf").session(old)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.token").isString()).andExpect(header().doesNotExist("Set-Cookie"));
-        assertThat(old.isInvalid()).isTrue();
+        assertThat(old.isInvalid()).isFalse();
     }
     @Test void deletedAccountSnapshotCannotAccessProtectedApi() throws Exception {
         var missing = new CampusUser("missing@example.test", "Missing", "private-hash");
@@ -90,7 +90,9 @@ class CredentialSessionIntegrationTest {
             var result = mvc.perform(post("/api/auth/login").with(csrf()).param("email",user.getEmail())
                     .param("password","Distinctive campus passphrase 847"))
                     .andExpect(status().isUnauthorized()).andReturn();
-            assertThat(result.getRequest().getSession(false)).isNull();
+            var rejectedSession=(MockHttpSession)result.getRequest().getSession(false);
+            assertThat(rejectedSession).isNotNull();
+            mvc.perform(get("/api/auth/me").session(rejectedSession)).andExpect(status().isUnauthorized());
         } finally { reset(passwords); }
     }
     @Test void authenticationShellAndApiHaveRecoverySecurityHeaders() throws Exception {

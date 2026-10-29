@@ -27,7 +27,17 @@ public class ResetHealth {
         try (var database=capacity.database()) {
             Instant now=time.now();
             Instant oldest=jdbc.query("SELECT MIN(created_at) FROM password_reset_requests WHERE status IN ('PENDING','PROCESSING')",rs->{rs.next();var value=rs.getTimestamp(1);return value==null?null:value.toInstant();});
-            boolean pause=!workerEnabled || !worker.healthy() || !maintenance.healthy() || (oldest!=null && oldest.isBefore(now.minusSeconds(120)));
+            Instant oldestLink=jdbc.query("""
+                    SELECT MIN(o.created_at) FROM email_outbox o
+                    JOIN password_reset_tokens t ON t.id=o.password_reset_token_id
+                    JOIN campus_users u ON u.id=t.user_id
+                    WHERE o.message_type='PASSWORD_RESET_LINK' AND o.status IN ('PENDING','SENDING')
+                      AND t.expires_at>? AND t.consumed_at IS NULL AND t.revoked_at IS NULL
+                      AND t.credential_version=u.credential_version AND t.email=u.email
+                    """,rs->{rs.next();var value=rs.getTimestamp(1);return value==null?null:value.toInstant();},PasswordResetService.stamp(now));
+            boolean pause=!workerEnabled || !worker.healthy() || !maintenance.healthy()
+                    || (oldest!=null && oldest.isBefore(now.minusSeconds(120)))
+                    || (oldestLink!=null && oldestLink.isBefore(now.minusSeconds(120)));
             jdbc.update("UPDATE password_reset_control SET health_intake_paused=? WHERE id=1",pause);
         } catch (AuthThrottleException saturated) {
             // Defer until the next poll; even failure reporting must respect database admission.

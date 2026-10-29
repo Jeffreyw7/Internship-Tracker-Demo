@@ -5,10 +5,14 @@ import com.campus.tracker.auth.UserRepository;
 import com.campus.tracker.auth.reset.PasswordResetRequestWorker;
 import com.campus.tracker.auth.reset.ResetMaintenance;
 import com.campus.tracker.auth.reset.ResetHealth;
+import com.campus.tracker.auth.reset.DatabaseTime;
+import com.campus.tracker.auth.reset.RecoveryCapacity;
 import com.campus.tracker.mail.OutboxCrypto;
 import com.campus.tracker.mail.EmailMessage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -37,6 +41,8 @@ class PasswordResetIntegrationTest {
     @MockitoSpyBean OutboxCrypto crypto;
     @Autowired ResetMaintenance maintenance;
     @Autowired ResetHealth health;
+    @Autowired DatabaseTime databaseTime;
+    @Autowired RecoveryCapacity capacity;
 
     @BeforeEach void enableAndCleanRecovery() {
         jdbc.update("UPDATE password_reset_control SET enabled=TRUE,operator_intake_paused=FALSE,health_intake_paused=FALSE WHERE id=1");
@@ -205,6 +211,53 @@ class PasswordResetIntegrationTest {
         mvc.perform(post("/api/auth/password-reset/request").with(csrf()).contentType("application/json")
                 .content(json.writeValueAsString(Map.of("email",UUID.randomUUID()+"@example.test")))).andExpect(status().isServiceUnavailable());
         confirm(token,"unusual new passphrase chosen",200);
+    }
+
+    @ParameterizedTest @ValueSource(strings={"PENDING","SENDING"})
+    void overdueIssuedLinkPausesIntakeUntilMailDrains(String mailStatus) throws Exception {
+        issuedToken(account(true).getEmail());
+        var enabledHealth=enabledWorkerHealth();
+        enabledHealth.check();
+        assertThat(intakeHealthPaused()).isFalse();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM password_reset_requests WHERE status='DONE'",Integer.class)).isEqualTo(1);
+        jdbc.update("UPDATE email_outbox SET status=?,created_at=DATEADD('MINUTE',-3,CURRENT_TIMESTAMP) WHERE message_type='PASSWORD_RESET_LINK'",mailStatus);
+        if (mailStatus.equals("SENDING")) jdbc.update("UPDATE email_outbox SET lease_owner=?,lease_expires_at=DATEADD('MINUTE',2,CURRENT_TIMESTAMP) WHERE message_type='PASSWORD_RESET_LINK'",UUID.randomUUID());
+        enabledHealth.check();
+        assertThat(intakeHealthPaused()).isTrue();
+        mvc.perform(post("/api/auth/password-reset/request").with(csrf()).contentType("application/json")
+                .content(json.writeValueAsString(Map.of("email",UUID.randomUUID()+"@example.test")))).andExpect(status().isServiceUnavailable());
+        jdbc.update("UPDATE email_outbox SET status='SENT',payload=NULL,key_id=NULL,nonce=NULL,lease_owner=NULL,lease_expires_at=NULL WHERE message_type='PASSWORD_RESET_LINK'");
+        enabledHealth.check();
+        assertThat(intakeHealthPaused()).isFalse();
+        requestEmail(UUID.randomUUID()+"@example.test");
+    }
+
+    @ParameterizedTest @ValueSource(strings={
+            "expires_at=CURRENT_TIMESTAMP",
+            "consumed_at=CURRENT_TIMESTAMP",
+            "revoked_at=CURRENT_TIMESTAMP",
+            "credential_version=credential_version+1",
+            "email='stale@example.test'"})
+    void ineligibleOldLinksDoNotPauseIntake(String tokenMutation) throws Exception {
+        issuedToken(account(true).getEmail());
+        jdbc.update("UPDATE email_outbox SET created_at=DATEADD('MINUTE',-3,CURRENT_TIMESTAMP) WHERE message_type='PASSWORD_RESET_LINK'");
+        jdbc.update("UPDATE password_reset_tokens SET "+tokenMutation);
+        enabledWorkerHealth().check();
+        assertThat(intakeHealthPaused()).isFalse();
+    }
+
+    @Test void intentionallyDeferredChangedNoticeDoesNotPauseIntake() throws Exception {
+        confirm(issuedToken(account(true).getEmail()),"unusual new passphrase chosen",200);
+        jdbc.update("UPDATE email_outbox SET created_at=DATEADD('MINUTE',-3,CURRENT_TIMESTAMP),next_attempt_at=DATEADD('HOUR',1,CURRENT_TIMESTAMP),failure_category='NOTICE_BUDGET' WHERE message_type='PASSWORD_CHANGED'");
+        enabledWorkerHealth().check();
+        assertThat(intakeHealthPaused()).isFalse();
+    }
+
+    private ResetHealth enabledWorkerHealth() {
+        return new ResetHealth(jdbc,databaseTime,worker,maintenance,capacity,true);
+    }
+    private boolean intakeHealthPaused() {
+        return jdbc.queryForObject("SELECT health_intake_paused FROM password_reset_control WHERE id=1",Boolean.class);
     }
 
     private String requestBody(String email) throws Exception {

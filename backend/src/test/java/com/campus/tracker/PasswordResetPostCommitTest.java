@@ -14,6 +14,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.context.SecurityContextImpl;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
@@ -40,14 +41,21 @@ class PasswordResetPostCommitTest {
 
     @AfterEach void clearContext() { SecurityContextHolder.clearContext(); }
 
-    @Test void committedResetSucceedsAndInvalidatesItsSessionWhenPrimaryFailsAfterCommit() {
+    @Test void committedResetSucceedsAndClearsRequestAuthenticationWhenPrimaryFailsAfterCommit() {
         exerciseCommittedReset(true);
     }
     @Test void committedResetPreservesAnotherAccountsSessionWhenPrimaryFailsAfterCommit() {
         exerciseCommittedReset(false);
     }
-    @SuppressWarnings({"unchecked", "rawtypes"})
+    @Test void committedResetPreservesNewerLoginThatReusedItsSession() {
+        exerciseCommittedReset(true,true);
+    }
+
     private void exerciseCommittedReset(boolean sameAccount) {
+        exerciseCommittedReset(sameAccount,false);
+    }
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void exerciseCommittedReset(boolean sameAccount,boolean newerLogin) {
         jdbc.update("UPDATE password_reset_control SET enabled=true,operator_intake_paused=false,health_intake_paused=false WHERE id=1");
         CampusUser owner=account();
         CampusUser caller=sameAccount?owner:account();
@@ -57,11 +65,20 @@ class PasswordResetPostCommitTest {
         String token=crypto.decrypt((UUID)job.get("id"),EmailMessage.Type.PASSWORD_RESET_LINK,
                 (String)job.get("payload"),(String)job.get("nonce"),(String)job.get("key_id")).token();
         var committed=new AtomicBoolean();
+        var session=new MockHttpSession();
+        var replacement=CampusPrincipal.from(newerLogin?account():caller);
+        var replacementContext=new SecurityContextImpl(UsernamePasswordAuthenticationToken.authenticated(replacement,null,replacement.getAuthorities()));
         // Arm the outage only after the real completion transaction has durably committed.
         doAnswer(invocation -> {
             Object result=invocation.callRealMethod();
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override public void afterCommit() { committed.set(true); }
+                @Override public void afterCommit() {
+                    committed.set(true);
+                    if (newerLogin) {
+                        session.changeSessionId();
+                        session.setAttribute("SPRING_SECURITY_CONTEXT",replacementContext);
+                    }
+                }
             });
             return result;
         }).when(jdbc).update(startsWith("INSERT INTO auth_security_events("),any(Object[].class));
@@ -71,7 +88,6 @@ class PasswordResetPostCommitTest {
         }).when(jdbc).query(eq("SELECT credential_version FROM campus_users WHERE id=?"),any(ResultSetExtractor.class),any(Object[].class));
         var principal=CampusPrincipal.from(caller);
         SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(principal,null,principal.getAuthorities()));
-        var session=new MockHttpSession();
         var request=new MockHttpServletRequest("POST","/api/auth/password-reset/confirm");
         request.setSession(session); request.setRemoteAddr("192.0.2.233");
         var response=controller.confirm(new PasswordResetController.Confirmation(token,"A fresh recovery passphrase 928"),request);
@@ -79,7 +95,8 @@ class PasswordResetPostCommitTest {
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).isEqualTo(new AuthDtos.Accepted("PASSWORD_RESET_COMPLETE","Your password has been reset. Sign in with your new password."));
         assertThat(response.getBody().toString()).doesNotContain(owner.getId().toString(),owner.getEmail(),token);
-        assertThat(session.isInvalid()).isEqualTo(sameAccount);
+        assertThat(session.isInvalid()).isFalse();
+        if (newerLogin) assertThat(session.getAttribute("SPRING_SECURITY_CONTEXT")).isSameAs(replacementContext);
         if (sameAccount) assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
         else assertThat(SecurityContextHolder.getContext().getAuthentication().getPrincipal()).isEqualTo(principal);
         CampusUser changed=users.findById(owner.getId()).orElseThrow();
