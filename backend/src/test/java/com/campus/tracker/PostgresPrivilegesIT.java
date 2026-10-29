@@ -18,6 +18,25 @@ import static org.assertj.core.api.Assertions.*;
 class PostgresPrivilegesIT {
  @Test void freshDatabaseHasOnlyRequiredRuntimePrivileges() throws Exception { verify(false); }
  @Test void legacyUpgradePreservesRecordsAndMigrationHistory() throws Exception { verify(true); }
+ @Test void existingV3ProvisioningAddsSeparateRetentionIdentityBeforeRecoveryMigration() throws Exception { verifyRetentionUpgrade("3"); }
+ @Test void existingV4ProvisioningAddsSeparateRetentionIdentityBeforeRecoveryMigration() throws Exception { verifyRetentionUpgrade("4"); }
+ private void verifyRetentionUpgrade(String baseline) throws Exception {
+  try(var db=new TestDatabase(false)) {
+   var provision=db.psql("psql","-X","-v","ON_ERROR_STOP=1","-U",db.getUsername(),"-d","campus","-f","provision.sql");
+   assertThat(provision.getExitCode()).withFailMessage(provision.getStderr()).isZero();
+   Flyway.configure().dataSource(db.getJdbcUrl(),"campus_migrator","migration-'quote-password").target(baseline).load().migrate();
+   try(var c=DriverManager.getConnection(db.getJdbcUrl(),db.getUsername(),db.getPassword());var s=c.createStatement()) {
+    s.execute("REVOKE CONNECT ON DATABASE campus FROM campus_retention"); s.execute("DROP ROLE campus_retention");
+   }
+   for(int i=0;i<2;i++) {
+    var retention=db.psql("psql","-X","-v","ON_ERROR_STOP=1","-U",db.getUsername(),"-d","campus","-f","provision-retention.sql");
+    assertThat(retention.getExitCode()).withFailMessage(retention.getStderr()).isZero();
+   }
+   MigrationMain.run(Map.of("MIGRATION_DATABASE_URL",db.getJdbcUrl(),"MIGRATION_DATABASE_USERNAME","campus_migrator","MIGRATION_DATABASE_PASSWORD","migration-'quote-password"));
+   var verification=db.psql("psql","-X","-v","ON_ERROR_STOP=1","-U",db.getUsername(),"-d","campus","-f","verify-runtime.sql");
+   assertThat(verification.getExitCode()).withFailMessage(verification.getStderr()).isZero();
+  }
+ }
  @Test void verifierRejectsEveryMissingRequiredDmlPrivilege() throws Exception {
   try(var db=new TestDatabase(false)) {
    var provision=db.psql("psql","-X","-v","ON_ERROR_STOP=1","-U",db.getUsername(),"-d","campus","-f","provision.sql");
@@ -27,7 +46,7 @@ class PostgresPrivilegesIT {
    assertThat(baseline.getExitCode()).withFailMessage(baseline.getStderr()).isZero();
    // Revoke one grant at a time: a verifier must reject even a single missing permission.
    String[][] required={
-       {"campus_users","SELECT","INSERT","UPDATE (theme_preference)","UPDATE (email_verified_at)"},
+       {"campus_users","SELECT","INSERT","UPDATE (theme_preference)","UPDATE (email_verified_at)","UPDATE (password_hash)","UPDATE (credential_version)","UPDATE (reset_request_cutoff)"},
        {"applications","SELECT","INSERT","UPDATE"},
        {"interview_stages","SELECT","INSERT","UPDATE","DELETE"},
        {"application_imports","SELECT","INSERT","UPDATE","DELETE"},
@@ -35,7 +54,9 @@ class PostgresPrivilegesIT {
        {"application_import_rates","SELECT","INSERT","UPDATE","DELETE"},
        {"email_verification_tokens","SELECT","INSERT","UPDATE","DELETE"},
        {"email_outbox","SELECT","INSERT","UPDATE","DELETE"},
-       {"auth_rate_limits","SELECT","INSERT","UPDATE","DELETE"}
+       {"auth_rate_limits","SELECT","INSERT","UPDATE","DELETE"},
+       {"password_reset_requests","SELECT","INSERT","UPDATE","DELETE"},
+       {"password_reset_tokens","SELECT","INSERT","UPDATE","DELETE"}
    };
    var softly=new org.assertj.core.api.SoftAssertions();
    try(var c=DriverManager.getConnection(db.getJdbcUrl(),db.getUsername(),db.getPassword());var s=c.createStatement()) {
@@ -70,6 +91,11 @@ class PostgresPrivilegesIT {
    // Preserve the V1 ownership-inventory guard, then prove the import migration from an existing V3 schema.
    if(legacy) Flyway.configure().dataSource(db.getJdbcUrl(),"campus_migrator","migration-'quote-password").target("3").load().migrate();
    MigrationMain.run(Map.of("MIGRATION_DATABASE_URL",db.getJdbcUrl(),"MIGRATION_DATABASE_USERNAME","campus_migrator","MIGRATION_DATABASE_PASSWORD","migration-'quote-password"));
+   try(var c=DriverManager.getConnection(db.getJdbcUrl(),"campus_migrator","migration-'quote-password");var statement=c.createStatement();
+       var versions=statement.executeQuery("SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank")) {
+    var applied=new ArrayList<String>();while(versions.next()) applied.add(versions.getString(1));
+    assertThat(applied).containsExactly("1","2","3","4","5");
+   }
    // Repeat deployment: migrations and grants are idempotent.
    MigrationMain.run(Map.of("MIGRATION_DATABASE_URL",db.getJdbcUrl(),"MIGRATION_DATABASE_USERNAME","campus_migrator","MIGRATION_DATABASE_PASSWORD","migration-'quote-password"));
    try(var c=DriverManager.getConnection(db.getJdbcUrl(),"campus_runtime","runtime-'quote-password");var s=c.createStatement()) {
@@ -77,13 +103,34 @@ class PostgresPrivilegesIT {
     if(legacy) {try(var r=s.executeQuery("SELECT display_name FROM campus_users")){assertThat(r.next()).isTrue();assertThat(r.getString(1)).isEqualTo("Legacy");}}
     s.execute("INSERT INTO campus_users(id,email,display_name,password_hash,created_at) VALUES ('00000000-0000-0000-0000-000000000002','new@example.test','New','hash',CURRENT_TIMESTAMP)");
     s.execute("UPDATE campus_users SET theme_preference='dark',email_verified_at=CURRENT_TIMESTAMP");
+    s.execute("UPDATE campus_users SET password_hash='reset-hash',credential_version=credential_version+1,reset_request_cutoff=nextval('auth_security_event_order')");
+    assertThat(s.executeUpdate("UPDATE password_reset_control SET health_intake_paused=true WHERE id=1")).isEqualTo(1);
+    s.execute("UPDATE password_reset_control SET health_intake_paused=false WHERE id=1");
+    s.execute("INSERT INTO password_reset_requests(id,request_order,payload,key_id,nonce,status,next_attempt_at,created_at,expires_at) VALUES "
+      +"('00000000-0000-0000-0000-000000000040',nextval('auth_security_event_order'),'encrypted','test','nonce','PENDING',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP+INTERVAL '10 minutes')");
+    s.execute("INSERT INTO password_reset_tokens(id,request_id,user_id,email,token_hash,credential_version,created_at,expires_at) VALUES "
+      +"('00000000-0000-0000-0000-000000000041','00000000-0000-0000-0000-000000000040','00000000-0000-0000-0000-000000000002','new@example.test','"+"a".repeat(64)+"',1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP+INTERVAL '30 minutes')");
+    s.execute("UPDATE password_reset_tokens SET revoked_at=CURRENT_TIMESTAMP WHERE id='00000000-0000-0000-0000-000000000041'");
+    assertThat(s.executeUpdate("DELETE FROM password_reset_tokens WHERE id='00000000-0000-0000-0000-000000000041'")).isEqualTo(1);
+    s.execute("UPDATE password_reset_requests SET status='DONE',payload=NULL,key_id=NULL,nonce=NULL,completed_at=CURRENT_TIMESTAMP WHERE id='00000000-0000-0000-0000-000000000040'");
+    assertThat(s.executeUpdate("DELETE FROM password_reset_requests WHERE id='00000000-0000-0000-0000-000000000040'")).isEqualTo(1);
+    s.execute("INSERT INTO auth_security_events(id,completion_id,event_type,occurred_at,account_subject,correlation_id) VALUES "
+      +"('00000000-0000-0000-0000-000000000011','00000000-0000-0000-0000-000000000021','PASSWORD_RESET_COMPLETED',CURRENT_TIMESTAMP-INTERVAL '31 days','v1:subject','00000000-0000-0000-0000-000000000031'),"
+      +"('00000000-0000-0000-0000-000000000012','00000000-0000-0000-0000-000000000022','PASSWORD_RESET_COMPLETED',CURRENT_TIMESTAMP,'v1:subject','00000000-0000-0000-0000-000000000032')");
     s.execute("INSERT INTO applications(id,owner_id,company,role,location,status,notes,created_at,updated_at) VALUES ('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000002','Company','Role','Remote','SAVED','',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)");
     s.execute("UPDATE applications SET deleted=TRUE,version=version+1");
     s.execute("UPDATE applications SET deleted=FALSE,version=version+1");
     s.execute("INSERT INTO interview_stages VALUES ('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000003',0,'Interview',NULL,'PLANNED')");
     s.execute("UPDATE interview_stages SET name='Changed'");
     assertThat(s.executeUpdate("DELETE FROM interview_stages")).isEqualTo(1);
-    for(String denied : new String[]{"CREATE TABLE public.forbidden_probe(id int)","CREATE TEMP TABLE forbidden_temp(id int)","CREATE SCHEMA forbidden_schema","CREATE ROLE forbidden_role","CREATE DATABASE forbidden_db","DROP TABLE applications","ALTER TABLE applications ADD COLUMN forbidden text","TRUNCATE applications","DELETE FROM applications","DELETE FROM campus_users","UPDATE campus_users SET display_name='forbidden'","UPDATE campus_users SET email_verification_exempt=TRUE","UPDATE campus_users SET password_hash='forbidden'","SELECT * FROM flyway_schema_history","SET ROLE campus_migrator","SET ROLE "+db.getUsername()}) {
+    for(String denied : new String[]{"CREATE TABLE public.forbidden_probe(id int)","CREATE TEMP TABLE forbidden_temp(id int)","CREATE SCHEMA forbidden_schema","CREATE ROLE forbidden_role","CREATE DATABASE forbidden_db","DROP TABLE applications","ALTER TABLE applications ADD COLUMN forbidden text","TRUNCATE applications","DELETE FROM applications","DELETE FROM campus_users","UPDATE campus_users SET display_name='forbidden'","UPDATE campus_users SET email='forbidden@example.test'","UPDATE campus_users SET email_verification_exempt=TRUE","UPDATE auth_security_events SET account_subject='forbidden'","DELETE FROM auth_security_events","UPDATE password_reset_control SET enabled=true","UPDATE password_reset_control SET operator_intake_paused=true","SELECT setval('auth_security_event_order',1)","ALTER SEQUENCE auth_security_event_order CACHE 100","SELECT * FROM flyway_schema_history","SET ROLE campus_retention","SET ROLE campus_migrator","SET ROLE "+db.getUsername()}) {
+     assertThatThrownBy(()->s.execute(denied)).as(denied).isInstanceOfSatisfying(SQLException.class,e->assertThat(e.getSQLState()).isEqualTo("42501"));
+    }
+   }
+   try(var c=DriverManager.getConnection(db.getJdbcUrl(),"campus_retention","retention-'quote-password");var s=c.createStatement()) {
+    assertThat(s.executeUpdate("DELETE FROM auth_security_events WHERE occurred_at<CURRENT_TIMESTAMP-INTERVAL '30 days'")).isEqualTo(1);
+    try(var rows=s.executeQuery("SELECT id,occurred_at FROM auth_security_events")) {assertThat(rows.next()).isTrue();assertThat(rows.getObject("id").toString()).isEqualTo("00000000-0000-0000-0000-000000000012");assertThat(rows.next()).isFalse();}
+    for(String denied:new String[]{"SELECT account_subject FROM auth_security_events","UPDATE auth_security_events SET occurred_at=CURRENT_TIMESTAMP","SELECT * FROM campus_users","SET ROLE campus_runtime","SET ROLE campus_migrator"}) {
      assertThatThrownBy(()->s.execute(denied)).as(denied).isInstanceOfSatisfying(SQLException.class,e->assertThat(e.getSQLState()).isEqualTo("42501"));
     }
    }
@@ -93,23 +140,32 @@ class PostgresPrivilegesIT {
   }
  }
  private void verifyHttp(TestDatabase db) throws Exception {
-  try(var context=new org.springframework.boot.builder.SpringApplicationBuilder(CampusApplication.class)
+  try(var context=startContext(db.getJdbcUrl())) {
+   var server=(org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext)context;
+   verifyConcurrentAuth(context);
+   String base="http://127.0.0.1:"+server.getWebServer().getPort();
+   verifyHttpSession(db,context,base);
+  }
+ }
+ static org.springframework.context.ConfigurableApplicationContext startContext(String jdbcUrl) {
+  return new org.springframework.boot.builder.SpringApplicationBuilder(CampusApplication.class)
       .profiles("prod").run(
           "--server.port=0","--server.address=127.0.0.1",
-          "--spring.datasource.url="+db.getJdbcUrl(),
+          "--spring.datasource.url="+jdbcUrl,
           "--spring.datasource.username=campus_runtime",
           "--spring.datasource.password=runtime-'quote-password",
           "--campus.registration-enabled=true","--server.servlet.session.cookie.secure=false",
           "--spring.mail.host=127.0.0.1", "--spring.mail.port=1", "--spring.mail.username=", "--spring.mail.password=",
           "--campus.mail.public-origin=http://localhost", "--campus.mail.sender=capture@example.test",
           "--campus.mail.key-id=isolated-test", "--campus.mail.encryption-key=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
-          "--campus.mail.production=false", "--campus.mail.worker-enabled=false",
+          "--campus.mail.production=false", "--campus.mail.worker-enabled=false", "--campus.reset.health-enabled=false",
+          "--campus.reset.audit-secret=isolated-postgres-audit-secret-long-enough", "--campus.reset.audit-key-id=test-audit",
+          "--campus.mail.help-destination=http://localhost",
           "--campus.imports.cleanup-enabled=false",
           "--campus.verification.rate-limit-secret=isolated-postgres-verification-secret",
-          "--debug=false","--logging.level.root=WARN")) {
-   var server=(org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext)context;
-   verifyConcurrentAuth(context);
-   String base="http://127.0.0.1:"+server.getWebServer().getPort();
+          "--debug=false","--logging.level.root=WARN");
+ }
+ private void verifyHttpSession(TestDatabase db,org.springframework.context.ConfigurableApplicationContext context,String base) throws Exception {
    var cookies=new java.net.CookieManager(null,java.net.CookiePolicy.ACCEPT_ALL);
    var client=java.net.http.HttpClient.newBuilder().cookieHandler(cookies).version(java.net.http.HttpClient.Version.HTTP_1_1).build();
    var json=new com.fasterxml.jackson.databind.ObjectMapper();
@@ -124,7 +180,8 @@ class PostgresPrivilegesIT {
    var outbox=jdbc.queryForMap("SELECT id,payload,nonce,key_id FROM email_outbox WHERE verification_token_id IN "
        +"(SELECT id FROM email_verification_tokens WHERE email=?)",email);
    var payload=context.getBean(com.campus.tracker.mail.OutboxCrypto.class).decrypt(
-       (java.util.UUID)outbox.get("id"),(String)outbox.get("payload"),(String)outbox.get("nonce"),(String)outbox.get("key_id"));
+       (java.util.UUID)outbox.get("id"),com.campus.tracker.mail.EmailMessage.Type.EMAIL_VERIFICATION,
+       (String)outbox.get("payload"),(String)outbox.get("nonce"),(String)outbox.get("key_id"));
    http(client,base,"POST","/api/auth/email-verification/confirm",json.writeValueAsString(Map.of(
        "token",payload.token(),"password","Campus-test-123!")),token,200);
    http(client,base,"POST","/api/auth/login","email="+java.net.URLEncoder.encode(email,java.nio.charset.StandardCharsets.UTF_8)
@@ -146,11 +203,131 @@ class PostgresPrivilegesIT {
    var deleted=json.readTree(httpVersion(client,base,"DELETE",path,null,token,updated.get("version").asText(),200).body());
    var restored=json.readTree(httpVersion(client,base,"POST",path+"/restore",null,token,deleted.get("version").asText(),200).body());
    assertThat(restored.get("deleted").asBoolean()).isFalse();
+   verifyPasswordRecovery(db,context,client,base,email);
+   token=json.readTree(http(client,base,"GET","/api/auth/csrf",null,null,200).body()).get("token").asText();
+   http(client,base,"GET","/api/auth/me",null,null,200);
    verifyImportHttp(client,base,token,json,restored);
    verifyImportConcurrencyAndExpiry(context);
    verifyImportMaximumBatch(context);
    http(client,base,"POST","/api/auth/logout",null,token,204);
+ }
+ private void verifyPasswordRecovery(TestDatabase db,org.springframework.context.ConfigurableApplicationContext context,
+      java.net.http.HttpClient oldSession,String base,String email) throws Exception {
+  try(var c=DriverManager.getConnection(db.getJdbcUrl(),db.getUsername(),db.getPassword());var s=c.createStatement()) {
+   assertThat(s.executeUpdate("UPDATE password_reset_control SET enabled=true WHERE id=1")).isEqualTo(1);
   }
+  var json=new com.fasterxml.jackson.databind.ObjectMapper();
+  var jdbc=context.getBean(org.springframework.jdbc.core.JdbcTemplate.class);
+  var beforeApps=json.readTree(http(oldSession,base,"GET","/api/applications",null,null,200).body());
+  var beforePreferences=json.readTree(http(oldSession,base,"GET","/api/me/preferences",null,null,200).body());
+  var unchanged=jdbc.queryForMap("SELECT id,email,display_name,created_at,theme_preference,email_verified_at,email_verification_exempt FROM campus_users WHERE email=?",email);
+  long oldVersion=jdbc.queryForObject("SELECT credential_version FROM campus_users WHERE email=?",Long.class,email);
+  var recovery=java.net.http.HttpClient.newBuilder().cookieHandler(new java.net.CookieManager(null,java.net.CookiePolicy.ACCEPT_ALL)).build();
+  String csrf=json.readTree(http(recovery,base,"GET","/api/auth/csrf",null,null,200).body()).get("token").asText();
+  var requested=json.readTree(http(recovery,base,"POST","/api/auth/password-reset/request",json.writeValueAsString(Map.of("email",email)),csrf,202).body());
+  assertThat(requested.get("status").asText()).isEqualTo("PASSWORD_RESET_REQUEST_ACCEPTED");
+  context.getBean(com.campus.tracker.auth.reset.PasswordResetRequestWorker.class).processPending();
+  var job=jdbc.queryForMap("SELECT o.id,o.payload,o.nonce,o.key_id,o.password_reset_token_id FROM email_outbox o "
+      +"JOIN password_reset_tokens t ON t.id=o.password_reset_token_id WHERE t.email=? AND o.message_type='PASSWORD_RESET_LINK'",email);
+  verifyResetLinkHealth(context,(java.util.UUID)job.get("id"));
+  var message=context.getBean(com.campus.tracker.mail.OutboxCrypto.class).decrypt((java.util.UUID)job.get("id"),
+      com.campus.tracker.mail.EmailMessage.Type.PASSWORD_RESET_LINK,(String)job.get("payload"),(String)job.get("nonce"),(String)job.get("key_id"));
+  assertThat(message.recipient()).isEqualTo(email);
+  var completion=json.readTree(http(recovery,base,"POST","/api/auth/password-reset/confirm",json.writeValueAsString(Map.of(
+      "token",message.token(),"newPassword","Recovered campus passphrase 9284")),csrf,200).body());
+  assertThat(completion.get("status").asText()).isEqualTo("PASSWORD_RESET_COMPLETE");
+  http(recovery,base,"GET","/api/auth/me",null,null,401);
+  var stale=http(oldSession,base,"GET","/api/auth/me",null,null,401);
+  assertThat(stale.headers().allValues("Set-Cookie")).isEmpty();
+  // Epoch revocation must precede import admission and even its missing-CSRF-header rejection.
+  var staleImport=http(oldSession,base,"GET","/api/application-imports/"+java.util.UUID.randomUUID(),null,null,401);
+  assertThat(staleImport.headers().firstValue("Cache-Control").orElse("")).contains("no-store");
+  var staleUpload=http(oldSession,base,"POST","/api/application-imports/preview","unread",null,401);
+  assertThat(staleUpload.headers().firstValue("Cache-Control").orElse("")).contains("no-store");
+  String newCsrf=json.readTree(http(oldSession,base,"GET","/api/auth/csrf",null,null,200).body()).get("token").asText();
+  String encodedEmail=java.net.URLEncoder.encode(email,java.nio.charset.StandardCharsets.UTF_8);
+  http(oldSession,base,"POST","/api/auth/login","email="+encodedEmail+"&password=Campus-test-123%21",newCsrf,401);
+  http(oldSession,base,"POST","/api/auth/login","email="+encodedEmail+"&password="
+      +java.net.URLEncoder.encode("Recovered campus passphrase 9284",java.nio.charset.StandardCharsets.UTF_8),newCsrf,200);
+  assertThat(json.readTree(http(oldSession,base,"GET","/api/applications",null,null,200).body())).isEqualTo(beforeApps);
+  assertThat(json.readTree(http(oldSession,base,"GET","/api/me/preferences",null,null,200).body())).isEqualTo(beforePreferences);
+  assertThat(jdbc.queryForMap("SELECT id,email,display_name,created_at,theme_preference,email_verified_at,email_verification_exempt FROM campus_users WHERE email=?",email)).isEqualTo(unchanged);
+  assertThat(jdbc.queryForObject("SELECT credential_version FROM campus_users WHERE email=?",Long.class,email)).isEqualTo(oldVersion+1);
+  var replay=json.readTree(http(recovery,base,"POST","/api/auth/password-reset/confirm",json.writeValueAsString(Map.of(
+      "token",message.token(),"newPassword","Another campus passphrase 5742")),csrf,400).body());
+  assertThat(replay.get("code").asText()).isEqualTo("PASSWORD_RESET_INVALID");
+  Object challenge=job.get("password_reset_token_id");
+  assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM password_reset_tokens WHERE id=? AND consumed_at IS NOT NULL AND revoked_at IS NULL",Long.class,challenge)).isEqualTo(1);
+  assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM auth_security_events WHERE completion_id=?",Long.class,challenge)).isEqualTo(1);
+  assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM email_outbox WHERE password_reset_token_id=? AND message_type='PASSWORD_CHANGED'",Long.class,challenge)).isEqualTo(1);
+  assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM email_outbox WHERE id=? AND status='CANCELLED' AND payload IS NULL AND key_id IS NULL AND nonce IS NULL",Long.class,job.get("id"))).isEqualTo(1);
+  assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM password_reset_requests r JOIN password_reset_tokens t ON t.request_id=r.id WHERE t.id=? AND r.status='DONE' AND r.payload IS NULL AND r.key_id IS NULL AND r.nonce IS NULL",Long.class,challenge)).isEqualTo(1);
+  verifyExpiryAfterAccountLockWait(db,context,email);
+ }
+ private void verifyResetLinkHealth(org.springframework.context.ConfigurableApplicationContext context,java.util.UUID jobId) {
+  var jdbc=context.getBean(org.springframework.jdbc.core.JdbcTemplate.class);
+  var health=new com.campus.tracker.auth.reset.ResetHealth(jdbc,
+      context.getBean(com.campus.tracker.auth.reset.DatabaseTime.class),
+      context.getBean(com.campus.tracker.auth.reset.PasswordResetRequestWorker.class),
+      context.getBean(com.campus.tracker.auth.reset.ResetMaintenance.class),
+      context.getBean(com.campus.tracker.auth.reset.RecoveryCapacity.class),true);
+  health.check();
+  assertThat(jdbc.queryForObject("SELECT health_intake_paused FROM password_reset_control WHERE id=1",Boolean.class)).isFalse();
+  assertThat(jdbc.update("UPDATE email_outbox SET created_at=created_at-INTERVAL '3 minutes' WHERE id=? AND message_type='PASSWORD_RESET_LINK'",jobId)).isEqualTo(1);
+  health.check();
+  assertThat(jdbc.queryForObject("SELECT health_intake_paused FROM password_reset_control WHERE id=1",Boolean.class)).isTrue();
+  assertThat(jdbc.update("UPDATE email_outbox SET created_at=created_at+INTERVAL '3 minutes' WHERE id=? AND message_type='PASSWORD_RESET_LINK'",jobId)).isEqualTo(1);
+  health.check();
+  assertThat(jdbc.queryForObject("SELECT health_intake_paused FROM password_reset_control WHERE id=1",Boolean.class)).isFalse();
+ }
+ private void verifyExpiryAfterAccountLockWait(TestDatabase db,org.springframework.context.ConfigurableApplicationContext context,String email) throws Exception {
+  var jdbc=context.getBean(org.springframework.jdbc.core.JdbcTemplate.class);
+  var user=jdbc.queryForMap("SELECT id,password_hash,credential_version FROM campus_users WHERE email=?",email);
+  java.util.UUID intake=java.util.UUID.randomUUID(),challenge=java.util.UUID.randomUUID();
+  byte[] bytes=new byte[32];new java.security.SecureRandom().nextBytes(bytes);
+  String token=java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+  String digest=java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(token.getBytes(java.nio.charset.StandardCharsets.US_ASCII)));
+  jdbc.update("INSERT INTO password_reset_requests(id,request_order,status,attempts,next_attempt_at,created_at,expires_at,completed_at) VALUES(?,nextval('auth_security_event_order'),'DONE',1,clock_timestamp(),clock_timestamp(),clock_timestamp()+INTERVAL '10 minutes',clock_timestamp())",intake);
+  jdbc.update("INSERT INTO password_reset_tokens(id,request_id,user_id,email,token_hash,credential_version,created_at,expires_at) VALUES(?,?,?,?,?,?,clock_timestamp(),clock_timestamp()+INTERVAL '30 minutes')",challenge,intake,user.get("id"),email,digest,user.get("credential_version"));
+  var executor=java.util.concurrent.Executors.newSingleThreadExecutor();
+  try(var blocker=DriverManager.getConnection(db.getJdbcUrl(),db.getUsername(),db.getPassword());
+      var observer=DriverManager.getConnection(db.getJdbcUrl(),db.getUsername(),db.getPassword())) {
+   blocker.setAutoCommit(false);
+   int blockingPid;
+   try(var s=blocker.createStatement();var r=s.executeQuery("SELECT pg_backend_pid()")) {assertThat(r.next()).isTrue();blockingPid=r.getInt(1);}
+   try(var s=blocker.prepareStatement("SELECT id FROM campus_users WHERE id=? FOR UPDATE")) {s.setObject(1,user.get("id"));try(var r=s.executeQuery()){assertThat(r.next()).isTrue();}}
+   var started=new java.util.concurrent.CountDownLatch(1);
+   var result=executor.submit(()->{
+    started.countDown();
+    try {context.getBean(com.campus.tracker.auth.reset.PasswordResetService.class).confirm(token,"Expired campus passphrase 3948","192.0.2.181");return 200;}
+    catch(com.campus.tracker.common.ApiException invalid) {return invalid.getStatus().value();}
+   });
+   assertThat(started.await(5,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+   Timestamp transactionStarted=null;
+   long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+   try(var s=observer.prepareStatement("SELECT xact_start FROM pg_stat_activity WHERE ?=ANY(pg_blocking_pids(pid))")) {
+    s.setInt(1,blockingPid);
+    while(transactionStarted==null && System.nanoTime()<deadline && !result.isDone()) {
+     try(var r=s.executeQuery()) {if(r.next()) transactionStarted=r.getTimestamp(1);}
+     if(transactionStarted==null) Thread.sleep(10);
+    }
+   }
+   assertThat(transactionStarted).as("Confirmation must reach the account lock before testing expiry").isNotNull();
+   try(var s=observer.prepareStatement("UPDATE password_reset_tokens SET expires_at=clock_timestamp()+INTERVAL '100 milliseconds' WHERE id=? RETURNING expires_at")) {
+    s.setObject(1,challenge);try(var r=s.executeQuery()){assertThat(r.next()).isTrue();assertThat(r.getTimestamp(1).toInstant()).isAfter(transactionStarted.toInstant());}
+   }
+   // The observed PostgreSQL lock is the barrier; a short primary-clock wait crosses expiry.
+   try(var s=observer.createStatement()) {s.execute("SELECT pg_sleep(0.2)");}
+   try(var s=observer.prepareStatement("SELECT expires_at<clock_timestamp() FROM password_reset_tokens WHERE id=?")) {
+    s.setObject(1,challenge);try(var r=s.executeQuery()){assertThat(r.next()).isTrue();assertThat(r.getBoolean(1)).isTrue();}
+   }
+   blocker.rollback();
+   assertThat(result.get(5,java.util.concurrent.TimeUnit.SECONDS)).isEqualTo(400);
+   assertThat(jdbc.queryForMap("SELECT id,password_hash,credential_version FROM campus_users WHERE email=?",email)).isEqualTo(user);
+   assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM password_reset_tokens WHERE id=? AND consumed_at IS NULL",Long.class,challenge)).isEqualTo(1);
+   assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM auth_security_events WHERE completion_id=?",Long.class,challenge)).isZero();
+   assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM email_outbox WHERE password_reset_token_id=? AND message_type='PASSWORD_CHANGED'",Long.class,challenge)).isZero();
+  } finally {executor.shutdownNow();}
  }
  private void verifyImportConcurrencyAndExpiry(org.springframework.context.ConfigurableApplicationContext context) throws Exception {
    var jdbc=context.getBean(org.springframework.jdbc.core.JdbcTemplate.class);
@@ -365,11 +542,11 @@ class PostgresPrivilegesIT {
        +"(SELECT id FROM email_verification_tokens WHERE user_id=?)",Long.class,user.getId())).isEqualTo(1);
   } finally {pool.shutdownNow();}
  }
- private java.net.http.HttpResponse<String> http(java.net.http.HttpClient client,String base,String method,
+ static java.net.http.HttpResponse<String> http(java.net.http.HttpClient client,String base,String method,
       String path,String body,String token,int status) throws Exception {
   return httpVersion(client,base,method,path,body,token,null,status);
  }
- private java.net.http.HttpResponse<String> httpVersion(java.net.http.HttpClient client,String base,String method,
+ static java.net.http.HttpResponse<String> httpVersion(java.net.http.HttpClient client,String base,String method,
       String path,String body,String token,String version,int status) throws Exception {
   var request=java.net.http.HttpRequest.newBuilder(java.net.URI.create(base+path)).timeout(java.time.Duration.ofSeconds(20))
       .method(method,body==null?java.net.http.HttpRequest.BodyPublishers.noBody():java.net.http.HttpRequest.BodyPublishers.ofString(body));
@@ -381,7 +558,7 @@ class PostgresPrivilegesIT {
   return response;
  }
  /** Local mode always initializes its own cluster; it cannot target an existing database. */
- private static final class TestDatabase implements AutoCloseable {
+ static final class TestDatabase implements AutoCloseable {
   private PostgreSQLContainer<?> container;
   private Path binaryDirectory, dataDirectory, log;
   private int port;
@@ -392,9 +569,11 @@ class PostgresPrivilegesIT {
    String binaries=System.getProperty("postgres.test.bin");
    if(binaries==null) {
     container=new PostgreSQLContainer<>("postgres:17").withDatabaseName("campus").withUsername(username).withPassword(password)
-     .withEnv("MIGRATION_DATABASE_PASSWORD","migration-'quote-password").withEnv("RUNTIME_DATABASE_PASSWORD","runtime-'quote-password");
+     .withEnv("MIGRATION_DATABASE_PASSWORD","migration-'quote-password").withEnv("RUNTIME_DATABASE_PASSWORD","runtime-'quote-password")
+     .withEnv("RETENTION_DATABASE_PASSWORD","retention-'quote-password");
     container.start();
     container.copyFileToContainer(MountableFile.forHostPath(Path.of("../deploy/postgres").toAbsolutePath()),"/scripts");
+    container.copyFileToContainer(MountableFile.forHostPath(Path.of("../deploy/monitoring").toAbsolutePath()),"/monitoring");
    } else {
     binaryDirectory=Path.of(binaries).toAbsolutePath();
     Path root=java.nio.file.Files.createTempDirectory(Path.of("target").toAbsolutePath(),"postgres-privileges-");
@@ -409,6 +588,37 @@ class PostgresPrivilegesIT {
   String getJdbcUrl(){return container!=null?container.getJdbcUrl():"jdbc:postgresql://127.0.0.1:"+port+"/campus";}
   String getUsername(){return username;}
   String getPassword(){return password;}
+  String restoredJdbcUrl(){return getJdbcUrl().replace("/campus","/campus_restored");}
+  void backup() throws Exception {
+   check(databaseCommand("pg_dump","-Fc","-U",username,"-d","campus","-f",backupPath()));
+  }
+  void restore() throws Exception {
+   try(var c=DriverManager.getConnection(getJdbcUrl(),username,password);var s=c.createStatement()) {
+    s.execute("CREATE DATABASE campus_restored");
+    s.execute("REVOKE CONNECT ON DATABASE campus_restored FROM PUBLIC");
+    s.execute("GRANT CONNECT ON DATABASE campus_restored TO campus_runtime,campus_migrator,campus_retention");
+   }
+   check(databaseCommand("pg_restore","--exit-on-error","-U",username,"-d","campus_restored",backupPath()));
+  }
+  void restart() throws Exception {
+   if(container!=null) container.getDockerClient().restartContainerCmd(container.getContainerId()).exec();
+   else check(process("pg_ctl","-D",dataDirectory.toString(),"-m","fast","-w","restart"));
+   long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
+   while(true) {
+    try(var connection=DriverManager.getConnection(getJdbcUrl(),username,password)) {return;}
+    catch(SQLException unavailable) {if(System.nanoTime()>=deadline) throw unavailable;Thread.sleep(100);}
+   }
+  }
+  private String backupPath(){return container!=null?"/tmp/pre-reset.dump":dataDirectory.getParent().resolve("pre-reset.dump").toString();}
+  private Result databaseCommand(String executable,String... arguments) throws Exception {
+   var args=new java.util.ArrayList<String>(java.util.List.of(arguments));
+   if(container!=null) {
+    args.add(0,executable);var result=container.execInContainer(args.toArray(String[]::new));
+    return new Result(result.getExitCode(),result.getStderr()+result.getStdout());
+   }
+   args.addAll(java.util.List.of("-h","127.0.0.1","-p",Integer.toString(port)));
+   return process(executable,args.toArray(String[]::new));
+  }
   Result psql(String... arguments) throws Exception {
    String[] args=arguments.clone();
    args[args.length-1]=(container!=null?"/scripts/":Path.of("../deploy/postgres").toAbsolutePath()+"/")+args[args.length-1];
@@ -423,6 +633,7 @@ class PostgresPrivilegesIT {
    builder.environment().put("PGPASSWORD",password);
    builder.environment().put("MIGRATION_DATABASE_PASSWORD","migration-'quote-password");
    builder.environment().put("RUNTIME_DATABASE_PASSWORD","runtime-'quote-password");
+   builder.environment().put("RETENTION_DATABASE_PASSWORD","retention-'quote-password");
    // Windows descendants can keep inherited pipe handles open after pg_ctl exits.
    Path output=java.nio.file.Files.createTempFile(dataDirectory.getParent(),"process-",".log");
    builder.redirectOutput(output.toFile());
@@ -439,5 +650,5 @@ class PostgresPrivilegesIT {
    else if(dataDirectory!=null) check(process("pg_ctl","-D",dataDirectory.toString(),"-m","fast","-w","stop"));
   }
  }
- private record Result(int getExitCode,String getStderr) {}
+ record Result(int getExitCode,String getStderr) {}
 }

@@ -40,6 +40,18 @@ class MavenReportTests(unittest.TestCase):
         self.postgres = self.backend / "target/failsafe-reports/TEST-com.campus.tracker.PostgresPrivilegesIT.xml"
         self.write(self.unit, '<testsuite name="com.campus.tracker.ApiTest" tests="1" skipped="0" failures="0" errors="0"><testcase name="api"/></testsuite>')
         self.write(self.postgres, '<testsuite name="com.campus.tracker.PostgresPrivilegesIT" tests="3" skipped="0" failures="0" errors="0"><testcase name="freshDatabaseHasOnlyRequiredRuntimePrivileges"/><testcase name="legacyUpgradePreservesRecordsAndMigrationHistory"/><testcase name="verifierRejectsEveryMissingRequiredDmlPrivilege"/></testsuite>')
+        original = self.postgres.read_text(encoding="utf-8")
+        upgrades = ('<testcase name="existingV3ProvisioningAddsSeparateRetentionIdentityBeforeRecoveryMigration"/>'
+                    '<testcase name="existingV4ProvisioningAddsSeparateRetentionIdentityBeforeRecoveryMigration"/>')
+        self.write(self.postgres, original.replace('tests="3"', 'tests="5"').replace('</testsuite>', upgrades + '</testsuite>'))
+        self.recovery_reports = []
+        for suite, case in (
+            ("PasswordResetRestoreIT", "restoreReconciliationPreventsSpentLinksAndOldPasswordsReturning"),
+            ("PostgresMonitoringIT", "privateReportFindsBacklogsAndMissingExportEvidenceWithoutReadingSecrets"),
+        ):
+            path = self.postgres.with_name(f"TEST-com.campus.tracker.{suite}.xml")
+            self.write(path, f'<testsuite name="com.campus.tracker.{suite}" tests="1" skipped="0" failures="0" errors="0"><testcase name="{case}"/></testsuite>')
+            self.recovery_reports.append(path)
 
     @staticmethod
     def write(path, content):
@@ -106,11 +118,21 @@ class MavenReportTests(unittest.TestCase):
         original = self.postgres.read_text(encoding="utf-8")
         for name in ("freshDatabaseHasOnlyRequiredRuntimePrivileges",
                      "legacyUpgradePreservesRecordsAndMigrationHistory",
-                     "verifierRejectsEveryMissingRequiredDmlPrivilege"):
-            xml = original.replace(f'<testcase name="{name}"/>', '').replace('tests="3"', 'tests="2"')
+                     "verifierRejectsEveryMissingRequiredDmlPrivilege",
+                     "existingV3ProvisioningAddsSeparateRetentionIdentityBeforeRecoveryMigration",
+                     "existingV4ProvisioningAddsSeparateRetentionIdentityBeforeRecoveryMigration"):
+            xml = original.replace(f'<testcase name="{name}"/>', '').replace('tests="5"', 'tests="4"')
             self.write(self.postgres, xml)
             with self.subTest(missing=name), self.assertRaises(ValueError):
                 require_reports(self.backend)
+
+    def test_rejects_each_missing_recovery_integration_suite(self):
+        for path in self.recovery_reports:
+            original = path.read_text(encoding="utf-8")
+            path.unlink()
+            with self.subTest(report=path.name), self.assertRaises(ValueError):
+                require_reports(self.backend)
+            self.write(path, original)
 
     def test_report_cli_preserves_success_and_failure_exit_codes(self):
         script = Path(__file__).with_name("check_ci.py")

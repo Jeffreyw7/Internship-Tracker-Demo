@@ -154,6 +154,32 @@ async function verificationToken() {
   throw new Error('Verification message was not accepted by the SMTP capture server.');
 }
 
+async function resetToken() {
+  for (let attempt=0;attempt<150;attempt++) {
+    const match=messages.join('\n').match(/#reset-password=([A-Za-z0-9_-]{43})/);
+    if (match) return match[1];
+    await new Promise(resolve=>setTimeout(resolve,100));
+  }
+  throw new Error('Reset link was not accepted by the SMTP capture server.');
+}
+
+async function stalledResetBody(headers) {
+  await new Promise((resolve,reject)=> {
+    const request=http.request(base+'/api/auth/password-reset/request', {method:'POST',timeout:12000,
+      headers:{...headers,'Content-Type':'application/json',Cookie:[...cookies].map(([key,value])=>`${key}=${value}`).join('; ')}},response=> {
+      response.resume();
+      response.on('end',()=> {
+        request.destroy();
+        try { assert.equal(response.statusCode,408);resolve(); } catch (error) {reject(error);}
+      });
+    });
+    request.on('error',reject);
+    request.on('timeout',()=>request.destroy(new Error('Slow recovery body was not bounded.')));
+    // Leave a valid CSRF request body unfinished; no completion or retry is sent.
+    request.write('{"email":"');
+  });
+}
+
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'campus-http-test-'));
 const logPath = path.join(temp, 'server.log');
 const log = fs.openSync(logPath, 'a');
@@ -166,6 +192,7 @@ const command = [
   '--spring.mail.host=127.0.0.1', `--spring.mail.port=${smtpPort}`,
   `--campus.mail.public-origin=${base}`, '--campus.mail.worker-enabled=true',
   '--campus.verification.rate-limits-enabled=false',
+  '--campus.reset.development-enabled=true',
 ];
 
 async function portIsClosed() {
@@ -292,6 +319,22 @@ try {
   assert.equal(recoveredReceipt.counts.added, 1, 'GET recovers completion without replaying the lost commit.');
   await vite.close(); vite = undefined;
   const restartPreview = await importPreview('Company,Role\nAfter restart,Intern\n', { ...options, mapping: { 0: 'company', 1: 'role' } }, headers);
+  await stalledResetBody(await csrf());
+  const recovery=await call('/api/auth/password-reset/request',{method:'POST',data:{email:identity.email},headers:await csrf(),expected:202});
+  assert.equal(recovery.status,'PASSWORD_RESET_REQUEST_ACCEPTED');
+  const recoveryToken=await resetToken();
+  const oldPassword=identity.password;
+  identity.password='New private internship passphrase';
+  const reset=await call('/api/auth/password-reset/confirm',{method:'POST',data:{token:recoveryToken,newPassword:identity.password},headers:await csrf()});
+  assert.equal(reset.status,'PASSWORD_RESET_COMPLETE');
+  await call('/api/auth/me',{expected:401});
+  await call('/api/auth/password-reset/confirm',{method:'POST',data:{token:recoveryToken,newPassword:identity.password},headers:await csrf(),expected:400});
+  await call('/api/auth/login',{method:'POST',data:{...identity,password:oldPassword},headers:await csrf(),form:true,expected:401});
+  await call('/api/auth/login',{method:'POST',data:identity,headers:await csrf(),form:true});
+  assert.deepEqual(await call('/api/me/preferences'),{themePreference:'dark'});
+  assert.equal((await call('/api/applications')).totalElements,13);
+  for (let attempt=0;attempt<150&&!messages.some(message=>message.includes('Your password was changed'));attempt++) await new Promise(resolve=>setTimeout(resolve,100));
+  assert.ok(messages.some(message=>message.includes('Your password was changed')),'Password-change notice must reach SMTP capture');
   await stop(server); server = undefined;
 
   cookies.clear();
@@ -310,7 +353,22 @@ try {
     data: { reviewDigest: 'missing', acknowledgement: { existingApplicationsToUpdate: 0 } } });
   await call('/api/auth/logout', { method: 'POST', headers: await csrf(), expected: 204 });
   await call('/api/applications', { expected: 401 });
-  console.log('PASS: real HTTP/assets, verification/authentication, preferences, CRUD/undo, multipart CSV add/update/preservation, native FormData bundled/Vite proxy, CSRF, atomic conflict, duplicate receipts, lost-response GET reconciliation, and application/import JVM restart recovery.');
+  console.log('PASS: real HTTP/assets, verification, reset SMTP link/notice, slow-body deadline, session revocation, token single use, old/new credentials, data/theme preservation, CRUD/undo, multipart CSV, native FormData bundled/Vite proxy, CSRF, atomic conflict, duplicate receipts, lost-response GET reconciliation, and application/import JVM restart recovery.');
+  if (process.argv.includes('--hold-browser')) {
+    // Synthetic fixtures only. Keep the disposable app alive for a real browser pass.
+    messages.length=0;
+    const browserAccount={email:'browser-readiness@example.test',password:'Browser readiness passphrase 2026'};
+    await call('/api/auth/register',{method:'POST',data:{...browserAccount,displayName:'Browser Readiness',includeSamples:false},headers:await csrf(),expected:202});
+    await call('/api/auth/email-verification/confirm',{method:'POST',data:{token:await verificationToken(),password:browserAccount.password},headers:await csrf()});
+    await call('/api/auth/password-reset/request',{method:'POST',data:{email:browserAccount.email},headers:await csrf(),expected:202});
+    const browserLink=base+'/#reset-password='+await resetToken();
+    const stopFile=path.join(root,'backend/target/browser-readiness.stop');
+    fs.rmSync(stopFile,{force:true});
+    console.log('BROWSER_FIXTURE '+JSON.stringify({origin:base,resetLink:browserLink,...browserAccount,stopFile}));
+    const deadline=Date.now()+15*60*1000;
+    while (!fs.existsSync(stopFile)&&Date.now()<deadline) await new Promise(resolve=>setTimeout(resolve,500));
+    fs.rmSync(stopFile,{force:true});
+  }
 } catch (error) {
   console.error(error);
   if (fs.existsSync(logPath)) console.error(fs.readFileSync(logPath, 'utf8').slice(-5000));

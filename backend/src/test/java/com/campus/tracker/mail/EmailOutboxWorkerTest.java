@@ -46,6 +46,71 @@ class EmailOutboxWorkerTest {
         assertThat(deliveries).hasSize(1);
         assertThat(jdbc.queryForObject("SELECT consumed_at FROM email_verification_tokens WHERE id=?", OffsetDateTime.class, token)).isNull();
     }
+    @Test void disabledRecoveryPreservesQueuedLinksButStillDeliversCommittedNotices() {
+        UUID link = queueReset(false);
+        UUID notice = queueReset(true);
+        worker.deliverPending();
+        assertThat(jdbc.queryForObject("SELECT status FROM email_outbox WHERE password_reset_token_id=?", String.class, link)).isEqualTo("PENDING");
+        assertThat(jdbc.queryForObject("SELECT status FROM email_outbox WHERE password_reset_token_id=?", String.class, notice)).isEqualTo("SENT");
+        assertThat(deliveries).containsExactly("student@example.test:null");
+        jdbc.update("UPDATE password_reset_control SET enabled=true");
+        worker.deliverPending();
+        assertThat(deliveries).contains("student@example.test:synthetic-reset-token");
+    }
+
+    @Test void resetDeliveryUsesCurrentCredentialVersionAndDoesNotRequireEmailVerification() {
+        UUID reset = queueReset(false);
+        jdbc.update("UPDATE password_reset_control SET enabled=true");
+        jdbc.update("UPDATE campus_users SET credential_version=1");
+        worker.deliverPending();
+        assertThat(jdbc.queryForObject("SELECT status FROM email_outbox WHERE password_reset_token_id=?", String.class, reset)).isEqualTo("CANCELLED");
+        assertThat(deliveries).isEmpty(); assertErased();
+    }
+    @Test void disablingRecoveryAfterClaimDoesNotDestroyTheIssuedLinkJob() {
+        queueReset(false); jdbc.update("UPDATE password_reset_control SET enabled=true");
+        var changingControl = new JdbcTemplate(jdbc.getDataSource()) {
+            @Override public <T> T queryForObject(String sql, Class<T> type, Object... args) {
+                if(sql.contains("password_reset_tokens t JOIN campus_users")) jdbc.update("UPDATE password_reset_control SET enabled=false");
+                return super.queryForObject(sql,type,args);
+            }
+        };
+        var racing = new EmailOutboxWorker(changingControl, transactions.getTransactionManager(), crypto,
+                (email,token) -> deliveries.add(email+":"+token), clock);
+        racing.deliverPending();
+        assertThat(state()).isEqualTo("PENDING");
+        assertThat(jdbc.queryForObject("SELECT payload FROM email_outbox", String.class)).isNotNull();
+        assertThat(deliveries).isEmpty();
+    }
+
+    @Test void resetMailStopsAfterTwoSmtpAttempts() {
+        queueReset(false); jdbc.update("UPDATE password_reset_control SET enabled=true");
+        failure = new IllegalStateException("provider failure");
+        worker.deliverPending(); clock.advance(Duration.ofMinutes(2)); worker.deliverPending();
+        assertThat(state()).isEqualTo("FAILED");
+        assertThat(jdbc.queryForObject("SELECT attempts FROM email_outbox", Integer.class)).isEqualTo(2);
+        assertErased();
+    }
+
+    @Test void noticesExpireAfterTheirOwnDeadlineRatherThanTheOriginalTokenExpiry() {
+        queueReset(true); clock.advance(Duration.ofHours(25)); worker.deliverPending();
+        assertThat(state()).isEqualTo("FAILED"); assertErased(); assertThat(deliveries).isEmpty();
+    }
+
+    private UUID queueReset(boolean consumed) {
+        UUID user = UUID.randomUUID(), token = UUID.randomUUID(), intake = UUID.randomUUID();
+        var existing = jdbc.queryForList("SELECT id FROM campus_users WHERE email='student@example.test'", UUID.class);
+        if(existing.isEmpty()) jdbc.update("INSERT INTO campus_users(id,email,display_name,password_hash,created_at) VALUES(?,?,?,?,?)", user, "student@example.test", "Student", "test-only", at(clock.instant()));
+        else user = existing.get(0);
+        jdbc.update("INSERT INTO password_reset_requests(id,request_order,status,next_attempt_at,created_at,expires_at,completed_at) VALUES(?,NEXT VALUE FOR auth_security_event_order,'DONE',?,?,?,?)",
+                intake, at(clock.instant()), at(clock.instant()), at(clock.instant().plusSeconds(600)), at(clock.instant()));
+        jdbc.update("INSERT INTO password_reset_tokens(id,request_id,user_id,email,token_hash,credential_version,created_at,expires_at,consumed_at) VALUES(?,?,?,?,?,0,?,?,?)",
+                token, intake, user, "student@example.test", UUID.randomUUID().toString(), at(clock.instant()), at(clock.instant().plusSeconds(1800)), consumed ? at(clock.instant()) : null);
+        transactions.executeWithoutResult(status -> {
+            if(consumed) outbox.enqueuePasswordChanged(token, "student@example.test", clock.instant());
+            else outbox.enqueueReset(token, "student@example.test", "synthetic-reset-token");
+        });
+        return token;
+    }
 
     @Test void rollbackRemovesDeliveryIntent() {
         transactions.executeWithoutResult(status -> { queue(); status.setRollbackOnly(); });

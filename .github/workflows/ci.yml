@@ -124,6 +124,7 @@ jobs:
           DATABASE_ADMIN_PASSWORD: ci-only-admin-password
           MIGRATION_DATABASE_PASSWORD: ci-only-migrator-password
           DATABASE_PASSWORD: ci-only-runtime-password
+          RETENTION_DATABASE_PASSWORD: ci-only-retention-password
         run: docker compose --file compose.yaml config --quiet
 
       # Both builds use the same daemon, preserving their shared verified stages.

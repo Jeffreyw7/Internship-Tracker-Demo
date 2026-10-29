@@ -1,6 +1,8 @@
 package com.campus.tracker.application.importing;
 
 import com.campus.tracker.auth.CampusPrincipal;
+import com.campus.tracker.auth.CampusUser;
+import com.campus.tracker.auth.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.*;
 import java.io.*;
@@ -140,10 +142,12 @@ class ImportTransportServerTest {
     }
     @TestConfiguration
     static class Servlets {
-        @Bean ServletRegistrationBean<HttpServlet> importSessionServlet() {
+        @Bean ServletRegistrationBean<HttpServlet> importSessionServlet(UserRepository users) {
             return new ServletRegistrationBean<>(new HttpServlet() {
                 @Override protected void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {
-                    var principal = new CampusPrincipal(UUID.randomUUID(), "Transport test", "transport@example.test", "unused", true);
+                    var user = new CampusUser(UUID.randomUUID() + "@example.test", "Transport test", "unused");
+                    user.verifyEmail(java.time.Instant.now()); users.saveAndFlush(user);
+                    var principal = CampusPrincipal.from(user);
                     var context = SecurityContextHolder.createEmptyContext();
                     context.setAuthentication(new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
                     request.getSession().setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context);

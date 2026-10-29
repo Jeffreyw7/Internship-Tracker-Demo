@@ -6,7 +6,7 @@ All routes are under `/api`. The production JAR serves React and the API from th
 
 1. `GET /api/auth/csrf` returns `{ "token": "…", "headerName": "X-CSRF-TOKEN" }` and establishes a session.
 2. Include that header and the session cookie on every POST, PUT or DELETE.
-3. `POST /api/auth/register` accepts JSON: `displayName`, `email`, `password` (at least 12 characters with uppercase, lowercase, number and symbol; at most 72 UTF-8 bytes), and `includeSamples` (boolean). It returns HTTP 202 with `{"status":"VERIFICATION_REQUEST_ACCEPTED","message":"…"}`. Registration never signs in automatically.
+3. `POST /api/auth/register` accepts JSON: `displayName`, `email`, `password` (at least 15 Unicode characters, without composition rules, checked against a password blocklist; at most 72 UTF-8 bytes), and `includeSamples` (boolean). It returns HTTP 202 with `{"status":"VERIFICATION_REQUEST_ACCEPTED","message":"…"}`. Registration never signs in automatically.
 4. Open the verification link from the email, then `POST /api/auth/email-verification/confirm` with JSON `token` and the signup `password`. A valid, unexpired token returns `{"status":"EMAIL_VERIFIED"}`. The user signs in normally afterward.
 5. `POST /api/auth/email-verification/resend` accepts `{"email":"…"}` and returns the same HTTP 202 response for unknown, verified, exempt, pending, or recipient-throttled addresses. Global or IP throttling can return 429.
 6. `POST /api/auth/login` accepts **form-urlencoded** `email` and `password`. It returns the signed-in user's `id`, `displayName` and `email`. Correct credentials for a pending new account return HTTP 403 with code `EMAIL_VERIFICATION_REQUIRED`; invalid credentials remain a generic 401.
@@ -96,6 +96,16 @@ Login, registration, and CSRF/session-creating requests are rate-limited. Limits
 The CSRF budget also applies to anonymous unsafe requests on unrelated paths, because Spring may create a session before returning 403. Login rejects missing, duplicate, or oversized email parameters with 400 before password verification. Existing-account passwords are not subjected to registration complexity rules.
 
 See [authentication security](AUTHENTICATION-SECURITY.md) for defaults, proxy configuration, and limits.
+
+## Password reset
+
+Both POST endpoints require the current session CSRF token and uncompressed JSON (maximum 4096 bytes), reject unknown/duplicate fields, and return no-store responses. Opening a link changes no server state.
+
+- `/api/auth/password-reset/request`: `{ "email": "student@example.test" }` returns HTTP202 with status `PASSWORD_RESET_REQUEST_ACCEPTED`, including for unknown accounts and recipient suppression. It does not disclose queue or account identifiers.
+- `/api/auth/password-reset/confirm`: `{ "token": "43-character-base64url-token", "newPassword": "a unique long passphrase" }` returns HTTP200 with status `PASSWORD_RESET_COMPLETE`. Canonical, unexpired tokens are single-use. Invalid/expired/used tokens return HTTP400 with code `PASSWORD_RESET_INVALID`.
+- Capacity/abuse budgets return HTTP429 with Retry-After; disabled/unavailable recovery returns HTTP503. No write is automatically replayed. Oversize bodies return413, unsupported encoding/media415 and body timeout408.
+
+Email links use `#reset-password=...`; the browser scrubs the fragment immediately and keeps the challenge in memory only. Sign out explicitly if already authenticated before submitting the UI form. Completion revokes prior account sessions and sibling challenges while preserving applications, preferences and verification status. Pending accounts still require verification, using their new password. Sign in normally afterward. See [operations](PASSWORD-RESET.md).
 
 ## CSV imports
 

@@ -6,11 +6,11 @@ The production web process uses `campus_runtime`. The one-shot `migrate` contain
 | --- | --- |
 | `campus_admin` | Provisioning, backup/restore, maintenance; never supplied to the app |
 | `campus_migrator` | Owns the public schema and application tables; used only for migrations |
-| `campus_runtime` | Database CONNECT, schema USAGE, users SELECT/INSERT and column UPDATE for appearance/verification, applications SELECT/INSERT/UPDATE, stages, verification/outbox/rate-limit and import metadata tables SELECT/INSERT/UPDATE/DELETE |
+| `campus_runtime` | Database CONNECT, schema USAGE, users SELECT/INSERT and column UPDATE for appearance/verification/password epochs, applications SELECT/INSERT/UPDATE, stages and verification/outbox/rate-limit/import metadata tables SELECT/INSERT/UPDATE/DELETE |
 
 Runtime has no privileged role flags or memberships, ownership, CREATE/TEMP, migration-history access, or user/application DELETE. Explicit grants are reapplied after every migration; future tables require an intentional grant change. This is an isolated application database: provisioning removes database/schema privileges inherited through PUBLIC.
 
-Account updates are limited to `theme_preference` and `email_verified_at`; identity, password hashes, and verification exemptions remain protected. Hibernate updates only changed account columns so email confirmation respects these column grants.
+Account updates are limited to `theme_preference`, `email_verified_at`, `password_hash`, `credential_version`, and `reset_request_cutoff`; identity and verification exemptions remain protected. Hibernate updates only changed account columns so email confirmation respects these column grants.
 
 ## CSV import metadata
 
@@ -85,3 +85,5 @@ Supply an installed PostgreSQL 17 bin directory containing initdb.exe, pg_ctl.ex
 This mode initializes isolated clusters under backend/target, uses loopback and synthetic credentials, and shuts the servers down after each test. It never connects to an existing application database. Subprocess output goes to files to avoid inherited Windows pipe handles blocking shutdown.
 
 Each fresh/legacy scenario also starts the application with runtime credentials and exercises registration with samples, login, application create/edit/delete/restore, and stage removal over HTTP. See [the verification record](../VALIDATION.md) for executed results and remaining deployment checks.
+
+V5 password reset adds column UPDATE for password_hash, credential_version and reset_request_cutoff, sequence USAGE, recovery-table DML, audit SELECT/INSERT, and health-pause-only control UPDATE. Runtime cannot delete audit events or alter operator recovery switches. The separate campus_retention role has SELECT(id,occurred_at)/DELETE on audit events and no runtime membership. Existing deployments must provision that role as administrator before V5 grants are applied. See [the recovery runbook](PASSWORD-RESET.md).

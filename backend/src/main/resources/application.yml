@@ -17,6 +17,9 @@ spring:
       mail.smtp.writetimeout: 20000
 # Keep local accounts in a file; H2_PASSWORD can override the default empty database password.
   datasource:
+    hikari:
+      maximum-pool-size: 20
+      connection-timeout: 1000
     url: jdbc:h2:file:./data/campus;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
     username: sa
     password: ${H2_PASSWORD:}
@@ -33,6 +36,13 @@ spring:
   jackson:
     deserialization:
       fail-on-unknown-properties: true
+  jdbc:
+    template:
+      query-timeout: 2s
+  task:
+    scheduling:
+      pool:
+        size: 4
 # Bind locally by default and configure the server-side session and cookie policy.
 server:
   forward-headers-strategy: NONE
@@ -86,9 +96,16 @@ campus:
     # Synthetic development key. Production requires external secrets and rejects this key.
     key-id: ${OUTBOX_KEY_ID:local-capture-only}
     encryption-key: ${OUTBOX_ENCRYPTION_KEY:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+    decrypt-keys: {}
+    help-destination: ${HELP_DESTINATION:http://127.0.0.1:8080}
     production: false
     worker-enabled: ${MAIL_WORKER_ENABLED:true}
   verification:
     token-ttl: ${VERIFICATION_TOKEN_TTL:24h}
     rate-limit-secret: ${VERIFICATION_RATE_LIMIT_SECRET:local-development-rate-limit-secret}
     rate-limits-enabled: ${VERIFICATION_RATE_LIMITS_ENABLED:true}
+    previous-rate-limit-secrets: []
+  reset:
+    audit-secret: ${RESET_AUDIT_SECRET:local-development-audit-secret-not-for-production}
+    audit-key-id: ${RESET_AUDIT_KEY_ID:local-audit}
+    worker-enabled: ${campus.mail.worker-enabled}
