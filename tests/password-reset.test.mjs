@@ -174,7 +174,11 @@ function browserFixture(hash) {
   const location = {hash, pathname:'/', search:'?theme=dark'};
   const replacements = [];
   return {location, replacements,
-    history: {state:{existing:true}, replaceState(state,_title,url) { replacements.push({state,url}); location.hash=''; }},
+    history: {state:{existing:true}, replaceState(state,_title,url) {
+      replacements.push({state,url});
+      this.state=state;
+      if(url!==undefined) location.hash=new URL(url,'https://example.test').hash;
+    }},
     addEventListener(_event,listener) { listeners.add(listener); },
     removeEventListener(_event,listener) { listeners.delete(listener); },
     navigate(hash) { location.hash=hash; listeners.forEach(listener => listener()); },
@@ -189,7 +193,10 @@ test('reset fragments are scrubbed immediately and canonical tokens survive Stri
   const snapshot = store.getSnapshot();
   assert.deepEqual(snapshot,{token});
   assert.equal(browser.location.hash,'');
-  assert.deepEqual(browser.replacements,[{state:{existing:true},url:'/?theme=dark'}]);
+  assert.equal(browser.replacements.length,1);
+  assert.equal(browser.replacements[0].url,'/?theme=dark');
+  assert.equal(browser.history.state.existing,true);
+  assert.equal(JSON.stringify(browser.history.state).includes(token),false);
   store.subscribe(() => {})();
   const unsubscribe = store.subscribe(() => {});
   assert.equal(store.getSnapshot(),snapshot);
@@ -198,6 +205,54 @@ test('reset fragments are scrubbed immediately and canonical tokens survive Stri
   store.dismiss();
   assert.equal(store.getSnapshot(),null);
   unsubscribe();
+});
+
+test('reloading a scrubbed reset link asks to reopen the email without retaining its token', async () => {
+  const {createPasswordResetLinkStore}=await import('../src/domain/passwordResetLink.ts');
+  const browser=browserFixture('#reset-password='+token);
+  createPasswordResetLinkStore(browser);
+  const reloaded=createPasswordResetLinkStore(browser);
+  assert.deepEqual(reloaded.getSnapshot(),{token:null});
+  assert.equal(browser.location.hash,'');
+  assert.equal(browser.history.state.existing,true);
+  assert.equal(JSON.stringify(browser.history.state).includes(token),false);
+});
+
+test('dismissing or completing reset recovery clears its reload hint and preserves unrelated history state', async () => {
+  const {createPasswordResetLinkStore}=await import('../src/domain/passwordResetLink.ts');
+  for(const action of ['dismiss','complete']) {
+    const browser=browserFixture('#reset-password='+token);
+    const store=createPasswordResetLinkStore(browser);
+    store[action]();
+    assert.deepEqual(browser.history.state,{existing:true});
+    assert.equal(createPasswordResetLinkStore(browser).getSnapshot(),null);
+  }
+});
+
+test('a fresh verification link replaces the reset reload hint regardless of store initialization order', async () => {
+  const {createPasswordResetLinkStore,connectAuthenticationLinks}=await import('../src/domain/passwordResetLink.ts');
+  const {createVerificationLinkStore}=await import('../src/domain/verificationLink.ts');
+  for(const verificationFirst of [false,true]) {
+    const browser=browserFixture('#reset-password='+token);
+    createPasswordResetLinkStore(browser);
+    browser.location.hash='#verify-email='+'b'.repeat(43);
+    let reset;
+    let verification;
+    if(verificationFirst) {
+      verification=createVerificationLinkStore(browser);
+      reset=createPasswordResetLinkStore(browser);
+    } else {
+      reset=createPasswordResetLinkStore(browser);
+      verification=createVerificationLinkStore(browser);
+    }
+    const disconnect=connectAuthenticationLinks(reset,verification);
+    try {
+      assert.equal(reset.getSnapshot(),null);
+      assert.deepEqual(verification.getSnapshot(),{token:'b'.repeat(43)});
+      assert.deepEqual(browser.history.state,{existing:true});
+      assert.equal(createPasswordResetLinkStore(browser).getSnapshot(),null);
+    } finally { disconnect(); }
+  }
 });
 
 test('completion erases the captured secret while keeping the success view in memory', async () => {

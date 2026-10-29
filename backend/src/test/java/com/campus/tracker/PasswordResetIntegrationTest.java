@@ -233,7 +233,8 @@ class PasswordResetIntegrationTest {
     }
 
     @ParameterizedTest @ValueSource(strings={
-            "expires_at=CURRENT_TIMESTAMP",
+            // H2 SQL and the injected JVM clock are separate samples; use a definite past expiry.
+            "created_at=DATEADD('MINUTE',-4,CURRENT_TIMESTAMP),expires_at=DATEADD('SECOND',-1,CURRENT_TIMESTAMP)",
             "consumed_at=CURRENT_TIMESTAMP",
             "revoked_at=CURRENT_TIMESTAMP",
             "credential_version=credential_version+1",

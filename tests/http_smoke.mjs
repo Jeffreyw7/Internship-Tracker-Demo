@@ -255,6 +255,21 @@ try {
   await call('/api/auth/logout', { method: 'POST', headers: await csrf(), expected: 204 });
   await call('/api/applications', { expected: 401 });
   console.log('PASS: real HTTP page/assets, verification, reset SMTP link/notice, slow-body deadline, session revocation, token single use, old/new credentials, data/theme preservation, CRUD, CSRF, conflict, delete/undo, logout, and H2 restart persistence.');
+  if (process.argv.includes('--hold-browser')) {
+    // Synthetic fixtures only. Keep the disposable app alive for a real browser pass.
+    messages.length=0;
+    const browserAccount={email:'browser-readiness@example.test',password:'Browser readiness passphrase 2026'};
+    await call('/api/auth/register',{method:'POST',data:{...browserAccount,displayName:'Browser Readiness',includeSamples:false},headers:await csrf(),expected:202});
+    await call('/api/auth/email-verification/confirm',{method:'POST',data:{token:await verificationToken(),password:browserAccount.password},headers:await csrf()});
+    await call('/api/auth/password-reset/request',{method:'POST',data:{email:browserAccount.email},headers:await csrf(),expected:202});
+    const browserLink=base+'/#reset-password='+await resetToken();
+    const stopFile=path.join(root,'backend/target/browser-readiness.stop');
+    fs.rmSync(stopFile,{force:true});
+    console.log('BROWSER_FIXTURE '+JSON.stringify({origin:base,resetLink:browserLink,...browserAccount,stopFile}));
+    const deadline=Date.now()+15*60*1000;
+    while (!fs.existsSync(stopFile)&&Date.now()<deadline) await new Promise(resolve=>setTimeout(resolve,500));
+    fs.rmSync(stopFile,{force:true});
+  }
 } catch (error) {
   console.error(error);
   if (fs.existsSync(logPath)) console.error(fs.readFileSync(logPath, 'utf8').slice(-5000));

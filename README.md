@@ -88,7 +88,6 @@ Follow-ups are displayed in the workspace. They do not send notifications or cre
 ## Not currently supported
 
 - Email notifications or calendar events for follow-ups and interviews.
-- Password reset.
 - Admin account management.
 - Recruitment-platform integrations.
 

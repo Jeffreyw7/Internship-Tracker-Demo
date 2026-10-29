@@ -6,7 +6,8 @@ RUN npm ci
 COPY index.html tsconfig.json vite.config.ts ./
 COPY public ./public
 COPY src ./src
-RUN npm run build
+COPY tests ./tests
+RUN npm test && npm run build
 
 # Compile and verify Java, bundling the frontend assets into the runnable JAR.
 FROM maven:3.9-eclipse-temurin-17 AS backend

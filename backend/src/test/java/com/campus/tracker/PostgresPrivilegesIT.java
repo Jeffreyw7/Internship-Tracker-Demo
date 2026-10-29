@@ -84,10 +84,18 @@ class PostgresPrivilegesIT {
   }
  }
  private void verifyHttp(TestDatabase db) throws Exception {
-  try(var context=new org.springframework.boot.builder.SpringApplicationBuilder(CampusApplication.class)
+  try(var context=startContext(db.getJdbcUrl())) {
+   var server=(org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext)context;
+   verifyConcurrentAuth(context);
+   String base="http://127.0.0.1:"+server.getWebServer().getPort();
+   verifyHttpSession(db,context,base);
+  }
+ }
+ static org.springframework.context.ConfigurableApplicationContext startContext(String jdbcUrl) {
+  return new org.springframework.boot.builder.SpringApplicationBuilder(CampusApplication.class)
       .profiles("prod").run(
           "--server.port=0","--server.address=127.0.0.1",
-          "--spring.datasource.url="+db.getJdbcUrl(),
+          "--spring.datasource.url="+jdbcUrl,
           "--spring.datasource.username=campus_runtime",
           "--spring.datasource.password=runtime-'quote-password",
           "--campus.registration-enabled=true","--server.servlet.session.cookie.secure=false",
@@ -98,10 +106,9 @@ class PostgresPrivilegesIT {
           "--campus.reset.audit-secret=isolated-postgres-audit-secret-long-enough", "--campus.reset.audit-key-id=test-audit",
           "--campus.mail.help-destination=http://localhost",
           "--campus.verification.rate-limit-secret=isolated-postgres-verification-secret",
-          "--debug=false","--logging.level.root=WARN")) {
-   var server=(org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext)context;
-   verifyConcurrentAuth(context);
-   String base="http://127.0.0.1:"+server.getWebServer().getPort();
+          "--debug=false","--logging.level.root=WARN");
+ }
+ private void verifyHttpSession(TestDatabase db,org.springframework.context.ConfigurableApplicationContext context,String base) throws Exception {
    var cookies=new java.net.CookieManager(null,java.net.CookiePolicy.ACCEPT_ALL);
    var client=java.net.http.HttpClient.newBuilder().cookieHandler(cookies).build();
    var json=new com.fasterxml.jackson.databind.ObjectMapper();
@@ -143,7 +150,6 @@ class PostgresPrivilegesIT {
    token=json.readTree(http(client,base,"GET","/api/auth/csrf",null,null,200).body()).get("token").asText();
    http(client,base,"GET","/api/auth/me",null,null,200);
    http(client,base,"POST","/api/auth/logout",null,token,204);
-  }
  }
  private void verifyPasswordRecovery(TestDatabase db,org.springframework.context.ConfigurableApplicationContext context,
       java.net.http.HttpClient oldSession,String base,String email) throws Exception {
@@ -300,11 +306,11 @@ class PostgresPrivilegesIT {
        +"(SELECT id FROM email_verification_tokens WHERE user_id=?)",Long.class,user.getId())).isEqualTo(1);
   } finally {pool.shutdownNow();}
  }
- private java.net.http.HttpResponse<String> http(java.net.http.HttpClient client,String base,String method,
+ static java.net.http.HttpResponse<String> http(java.net.http.HttpClient client,String base,String method,
       String path,String body,String token,int status) throws Exception {
   return httpVersion(client,base,method,path,body,token,null,status);
  }
- private java.net.http.HttpResponse<String> httpVersion(java.net.http.HttpClient client,String base,String method,
+ static java.net.http.HttpResponse<String> httpVersion(java.net.http.HttpClient client,String base,String method,
       String path,String body,String token,String version,int status) throws Exception {
   var request=java.net.http.HttpRequest.newBuilder(java.net.URI.create(base+path)).timeout(java.time.Duration.ofSeconds(20))
       .method(method,body==null?java.net.http.HttpRequest.BodyPublishers.noBody():java.net.http.HttpRequest.BodyPublishers.ofString(body));
@@ -316,7 +322,7 @@ class PostgresPrivilegesIT {
   return response;
  }
  /** Local mode always initializes its own cluster; it cannot target an existing database. */
- private static final class TestDatabase implements AutoCloseable {
+ static final class TestDatabase implements AutoCloseable {
   private PostgreSQLContainer<?> container;
   private Path binaryDirectory, dataDirectory, log;
   private int port;
@@ -331,6 +337,7 @@ class PostgresPrivilegesIT {
      .withEnv("RETENTION_DATABASE_PASSWORD","retention-'quote-password");
     container.start();
     container.copyFileToContainer(MountableFile.forHostPath(Path.of("../deploy/postgres").toAbsolutePath()),"/scripts");
+    container.copyFileToContainer(MountableFile.forHostPath(Path.of("../deploy/monitoring").toAbsolutePath()),"/monitoring");
    } else {
     binaryDirectory=Path.of(binaries).toAbsolutePath();
     Path root=java.nio.file.Files.createTempDirectory(Path.of("target").toAbsolutePath(),"postgres-privileges-");
@@ -345,6 +352,37 @@ class PostgresPrivilegesIT {
   String getJdbcUrl(){return container!=null?container.getJdbcUrl():"jdbc:postgresql://127.0.0.1:"+port+"/campus";}
   String getUsername(){return username;}
   String getPassword(){return password;}
+  String restoredJdbcUrl(){return getJdbcUrl().replace("/campus","/campus_restored");}
+  void backup() throws Exception {
+   check(databaseCommand("pg_dump","-Fc","-U",username,"-d","campus","-f",backupPath()));
+  }
+  void restore() throws Exception {
+   try(var c=DriverManager.getConnection(getJdbcUrl(),username,password);var s=c.createStatement()) {
+    s.execute("CREATE DATABASE campus_restored");
+    s.execute("REVOKE CONNECT ON DATABASE campus_restored FROM PUBLIC");
+    s.execute("GRANT CONNECT ON DATABASE campus_restored TO campus_runtime,campus_migrator,campus_retention");
+   }
+   check(databaseCommand("pg_restore","--exit-on-error","-U",username,"-d","campus_restored",backupPath()));
+  }
+  void restart() throws Exception {
+   if(container!=null) container.getDockerClient().restartContainerCmd(container.getContainerId()).exec();
+   else check(process("pg_ctl","-D",dataDirectory.toString(),"-m","fast","-w","restart"));
+   long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
+   while(true) {
+    try(var connection=DriverManager.getConnection(getJdbcUrl(),username,password)) {return;}
+    catch(SQLException unavailable) {if(System.nanoTime()>=deadline) throw unavailable;Thread.sleep(100);}
+   }
+  }
+  private String backupPath(){return container!=null?"/tmp/pre-reset.dump":dataDirectory.getParent().resolve("pre-reset.dump").toString();}
+  private Result databaseCommand(String executable,String... arguments) throws Exception {
+   var args=new java.util.ArrayList<String>(java.util.List.of(arguments));
+   if(container!=null) {
+    args.add(0,executable);var result=container.execInContainer(args.toArray(String[]::new));
+    return new Result(result.getExitCode(),result.getStderr()+result.getStdout());
+   }
+   args.addAll(java.util.List.of("-h","127.0.0.1","-p",Integer.toString(port)));
+   return process(executable,args.toArray(String[]::new));
+  }
   Result psql(String... arguments) throws Exception {
    String[] args=arguments.clone();
    args[args.length-1]=(container!=null?"/scripts/":Path.of("../deploy/postgres").toAbsolutePath()+"/")+args[args.length-1];
@@ -376,5 +414,5 @@ class PostgresPrivilegesIT {
    else if(dataDirectory!=null) check(process("pg_ctl","-D",dataDirectory.toString(),"-m","fast","-w","stop"));
   }
  }
- private record Result(int getExitCode,String getStderr) {}
+ record Result(int getExitCode,String getStderr) {}
 }
