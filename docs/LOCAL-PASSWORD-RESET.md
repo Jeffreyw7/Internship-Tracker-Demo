@@ -23,6 +23,8 @@ cd ..
 
 The first launch downloads the pinned official Mailpit Windows x64 binary into ignored build output and verifies its published archive checksum. Subsequent launches use the local copy. The app runs with the local profile and enables password reset only for this dedicated local database.
 
+When upgrading the earlier reset-only demo, the launcher explicitly enables a local-only migration bridge. Main already uses V4 for CSV import, so reset now uses V5. The bridge accepts only the exact old V1–V4 reset history/checksums and expected reset schema in file-backed H2. It creates a consistent adjacent `campus.before-reset-lineage-<id>.zip` backup, preserves the reset migration's checksum while relabeling its history as V5, then applies CSV V4 out of order once. Later launches validate normally. Fresh databases and existing main-line databases use normal migrations; production never enables this bridge. If upgrading fails or is interrupted, stop the app and restore the original H2 database from that backup before retrying; do not repair or delete Flyway history. All services using the database must be stopped before restoring it.
+
 - App: **http://127.0.0.1:8080**
 - Local inbox: **http://127.0.0.1:8025**
 - SMTP capture: `127.0.0.1:1025`

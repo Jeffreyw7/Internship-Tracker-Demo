@@ -24,7 +24,7 @@ The follow-up reviewers found no additional concrete recovery-practices or maint
 
 ## Activation
 
-V4 starts recovery disabled. Stop old binaries before migration: they cannot enforce credential epochs. Existing PostgreSQL installations must first run `deploy/postgres/provision-retention.sql` as administrator with `RETENTION_DATABASE_PASSWORD` in the environment, then run the existing `MigrationMain` job. Never give administrator, migrator or retention credentials to the web process.
+V5 starts recovery disabled; V4 remains the existing CSV-import migration on main. Stop old binaries before migration: they cannot enforce credential epochs. Existing PostgreSQL installations must first run `deploy/postgres/provision-retention.sql` as administrator with `RETENTION_DATABASE_PASSWORD` in the environment, then run the existing `MigrationMain` job. Never give administrator, migrator or retention credentials to the web process.
 
 Production requires independent `RESET_AUDIT_SECRET` (32+ characters), `RESET_AUDIT_KEY_ID`, `VERIFICATION_RATE_LIMIT_SECRET`, AES-256 `OUTBOX_ENCRYPTION_KEY`, `OUTBOX_KEY_ID`, HTTPS `PUBLIC_ORIGIN`, HTTPS `HELP_DESTINATION`, database and SMTP settings. Supply a maintained UTF-8 `PASSWORD_BLOCKLIST_FILE`; unreadable configuration prevents startup. The packaged baseline is small. Password creation uses 15 Unicode characters without composition rules and a 72 UTF-8 byte BCrypt cap; this does not establish comprehensive compromised-password coverage or full NIST compliance.
 
@@ -60,7 +60,7 @@ DELETE FROM auth_security_events WHERE id IN (
 );
 ```
 
-Keep recovery disabled during mixed-version rollouts or incidents. Roll forward fixes after V4; never downgrade to binaries that ignore epochs or edit applied migrations. Backup restores can resurrect tokens and old credentials: isolate traffic, disable recovery, revoke challenges, cancel and erase queued recovery payloads, and clear every session store before restoring access. Coordinate recovery for password changes lost by restore.
+Keep recovery disabled during mixed-version rollouts or incidents. Roll forward fixes after V5; never downgrade to binaries that ignore epochs or edit applied migrations. Backup restores can resurrect tokens and old credentials: isolate traffic, disable recovery, revoke challenges, cancel and erase queued recovery payloads, and clear every session store before restoring access. Coordinate recovery for password changes lost by restore.
 
 Before public activation, record proxy deadline behavior, production load/latency and backlog alerts, SMTP domain/provider delivery, supported browser/mail-client fragment handling, and durability/failover/restore exercises. Sanitized logs and database health state are implemented; a production dashboard and measured SLO evidence remain operator work. [VALIDATION.md](../VALIDATION.md) records local checks and limitations.
 

@@ -29,6 +29,18 @@ The source files contain comments above the main classes, functions, and logical
 - `email_outbox` stores the address and token in an AES-GCM encrypted payload, along with leasing, retry and terminal-state fields. Issuing a token and enqueueing its message share one database transaction.
 - `auth_rate_limits` stores HMAC-protected subjects and database counters for request, address, confirmation and global mail budgets.
 
+## CSV import boundaries
+
+`src/components/ApplicationImportDialog.tsx` presents selection, mapping, correction/exclusion, diffs, confirmation and receipts. `useApplicationImport` subscribes to the pure `domain/importWorkflow.ts` controller, which owns draft revisions and lost-successor recovery. Typed DTO validation is in `domain/applicationImport.ts`; multipart/status/commit transport is in `data/applicationImportApi.ts`. `data/importCommitRecovery.ts` preserves unresolved references across explicit retry failures. `useApplications` owns the application write lock, receipt reconciliation and full paginated refresh. Only owner ID plus preview ID is cached in sessionStorage, never application rows or uploaded data.
+
+`domain/applicationCsv.ts` projects current records into ID/structured-stage exports and row reports with shared quoting and spreadsheet-risk reduction. No client-side CSV parser determines server writes.
+
+The backend `application/importing` package separates bounded CSV and multipart readers, early security/admission filters, semantic field-intent projection, immutable canonical serialization, metadata persistence, preview/commit/status orchestration and cleanup. `ApplicationRules` explicitly invokes nested Bean Validation and the same business/normalization rules for ordinary and imported saves. ApplicationService supplies bounded owner-scoped target reads, candidate queries and deterministic target locks without exposing entity fields.
+
+`V4__application_imports.sql` adds immutable preview/completion/supersession metadata, quota lock keys and durable request-rate counters. Canonical previews use bounded UTF-8 TEXT rather than vendor-specific LOB storage. Application changes and the minimal receipt share the outer commit transaction. Expired PREVIEW reservations remain charged until a row-locked terminal transition or deletion; quota totals use one aggregate snapshot. Atomic predecessor supersession permits repeated corrections without consuming a fresh active slot each time.
+
+The import route bypasses Spring's standard multipart resolver. Header-only CSRF rejection and authorization precede upload admission. An admitted Commons FileUpload streaming reader keeps bounded parts in memory and creates no temporary files. The supported connector is fixed-length HTTP/1.1 with bounded socket-read and elapsed deadlines; proxy configurations must preserve those guarantees. See [API](API.md#csv-imports), [database security](DATABASE-SECURITY.md#csv-import-metadata), and the [reviewed architecture](superpowers/specs/2026-10-15-csv-import-design.md).
+
 ## Build and configuration files
 
 - `package.json`: defines frontend packages, development/build/test commands, and the supported Node version. JSON does not support comments.

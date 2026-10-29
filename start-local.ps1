@@ -100,6 +100,7 @@ try {
         '--campus.reset.audit-secret=local-development-audit-secret-not-for-production','--campus.reset.audit-key-id=local-audit',
         '--campus.verification.rate-limit-secret=local-development-rate-limit-secret',
         '--campus.registration-enabled=true','--campus.reset.worker-enabled=true','--campus.reset.development-enabled=true',
+        '--campus.migration.local-legacy-reset-upgrade=true',
         '--server.servlet.session.cookie.secure=false'
     )
     & $java @javaArguments

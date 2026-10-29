@@ -34,7 +34,7 @@ Excluded: changing a known password from settings, recovery without mailbox acce
 | `src/data/api.ts` | Same-origin cookies, memory-only CSRF, no automatic write replay, session-generation guards | Add a typed reset adapter using the shared transport |
 | `src/domain/verificationLink.ts` | Captures and scrubs the verification fragment at module initialization; tracks changes outside React rendering | Use the same pattern for reset links and preserve existing verification links |
 | `deploy/postgres/runtime-grants.sql` | Runtime can update only `theme_preference` and `email_verified_at` on accounts | Explicit column grants are necessary for password updates |
-| Flyway migrations | V1, V2 and V3 already exist | Add V4; never rewrite an applied migration |
+| Flyway migrations | V1, V2 and V3 already exist | Add V5; never rewrite an applied migration |
 
 The cached Boot 3.5.16 dependency-management POM specifies Spring Security 6.5.11. The production build must confirm the resolved tree and test filter ordering against that version. The existing scheduler polls email every five seconds and runs delivery serially; the throughput/availability targets below require explicit bounded worker configuration and measurement, rather than assuming those defaults scale.
 
@@ -192,7 +192,7 @@ Use the existing `{ "message": "...", "code": "..." }` error shape where a code 
 
 ## 7. Database and migration design
 
-Add `V4__password_reset.sql` after verifying V4 remains unused at implementation time. Use UUIDs and microsecond UTC instants as in V3; verify syntax and locking on both H2 and PostgreSQL.
+Add `V4__password_reset.sql` after verifying V5 remains unused at implementation time. Use UUIDs and microsecond UTC instants as in V3; verify syntax and locking on both H2 and PostgreSQL.
 
 ### Account credential version
 
@@ -257,7 +257,7 @@ Erase intake ciphertext immediately on terminal transition. Delete terminal inta
 
 Extend `deploy/postgres/runtime-grants.sql` with column-level UPDATE permission on `password_hash`, `credential_version` and `reset_request_cutoff`, SELECT/INSERT/UPDATE/DELETE on the intake/challenge tables, SELECT/INSERT on audit events, SELECT plus health-pause-column UPDATE on the control row, and USAGE on `auth_security_event_order` without sequence UPDATE/ALTER rights. Grant a separate retention identity DELETE and SELECT(id, occurred_at) only on audit events; it has no web-process role membership. Retain existing column grants and all denials on identity, exemption state, DDL, account deletion and Flyway history. This deliberately expands the runtime credential-write boundary; it does not grant table-wide account UPDATE or permission to enable recovery.
 
-Both `PostgresPrivilegesIT` and `deploy/postgres/verify-runtime.sql` currently forbid password-hash UPDATE. Update both to assert the exact allowed credential columns, new table DML and sequence USAGE; retain forbidden-column and table-wide UPDATE assertions. Provisioning and upgrade verification must apply the new grants as well as V4. Production uses the existing schema-owner migration path rather than enabling Flyway under runtime credentials.
+Both `PostgresPrivilegesIT` and `deploy/postgres/verify-runtime.sql` currently forbid password-hash UPDATE. Update both to assert the exact allowed credential columns, new table DML and sequence USAGE; retain forbidden-column and table-wide UPDATE assertions. Provisioning and upgrade verification must apply the new grants as well as V5. Production uses the existing schema-owner migration path rather than enabling Flyway under runtime credentials.
 
 ## 8. Session invalidation and concurrency
 
@@ -405,7 +405,7 @@ Do not rotate the HMAC quota key by simply resetting counters. Support an overla
 The current verification-only worker can cancel reset jobs and cannot decode their payloads. A mixed-version rollout is therefore unsafe even with additive schema changes. For the supported single-instance release, use a short planned maintenance deployment:
 
 1. Take and verify a recoverable backup. Disable reset ingress at the edge and cluster-wide feature flag; drain API requests and stop all old mail workers/application processes.
-2. Run V4 and updated runtime/retention grants using the existing migration identity. Execute the updated `verify-runtime.sql`. A failure leaves the application stopped; do not widen grants to work around it.
+2. Run V5 and updated runtime/retention grants using the existing migration identity. Execute the updated `verify-runtime.sql`. A failure leaves the application stopped; do not widen grants to work around it.
 3. Start the matching bundled frontend/backend with reset still disabled. Require schema, dependency, key-ring and filter-chain readiness. Confirm no old process can serve API traffic or lease jobs. Discard pre-deployment sessions, including shared-store sessions if used.
 4. Keep general recovery traffic blocked at ingress, enable the feature for a controlled operator smoke test and prove mailbox reset, new-password login, old-session rejection, notice and record preservation. Failure disables the feature and keeps recovery closed. After success, admit general traffic and monitor the stated thresholds.
 
@@ -413,7 +413,7 @@ If zero-downtime deployment becomes necessary, first ship a compatibility releas
 
 ### Rollback and restore
 
-The ordinary application rollback target must still understand the new schema, payload/key versions and credential-version checks. Disable new intake, retain safe confirmation for already issued links if supported, and roll back binaries without reversing V4. Never restore the previous password on mail failure or alter applied Flyway migrations. A rollback to a pre-version-check binary requires a fully drained maintenance operation with all sessions removed and recovery endpoints/workers disabled; it cannot share traffic with a version-aware node.
+The ordinary application rollback target must still understand the new schema, payload/key versions and credential-version checks. Disable new intake, retain safe confirmation for already issued links if supported, and roll back binaries without reversing V5. Never restore the previous password on mail failure or alter applied Flyway migrations. A rollback to a pre-version-check binary requires a fully drained maintenance operation with all sessions removed and recovery endpoints/workers disabled; it cannot share traffic with a version-aware node.
 
 After a database restore, keep API traffic and workers stopped until security state is reconciled. Revoke all restored active recovery/verification challenges, cancel restored intake and token-bearing mail with payload erasure, advance cutoffs/versions as necessary, remove all sessions and reset the event-order sequence above every restored stored order. A backup can restore older password hashes: revoking sessions alone does not fix that. Reconcile acknowledged credential changes from protected current records, or keep password login blocked for affected accounts until independent mailbox recovery is required through an operator-controlled procedure. Never claim an old backup preserves later resets. Exercise this procedure in an isolated environment before release; no automatic production restore is authorized by this spec.
 

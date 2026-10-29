@@ -8,16 +8,23 @@ import org.testcontainers.utility.MountableFile;
 import java.nio.file.Path;
 import java.sql.*;
 import java.util.Map;
+import java.util.*;
+import java.util.concurrent.*;
+import java.time.*;
+import com.campus.tracker.application.importing.*;
+import static com.campus.tracker.application.importing.ImportDtos.*;
 import static org.assertj.core.api.Assertions.*;
 
 class PostgresPrivilegesIT {
  @Test void freshDatabaseHasOnlyRequiredRuntimePrivileges() throws Exception { verify(false); }
  @Test void legacyUpgradePreservesRecordsAndMigrationHistory() throws Exception { verify(true); }
- @Test void existingV3ProvisioningAddsSeparateRetentionIdentityBeforeRecoveryMigration() throws Exception {
+ @Test void existingV3ProvisioningAddsSeparateRetentionIdentityBeforeRecoveryMigration() throws Exception { verifyRetentionUpgrade("3"); }
+ @Test void existingV4ProvisioningAddsSeparateRetentionIdentityBeforeRecoveryMigration() throws Exception { verifyRetentionUpgrade("4"); }
+ private void verifyRetentionUpgrade(String baseline) throws Exception {
   try(var db=new TestDatabase(false)) {
    var provision=db.psql("psql","-X","-v","ON_ERROR_STOP=1","-U",db.getUsername(),"-d","campus","-f","provision.sql");
    assertThat(provision.getExitCode()).withFailMessage(provision.getStderr()).isZero();
-   Flyway.configure().dataSource(db.getJdbcUrl(),"campus_migrator","migration-'quote-password").target("3").load().migrate();
+   Flyway.configure().dataSource(db.getJdbcUrl(),"campus_migrator","migration-'quote-password").target(baseline).load().migrate();
    try(var c=DriverManager.getConnection(db.getJdbcUrl(),db.getUsername(),db.getPassword());var s=c.createStatement()) {
     s.execute("REVOKE CONNECT ON DATABASE campus FROM campus_retention"); s.execute("DROP ROLE campus_retention");
    }
@@ -30,6 +37,47 @@ class PostgresPrivilegesIT {
    assertThat(verification.getExitCode()).withFailMessage(verification.getStderr()).isZero();
   }
  }
+ @Test void verifierRejectsEveryMissingRequiredDmlPrivilege() throws Exception {
+  try(var db=new TestDatabase(false)) {
+   var provision=db.psql("psql","-X","-v","ON_ERROR_STOP=1","-U",db.getUsername(),"-d","campus","-f","provision.sql");
+   assertThat(provision.getExitCode()).withFailMessage(provision.getStderr()).isZero();
+   MigrationMain.run(Map.of("MIGRATION_DATABASE_URL",db.getJdbcUrl(),"MIGRATION_DATABASE_USERNAME","campus_migrator","MIGRATION_DATABASE_PASSWORD","migration-'quote-password"));
+   var baseline=verifyRuntime(db);
+   assertThat(baseline.getExitCode()).withFailMessage(baseline.getStderr()).isZero();
+   // Revoke one grant at a time: a verifier must reject even a single missing permission.
+   String[][] required={
+       {"campus_users","SELECT","INSERT","UPDATE (theme_preference)","UPDATE (email_verified_at)","UPDATE (password_hash)","UPDATE (credential_version)","UPDATE (reset_request_cutoff)"},
+       {"applications","SELECT","INSERT","UPDATE"},
+       {"interview_stages","SELECT","INSERT","UPDATE","DELETE"},
+       {"application_imports","SELECT","INSERT","UPDATE","DELETE"},
+       {"application_import_quota_locks","SELECT","INSERT","UPDATE","DELETE"},
+       {"application_import_rates","SELECT","INSERT","UPDATE","DELETE"},
+       {"email_verification_tokens","SELECT","INSERT","UPDATE","DELETE"},
+       {"email_outbox","SELECT","INSERT","UPDATE","DELETE"},
+       {"auth_rate_limits","SELECT","INSERT","UPDATE","DELETE"},
+       {"password_reset_requests","SELECT","INSERT","UPDATE","DELETE"},
+       {"password_reset_tokens","SELECT","INSERT","UPDATE","DELETE"}
+   };
+   var softly=new org.assertj.core.api.SoftAssertions();
+   try(var c=DriverManager.getConnection(db.getJdbcUrl(),db.getUsername(),db.getPassword());var s=c.createStatement()) {
+    for(String[] table:required) for(int i=1;i<table.length;i++) {
+     String privilege=table[i], target=" ON TABLE public."+table[0]+" TO campus_runtime";
+     s.execute("REVOKE "+privilege+" ON TABLE public."+table[0]+" FROM campus_runtime");
+     try {
+      var missing=verifyRuntime(db);
+      softly.assertThat(missing.getExitCode()).as("verifier rejects missing %s on %s: %s",privilege,table[0],missing.getStderr()).isNotZero();
+      softly.assertThat(missing.getStderr()).as("missing %s on %s reports a privilege failure",privilege,table[0]).contains("Missing");
+     } finally {s.execute("GRANT "+privilege+target);}
+    }
+   }
+   var restored=verifyRuntime(db);
+   assertThat(restored.getExitCode()).withFailMessage(restored.getStderr()).isZero();
+   softly.assertAll();
+  }
+ }
+ private Result verifyRuntime(TestDatabase db) throws Exception {
+  return db.psql("psql","-X","-v","ON_ERROR_STOP=1","-U",db.getUsername(),"-d","campus","-f","verify-runtime.sql");
+ }
  private void verify(boolean legacy) throws Exception {
   try (var db = new TestDatabase(legacy)) {
    if (legacy) {
@@ -40,10 +88,18 @@ class PostgresPrivilegesIT {
    }
    var provision=db.psql("psql","-X","-v","ON_ERROR_STOP=1","-U",db.getUsername(),"-d","campus","-f",""+(legacy?"upgrade-existing.sql":"provision.sql"));
    assertThat(provision.getExitCode()).withFailMessage(provision.getStderr()).isZero();
+   // Preserve the V1 ownership-inventory guard, then prove the import migration from an existing V3 schema.
+   if(legacy) Flyway.configure().dataSource(db.getJdbcUrl(),"campus_migrator","migration-'quote-password").target("3").load().migrate();
    MigrationMain.run(Map.of("MIGRATION_DATABASE_URL",db.getJdbcUrl(),"MIGRATION_DATABASE_USERNAME","campus_migrator","MIGRATION_DATABASE_PASSWORD","migration-'quote-password"));
+   try(var c=DriverManager.getConnection(db.getJdbcUrl(),"campus_migrator","migration-'quote-password");var statement=c.createStatement();
+       var versions=statement.executeQuery("SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank")) {
+    var applied=new ArrayList<String>();while(versions.next()) applied.add(versions.getString(1));
+    assertThat(applied).containsExactly("1","2","3","4","5");
+   }
    // Repeat deployment: migrations and grants are idempotent.
    MigrationMain.run(Map.of("MIGRATION_DATABASE_URL",db.getJdbcUrl(),"MIGRATION_DATABASE_USERNAME","campus_migrator","MIGRATION_DATABASE_PASSWORD","migration-'quote-password"));
    try(var c=DriverManager.getConnection(db.getJdbcUrl(),"campus_runtime","runtime-'quote-password");var s=c.createStatement()) {
+    try(var version=s.executeQuery("select version()")) {version.next();System.out.println("Isolated import verification database: "+version.getString(1));}
     if(legacy) {try(var r=s.executeQuery("SELECT display_name FROM campus_users")){assertThat(r.next()).isTrue();assertThat(r.getString(1)).isEqualTo("Legacy");}}
     s.execute("INSERT INTO campus_users(id,email,display_name,password_hash,created_at) VALUES ('00000000-0000-0000-0000-000000000002','new@example.test','New','hash',CURRENT_TIMESTAMP)");
     s.execute("UPDATE campus_users SET theme_preference='dark',email_verified_at=CURRENT_TIMESTAMP");
@@ -105,12 +161,13 @@ class PostgresPrivilegesIT {
           "--campus.mail.production=false", "--campus.mail.worker-enabled=false", "--campus.reset.health-enabled=false",
           "--campus.reset.audit-secret=isolated-postgres-audit-secret-long-enough", "--campus.reset.audit-key-id=test-audit",
           "--campus.mail.help-destination=http://localhost",
+          "--campus.imports.cleanup-enabled=false",
           "--campus.verification.rate-limit-secret=isolated-postgres-verification-secret",
           "--debug=false","--logging.level.root=WARN");
  }
  private void verifyHttpSession(TestDatabase db,org.springframework.context.ConfigurableApplicationContext context,String base) throws Exception {
    var cookies=new java.net.CookieManager(null,java.net.CookiePolicy.ACCEPT_ALL);
-   var client=java.net.http.HttpClient.newBuilder().cookieHandler(cookies).build();
+   var client=java.net.http.HttpClient.newBuilder().cookieHandler(cookies).version(java.net.http.HttpClient.Version.HTTP_1_1).build();
    var json=new com.fasterxml.jackson.databind.ObjectMapper();
    var csrf=json.readTree(http(client,base,"GET","/api/auth/csrf",null,null,200).body());
    String token=csrf.get("token").asText();
@@ -149,6 +206,9 @@ class PostgresPrivilegesIT {
    verifyPasswordRecovery(db,context,client,base,email);
    token=json.readTree(http(client,base,"GET","/api/auth/csrf",null,null,200).body()).get("token").asText();
    http(client,base,"GET","/api/auth/me",null,null,200);
+   verifyImportHttp(client,base,token,json,restored);
+   verifyImportConcurrencyAndExpiry(context);
+   verifyImportMaximumBatch(context);
    http(client,base,"POST","/api/auth/logout",null,token,204);
  }
  private void verifyPasswordRecovery(TestDatabase db,org.springframework.context.ConfigurableApplicationContext context,
@@ -179,6 +239,11 @@ class PostgresPrivilegesIT {
   http(recovery,base,"GET","/api/auth/me",null,null,401);
   var stale=http(oldSession,base,"GET","/api/auth/me",null,null,401);
   assertThat(stale.headers().allValues("Set-Cookie")).isEmpty();
+  // Epoch revocation must precede import admission and even its missing-CSRF-header rejection.
+  var staleImport=http(oldSession,base,"GET","/api/application-imports/"+java.util.UUID.randomUUID(),null,null,401);
+  assertThat(staleImport.headers().firstValue("Cache-Control").orElse("")).contains("no-store");
+  var staleUpload=http(oldSession,base,"POST","/api/application-imports/preview","unread",null,401);
+  assertThat(staleUpload.headers().firstValue("Cache-Control").orElse("")).contains("no-store");
   String newCsrf=json.readTree(http(oldSession,base,"GET","/api/auth/csrf",null,null,200).body()).get("token").asText();
   String encodedEmail=java.net.URLEncoder.encode(email,java.nio.charset.StandardCharsets.UTF_8);
   http(oldSession,base,"POST","/api/auth/login","email="+encodedEmail+"&password=Campus-test-123%21",newCsrf,401);
@@ -263,6 +328,177 @@ class PostgresPrivilegesIT {
    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM auth_security_events WHERE completion_id=?",Long.class,challenge)).isZero();
    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM email_outbox WHERE password_reset_token_id=? AND message_type='PASSWORD_CHANGED'",Long.class,challenge)).isZero();
   } finally {executor.shutdownNow();}
+ }
+ private void verifyImportConcurrencyAndExpiry(org.springframework.context.ConfigurableApplicationContext context) throws Exception {
+   var jdbc=context.getBean(org.springframework.jdbc.core.JdbcTemplate.class);
+   var previews=context.getBean(ImportPreviewService.class);
+   var commits=context.getBean(ImportCommitService.class);
+   var statuses=context.getBean(ImportStatusService.class);
+   var cleanup=context.getBean(ImportCleanupWorker.class);
+   var manager=context.getBean(org.springframework.transaction.PlatformTransactionManager.class);
+   var json=context.getBean(com.fasterxml.jackson.databind.ObjectMapper.class);
+   String options=json.writeValueAsString(new Options(1,Map.of("0","company","1","role"),"ISO",List.of(),null));
+   byte[] file="Company,Role\nPG concurrency,Intern\n".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+   UUID owner=importAccount(jdbc);
+   Preview preview=previews.create(owner,file,options);
+   var request=new CommitRequest(preview.reviewDigest(),new Acknowledgement(0));
+   List<Object> duplicates=importRace(()->commits.commit(owner,preview.id(),request),()->commits.commit(owner,preview.id(),request));
+   Receipt original=statuses.status(owner,preview.id()).receipt();
+   assertThat(original).isNotNull();
+   for(Object outcome:duplicates) if(outcome instanceof Receipt receipt) assertThat(receipt).isEqualTo(original);else assertThat(outcome).isInstanceOf(org.springframework.dao.DataAccessException.class);
+   assertThat(jdbc.queryForObject("select count(*) from applications where owner_id=?",Long.class,owner)).isEqualTo(1);
+   assertThat(commits.commit(owner,preview.id(),request)).isEqualTo(original);
+
+   UUID applicationId=original.rows().get(0).applicationId();
+   String updateOptions=json.writeValueAsString(new Options(1,Map.of("0","applicationId","1","notes"),"ISO",List.of(),null));
+   Preview lockedTarget=previews.create(owner,("ID,Notes\n"+applicationId+",Lock proof\n").getBytes(java.nio.charset.StandardCharsets.UTF_8),updateOptions);
+   ExecutorService targetPool=Executors.newSingleThreadExecutor();CountDownLatch targetLocked=new CountDownLatch(1),targetRelease=new CountDownLatch(1);
+   Future<?> targetHeld=targetPool.submit(()->new org.springframework.transaction.support.TransactionTemplate(manager).executeWithoutResult(tx->{
+     jdbc.queryForObject("select id from applications where id=? for update",UUID.class,applicationId);targetLocked.countDown();
+     try {assertThat(targetRelease.await(15,TimeUnit.SECONDS)).isTrue();}catch(InterruptedException e){throw new IllegalStateException(e);}
+   }));
+   try {
+     assertThat(targetLocked.await(5,TimeUnit.SECONDS)).isTrue();long before=System.nanoTime();
+     assertThatThrownBy(()->commits.commit(owner,lockedTarget.id(),new CommitRequest(lockedTarget.reviewDigest(),new Acknowledgement(1))))
+         .isInstanceOfAny(org.springframework.dao.DataAccessException.class,jakarta.persistence.PersistenceException.class);
+     assertThat(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-before)).isLessThan(6000);
+   } finally {targetRelease.countDown();targetHeld.get(15,TimeUnit.SECONDS);targetPool.shutdownNow();}
+   assertThat(statuses.status(owner,lockedTarget.id()).status()).isEqualTo("PREVIEW");
+   assertThat(commits.commit(owner,lockedTarget.id(),new CommitRequest(lockedTarget.reviewDigest(),new Acknowledgement(1))).counts().updated()).isEqualTo(1);
+
+   UUID foreignOwner=importAccount(jdbc);
+   Preview foreign=previews.create(foreignOwner,("ID,Notes\n"+applicationId+",Unavailable\n").getBytes(java.nio.charset.StandardCharsets.UTF_8),updateOptions);
+   assertThat(foreign.rows().get(0).issues()).extracting(Issue::code).contains("IMPORT_TARGET_UNAVAILABLE");
+   assertThat(foreign.rows().get(0).before()).isNull();
+   assertThatThrownBy(()->statuses.status(foreignOwner,preview.id())).isInstanceOfSatisfying(com.campus.tracker.common.ApiException.class,e->assertThat(e.getCode()).isEqualTo("IMPORT_NOT_FOUND"));
+   Preview deletedTarget=previews.create(owner,("ID,Notes\n"+applicationId+",Deleted race\n").getBytes(java.nio.charset.StandardCharsets.UTF_8),updateOptions);
+   context.getBean(com.campus.tracker.application.ApplicationService.class).delete(owner,applicationId,"1");
+   assertThatThrownBy(()->commits.commit(owner,deletedTarget.id(),new CommitRequest(deletedTarget.reviewDigest(),new Acknowledgement(1))))
+       .isInstanceOfSatisfying(com.campus.tracker.common.ApiException.class,e->assertThat(e.getCode()).isEqualTo("IMPORT_TARGET_CHANGED"));
+
+   Preview expired=previews.create(owner,file,options);
+   jdbc.update("update application_imports set expires_at=? where id=?",Timestamp.from(Instant.now().minusSeconds(1)),expired.id());
+   ExecutorService pool=Executors.newSingleThreadExecutor();CountDownLatch locked=new CountDownLatch(1),release=new CountDownLatch(1);
+   Future<?> held=pool.submit(()->new org.springframework.transaction.support.TransactionTemplate(manager).executeWithoutResult(tx->{
+     jdbc.queryForObject("select id from application_imports where id=? for update",UUID.class,expired.id());locked.countDown();
+     try {assertThat(release.await(15,TimeUnit.SECONDS)).isTrue();}catch(InterruptedException e){throw new IllegalStateException(e);}
+   }));
+   try {
+     assertThat(locked.await(5,TimeUnit.SECONDS)).isTrue();
+     assertThat(statuses.status(owner,expired.id()).status()).isEqualTo("UNRESOLVED");
+     cleanup.cleanup();
+     assertThat(jdbc.queryForObject("select payload_bytes from application_imports where id=?",Long.class,expired.id())).isPositive();
+   } finally {release.countDown();held.get(15,TimeUnit.SECONDS);pool.shutdownNow();}
+   cleanup.cleanup();
+   assertThatThrownBy(()->statuses.status(owner,expired.id())).isInstanceOf(com.campus.tracker.common.ApiException.class);
+   assertThat(statuses.status(owner,preview.id()).receipt()).isEqualTo(original);
+
+   UUID quotaOwner=importAccount(jdbc);ExecutorService admissionPool=Executors.newFixedThreadPool(8);CountDownLatch start=new CountDownLatch(1);
+   try {
+     List<Future<Boolean>> attempts=new ArrayList<>();
+     for(int i=0;i<8;i++) attempts.add(admissionPool.submit(()->{start.await();try {previews.create(quotaOwner,file,options);return true;}catch(org.springframework.dao.DataAccessException|com.campus.tracker.common.ApiException busy){return false;}}));
+     start.countDown();int admitted=0;for(var result:attempts) if(result.get(20,TimeUnit.SECONDS)) admitted++;
+     assertThat(admitted).isBetween(1,5);
+     assertThat(jdbc.queryForObject("select count(*) from application_imports where owner_id=? and state='PREVIEW'",Long.class,quotaOwner)).isEqualTo(admitted);
+     while(admitted<5) {previews.create(quotaOwner,file,options);admitted++;}
+     assertThatThrownBy(()->previews.create(quotaOwner,file,options)).isInstanceOfSatisfying(com.campus.tracker.common.ApiException.class,e->assertThat(e.getCode()).isEqualTo("IMPORT_STORAGE_LIMIT"));
+   } finally {admissionPool.shutdownNow();}
+
+   // Receipt-count and byte accounting must remain charged while PREVIEW converts to COMPLETED.
+   for(int receiptCountLimit:List.of(2,100)) {
+   var limits=new ImportStorageProperties(5,100,41943040,838860800,receiptCountLimit,100000,262144,2147483648L,300,10000);
+   var narrowAdmission=new ImportAdmissionService(jdbc,context.getBean(Clock.class),limits);
+   var narrowPreviews=new ImportPreviewService(context.getBean(CsvImportParser.class),context.getBean(ImportSemantics.class),
+       context.getBean(com.campus.tracker.application.ApplicationService.class),context.getBean(ImportCanonicalizer.class),context.getBean(ImportPreviewRepository.class),narrowAdmission,context.getBean(Clock.class),manager);
+   for(int iteration=0;iteration<5;iteration++) {
+     UUID boundedOwner=importAccount(jdbc);
+     Preview first=narrowPreviews.create(boundedOwner,file,options);narrowPreviews.create(boundedOwner,file,options);
+     List<Object> race=importRace(()->commits.commit(boundedOwner,first.id(),new CommitRequest(first.reviewDigest(),new Acknowledgement(0))),()->narrowPreviews.create(boundedOwner,file,options));
+     assertThat(race.get(0)).isInstanceOf(Receipt.class);
+     assertThat(race.get(1)).isInstanceOfSatisfying(com.campus.tracker.common.ApiException.class,e->assertThat(e.getCode()).isEqualTo("IMPORT_STORAGE_LIMIT"));
+     assertThat(jdbc.queryForObject("select count(*) from application_imports where owner_id=? and state in ('PREVIEW','COMPLETED')",Long.class,boundedOwner)).isEqualTo(2);
+   }
+   }
+ }
+ private void verifyImportMaximumBatch(org.springframework.context.ConfigurableApplicationContext context) throws Exception {
+   var jdbc=context.getBean(org.springframework.jdbc.core.JdbcTemplate.class);UUID owner=importAccount(jdbc);
+   var previews=context.getBean(ImportPreviewService.class);var commits=context.getBean(ImportCommitService.class);var json=context.getBean(com.fasterxml.jackson.databind.ObjectMapper.class);
+   StringBuilder csv=new StringBuilder("Company,Role\n");for(int i=0;i<500;i++)csv.append("PG Company ").append(i).append(",Intern\n");
+   String options=json.writeValueAsString(new Options(1,Map.of("0","company","1","role"),"ISO",List.of(),null));
+   Preview add=previews.create(owner,csv.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8),options);
+   long started=System.nanoTime();Receipt created=commits.commit(owner,add.id(),new CommitRequest(add.reviewDigest(),new Acknowledgement(0)));
+   System.out.println("Restricted PostgreSQL 500 Add commit ms: "+TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started));
+   assertThat(created.rows()).hasSize(500);
+   csv=new StringBuilder("ID,Notes\n");for(var row:created.rows())csv.append(row.applicationId()).append(",Updated 500-row PG import\n");
+   options=json.writeValueAsString(new Options(1,Map.of("0","applicationId","1","notes"),"ISO",List.of(),null));
+   Preview update=previews.create(owner,csv.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8),options);
+   assertThat(update.counts().updated()).isEqualTo(500);started=System.nanoTime();
+   Receipt changed=commits.commit(owner,update.id(),new CommitRequest(update.reviewDigest(),new Acknowledgement(500)));
+   System.out.println("Restricted PostgreSQL 500 Update commit ms: "+TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started));
+   assertThat(changed.rows()).allSatisfy(row->assertThat(row.resultVersion()).isEqualTo(1));
+   Preview same=previews.create(owner,csv.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8),options);
+   assertThat(same.counts().unchanged()).isEqualTo(500);
+   Receipt unchanged=commits.commit(owner,same.id(),new CommitRequest(same.reviewDigest(),new Acknowledgement(0)));
+   assertThat(unchanged.rows()).allSatisfy(row->assertThat(row.resultVersion()).isEqualTo(1));
+   assertThat(jdbc.queryForObject("select count(*) from applications where owner_id=?",Long.class,owner)).isEqualTo(500);
+ }
+ private UUID importAccount(org.springframework.jdbc.core.JdbcTemplate jdbc) {
+   UUID owner=UUID.randomUUID();jdbc.update("insert into campus_users (id,email,display_name,password_hash,created_at) values (?,?,?,?,?)",owner,owner+"@example.test","PG import","unused",Timestamp.from(Instant.now()));return owner;
+ }
+ private List<Object> importRace(Callable<?> first,Callable<?> second) throws Exception {
+   ExecutorService pool=Executors.newFixedThreadPool(2);CountDownLatch start=new CountDownLatch(1);
+   try {List<Future<Object>> results=new ArrayList<>();for(Callable<?> action:List.of(first,second))results.add(pool.submit(()->{start.await();try{return action.call();}catch(Exception e){return e;}}));start.countDown();return List.of(results.get(0).get(30,TimeUnit.SECONDS),results.get(1).get(30,TimeUnit.SECONDS));}
+   finally {pool.shutdownNow();}
+ }
+ private void verifyImportHttp(java.net.http.HttpClient client,String base,String token,
+       com.fasterxml.jackson.databind.ObjectMapper json,com.fasterxml.jackson.databind.JsonNode existing) throws Exception {
+   String csv="Company,Role,Notes\nPostgres CSV,Intern,=literal\n";
+   var options=json.createObjectNode().put("schemaVersion",1).put("dateFormat","ISO");
+   options.putObject("mapping").put("0","company").put("1","role").put("2","notes");
+   options.putArray("rows");
+   importPreview(client,base,null,csv,json.writeValueAsString(options),403);
+   var original=json.readTree(importPreview(client,base,token,csv,json.writeValueAsString(options),201));
+   var preview=original;
+   // Repeated corrections must release the predecessor reservation under the runtime role.
+   for(int i=0;i<6;i++) {
+     options.put("supersedesPreviewId",preview.get("id").asText());
+     preview=json.readTree(importPreview(client,base,token,csv,json.writeValueAsString(options),201));
+   }
+   var oldStatus=json.readTree(http(client,base,"GET","/api/application-imports/"+original.get("id").asText(),null,null,200).body());
+   assertThat(oldStatus.get("status").asText()).isEqualTo("SUPERSEDED");
+   var confirmation=json.createObjectNode().put("reviewDigest",preview.get("reviewDigest").asText());
+   confirmation.putObject("acknowledgement").put("existingApplicationsToUpdate",0);
+   String commitPath="/api/application-imports/"+preview.get("id").asText()+"/commit";
+   http(client,base,"POST",commitPath,json.writeValueAsString(confirmation),null,403);
+   var receipt=json.readTree(http(client,base,"POST",commitPath,json.writeValueAsString(confirmation),token,200).body());
+   assertThat(receipt.get("counts").get("added").asInt()).isEqualTo(1);
+   assertThat(json.readTree(http(client,base,"POST",commitPath,json.writeValueAsString(confirmation),token,200).body())).isEqualTo(receipt);
+   var status=json.readTree(http(client,base,"GET","/api/application-imports/"+preview.get("id").asText(),null,null,200).body());
+   assertThat(status.get("receipt")).isEqualTo(receipt);
+   assertThat(json.readTree(http(client,base,"GET","/api/applications/"+receipt.get("rows").get(0).get("applicationId").asText(),null,null,200).body()).get("notes").asText()).isEqualTo("=literal");
+
+   var updateOptions=json.createObjectNode().put("schemaVersion",1).put("dateFormat","ISO");
+   updateOptions.putObject("mapping").put("0","applicationId").put("1","notes");updateOptions.putArray("rows");
+   var update=json.readTree(importPreview(client,base,token,"Application ID,Notes\n"+existing.get("id").asText()+",Updated through import\n",json.writeValueAsString(updateOptions),201));
+   assertThat(update.get("rows").get(0).get("after").get("company").asText()).isEqualTo(existing.get("company").asText());
+   var updateRequest=json.createObjectNode().put("reviewDigest",update.get("reviewDigest").asText());
+   updateRequest.putObject("acknowledgement").put("existingApplicationsToUpdate",1);
+   var updatedReceipt=json.readTree(http(client,base,"POST","/api/application-imports/"+update.get("id").asText()+"/commit",json.writeValueAsString(updateRequest),token,200).body());
+   assertThat(updatedReceipt.get("counts").get("updated").asInt()).isEqualTo(1);
+   assertThat(json.readTree(http(client,base,"GET","/api/applications/"+existing.get("id").asText(),null,null,200).body()).get("notes").asText()).isEqualTo("Updated through import");
+ }
+ private String importPreview(java.net.http.HttpClient client,String base,String token,String csv,String options,int status) throws Exception {
+   String boundary="campus-postgres-test";
+   String body="--"+boundary+"\r\nContent-Disposition: form-data; name=\"file\"; filename=\"test.csv\"\r\nContent-Type: text/csv\r\n\r\n"+csv
+       +"\r\n--"+boundary+"\r\nContent-Disposition: form-data; name=\"options\"\r\nContent-Type: application/json\r\n\r\n"+options+"\r\n--"+boundary+"--\r\n";
+   var request=java.net.http.HttpRequest.newBuilder(java.net.URI.create(base+"/api/application-imports/preview"))
+       .timeout(java.time.Duration.ofSeconds(20)).header("Content-Type","multipart/form-data; boundary="+boundary)
+       .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body,java.nio.charset.StandardCharsets.UTF_8));
+   if(token!=null)request.header("X-CSRF-TOKEN",token);
+   var response=client.send(request.build(),java.net.http.HttpResponse.BodyHandlers.ofString());
+   assertThat(response.statusCode()).withFailMessage(response.body()).isEqualTo(status);
+   assertThat(response.headers().firstValue("Cache-Control").orElse("")).contains("no-store");
+   return response.body();
  }
  private void verifyConcurrentAuth(org.springframework.context.ConfigurableApplicationContext context) throws Exception {
   var limiter=context.getBean(com.campus.tracker.auth.verification.AuthRateLimiter.class);

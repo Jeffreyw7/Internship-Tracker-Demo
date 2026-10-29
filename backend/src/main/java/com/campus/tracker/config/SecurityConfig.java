@@ -5,6 +5,9 @@ import com.campus.tracker.auth.*;
 import com.campus.tracker.auth.abuse.*;
 import com.campus.tracker.auth.reset.ResetInputFilter;
 import com.campus.tracker.auth.reset.RecoveryCapacity;
+import com.campus.tracker.application.importing.*;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
+import org.springframework.security.web.header.HeaderWriterFilter;
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -67,7 +70,8 @@ public class SecurityConfig {
     // Apply security checks before requests reach the REST controllers.
     @Bean SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper json, AuthRateLimiter limiter,
             AuthWorkLimiter work, AuthAbuseProperties policies, AuthenticationProvider authenticationProvider,
-            JdbcTemplate jdbc, PlatformTransactionManager transactions, RecoveryCapacity capacity) throws Exception {
+            JdbcTemplate jdbc, PlatformTransactionManager transactions, RecoveryCapacity capacity,
+            ImportAdmissionService importAdmission, ImportWorkLimiter importWork, ImportInputLimits importLimits) throws Exception {
         var versions = new CredentialVersionFilter(jdbc, transactions, json);
         var sessions = new HttpSessionSecurityContextRepository();
         return http
@@ -78,9 +82,12 @@ public class SecurityConfig {
                         .contentSecurityPolicy(csp -> csp.policyDirectives("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")))
                 // Store CSRF tokens in the session so writes require both the token and session cookie.
                 .csrf(csrf -> csrf.csrfTokenRepository(new HttpSessionCsrfTokenRepository()))
-                .addFilterBefore(new AuthAbuseFilter(limiter, policies, json), CsrfFilter.class)
+                .addFilterBefore(new ImportNoStoreFilter(), HeaderWriterFilter.class)
+                .addFilterBefore(new ImportHeaderFilter(json), CsrfFilter.class)
+                .addFilterBefore(new AuthAbuseFilter(limiter, policies, json), ImportHeaderFilter.class)
                 .addFilterBefore(versions, AuthAbuseFilter.class)
                 .addFilterAfter(new ResetInputFilter(json,capacity), CsrfFilter.class)
+                .addFilterAfter(new ImportRequestFilter(importAdmission, importWork, json, importLimits), AuthorizationFilter.class)
                 .addFilterBefore(new LoginWorkFilter(limiter, work, policies, json), UsernamePasswordAuthenticationFilter.class)
                 // Allow account setup and health checks; require a signed-in user for other API routes.
                 .authorizeHttpRequests(auth -> auth

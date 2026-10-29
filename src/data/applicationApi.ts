@@ -11,8 +11,8 @@ export function toPayload(a:ApplicationDraft) {
     stages:a.stages.map(s=>({id:s.id||null,name:s.name.trim(),date:s.date||null,state:s.state}))};
 }
 export const applicationApi={
-  async list():Promise<Application[]> {
-    const isCurrent=sessionGuard();
+  async list(guard:()=>boolean=()=>true):Promise<Application[]> {
+    const accountCurrent=sessionGuard();const isCurrent=()=>accountCurrent()&&guard();
     // Cache personal history for instant cross-view filtering; the REST API supports paginated server queries.
     const first=await request<ApplicationPage>('/applications?size=100&page=0',{},isCurrent);
     const apps=[...first.content];
@@ -23,13 +23,13 @@ export const applicationApi={
     return [...new Map(apps.map(a=>[a.id,a])).values()];
   },
   // Choose create or update and send the version header only for existing records.
-  save(draft:ApplicationDraft,id?:string,version?:number):Promise<Application> {
+  save(draft:ApplicationDraft,id?:string,version?:number,isCurrent:()=>boolean=()=>true):Promise<Application> {
     const init=jsonBody(toPayload(draft));
     return request<Application>(id?`/applications/${id}`:'/applications',{
       ...init,method:id?'PUT':'POST',headers:{...init.headers,...(id?{'If-Match':String(version)}:{})}
-    });
+    },isCurrent);
   },
   // Use the last known version when deleting or restoring a record.
-  remove(app:Application){return request<Application>(`/applications/${app.id}`,{method:'DELETE',headers:{'If-Match':String(app.version)}});},
-  restoreDeleted(app:Application){return request<Application>(`/applications/${app.id}/restore`,{method:'POST',headers:{'If-Match':String(app.version)}});}
+  remove(app:Application,isCurrent:()=>boolean=()=>true){return request<Application>(`/applications/${app.id}`,{method:'DELETE',headers:{'If-Match':String(app.version)}},isCurrent);},
+  restoreDeleted(app:Application,isCurrent:()=>boolean=()=>true){return request<Application>(`/applications/${app.id}/restore`,{method:'POST',headers:{'If-Match':String(app.version)}},isCurrent);}
 };

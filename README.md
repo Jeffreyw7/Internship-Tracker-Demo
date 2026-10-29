@@ -166,7 +166,13 @@ npm run build
 
 Client tests verify verification-link handling, auth payloads, CSRF/version headers, pagination, conflicts, delete/undo requests and view selectors. Java integration tests exercise real Spring Security, controllers, services, Flyway and H2, including verification, outbox delivery, migration behavior and cross-account isolation. See `VALIDATION.md` for the recorded checks and limits.
 
-After creating the bundled JAR, run `npm run test:smoke` from the project root to exercise the packaged UI, SMTP verification, authentication, application writes and restart persistence through real HTTP.
+After `npm ci` (including development dependencies) and creating the bundled JAR, run `npm run test:smoke` from the project root to exercise the packaged UI, SMTP verification, authentication, application writes and restart persistence through real HTTP. The runner also imports Vite to check the development proxy; a production-only npm install is insufficient.
+
+## Continuous integration
+
+GitHub Actions runs application verification and container builds in parallel for pull requests, pushes to `main`, and manual runs. Application verification uses Node 22 and an actual Java 17 runtime, builds the UI and bundled JAR in one checkout, runs the backend suite and real PostgreSQL 17 Testcontainers integration tests, then runs the bundled HTTP/restart smoke test. Container checks validate Compose configuration and build the `app` and `migrate` targets; they do not prove a full Compose rollout.
+
+The stable `CI required` check succeeds only when both jobs succeed. See [CI coverage and local reproduction](docs/CI.md) for required tools, commands, fork safety, diagnostics and the branch-protection recommendation. See [VALIDATION.md](VALIDATION.md) for executed evidence and limitations.
 
 ## Deployment status
 

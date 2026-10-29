@@ -16,11 +16,15 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import java.util.*;
+import java.time.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -42,9 +46,21 @@ class PasswordResetIntegrationTest {
     @Autowired ResetMaintenance maintenance;
     @Autowired ResetHealth health;
     @Autowired DatabaseTime databaseTime;
+    @Autowired ResetTestClock clock;
     @Autowired RecoveryCapacity capacity;
 
+    @TestConfiguration static class TimeConfiguration {
+        @Bean @Primary ResetTestClock resetTestClock() { return new ResetTestClock(); }
+    }
+    static class ResetTestClock extends Clock {
+        volatile Clock delegate=Clock.systemUTC();
+        public ZoneId getZone() { return delegate.getZone(); }
+        public Clock withZone(ZoneId zone) { return delegate.withZone(zone); }
+        public Instant instant() { return delegate.instant(); }
+    }
+
     @BeforeEach void enableAndCleanRecovery() {
+        clock.delegate=Clock.systemUTC();
         jdbc.update("UPDATE password_reset_control SET enabled=TRUE,operator_intake_paused=FALSE,health_intake_paused=FALSE WHERE id=1");
         jdbc.update("DELETE FROM email_outbox WHERE message_type<>'EMAIL_VERIFICATION'");
         jdbc.update("DELETE FROM password_reset_tokens");
@@ -121,8 +137,14 @@ class PasswordResetIntegrationTest {
     @Test void exactExpiryAndQueuedOlderIntakeCannotReviveCredentials() throws Exception {
         CampusUser user=account(true);
         String expired=issuedToken(user.getEmail());
-        jdbc.update("UPDATE password_reset_tokens SET expires_at=CURRENT_TIMESTAMP WHERE user_id=?",user.getId());
-        confirm(expired,"unusual new passphrase chosen",400);
+        // Use one sampled instant for both expiry and the service clock. H2's SQL
+        // timestamp and the JVM clock are separate samples; keep creation strictly earlier.
+        var expiry=databaseTime.now();
+        jdbc.update("UPDATE password_reset_tokens SET created_at=?,expires_at=? WHERE user_id=?",
+                java.sql.Timestamp.from(expiry.minusSeconds(60)),java.sql.Timestamp.from(expiry),user.getId());
+        clock.delegate=Clock.fixed(expiry,ZoneOffset.UTC);
+        try { confirm(expired,"unusual new passphrase chosen",400); }
+        finally { clock.delegate=Clock.systemUTC(); }
         jdbc.update("DELETE FROM auth_rate_limits");
         String live=issuedToken(user.getEmail());
         jdbc.update("DELETE FROM auth_rate_limits");

@@ -1,5 +1,30 @@
 # Validation record
 
+## CSV import - October 15, 2026
+
+Implemented the approved CSV import workflow: selection/mapping/correction/exclusion, complete before/after review and update acknowledgement, immutable owner-bound previews with safe supersession, atomic application changes and durable receipts, status-only automatic recovery, retention/cleanup and persisted admission quotas. Application ID/structured-stage exports and import reports share spreadsheet-risk reduction. V4 and explicit runtime grants cover the new metadata tables. See the [API contract](docs/API.md#csv-imports), [implementation adjustments](docs/superpowers/specs/2026-10-15-csv-import-design.md#9-implementation-adjustments-and-verification-boundaries), and [consolidated independent review](docs/superpowers/reviews/2026-10-15-csv-import-implementation-review.md).
+
+| Final check | Result |
+| --- | --- |
+| `npm.cmd test` | 68 passed; no failures or skips, including 12 real React/JSDOM component/hook tests |
+| `npm.cmd run build` | Strict TypeScript and production Vite build passed |
+| Cached Maven 3.9.11, `-Pwith-ui,postgres-it '-Dpostgres.test.bin=C:/Program Files/PostgreSQL/18/bin' -B clean verify` from `backend/` | 129 backend tests and 2 PostgreSQL integration scenarios passed; no failures/errors/skips; rebuilt UI bundled in the JAR |
+| `node tests/http_smoke.mjs` against the final rebuilt JAR | Passed HTTP/assets, SMTP-capture verification/authentication, preferences/CRUD/undo, real multipart CSV Add/Update/preservation, native Node FormData through bundled serving and Vite proxy, CSRF, atomic conflicts, duplicate receipts, discarded-response GET reconciliation and application/import persistence through a full JVM restart |
+| Three independent reviews and focused fix rechecks | Completed; both P2 findings and the P3 finding fixed, with regression tests; no outstanding actionable finding |
+| `git diff --check` | Passed |
+
+Backend coverage includes full-source parsing/limits, strict options/stages, preservation/explicit clearing, advisory versus explicit owner-scoped matching, validation and ownership, atomic rollback including an injected second-write failure, stale ordinary/stage edits, duplicate same-ID and different-preview target races, repeated correction supersession, synchronized expiry/reservations, consistent quota races, 500-row Add/Update/Unchanged receipts, canonical integrity/schema rejection, and locked 30-day receipt purge. Real-controller socket tests cover encoded route aliases, missing/blank/invalid CSRF with zero parameter/input/servlet-part access, unsupported transport before admission, wrong-endpoint multipart/error dispatches, same-owner capacity, stalled/dripping bodies, and headers with zero body bytes. The latter exposed decoder retries after a failed socket read; retaining the first I/O failure now prevents another underlying read, with capacity available at six seconds and terminal 408 below eight seconds. The original 30-second elapsed upload deadline/35-second recovery bound remains covered.
+
+The PostgreSQL scenarios use fresh and legacy security-upgrade clusters, exercise V3-to-V4 migration and idempotent grants, and run HTTP imports with the restricted runtime role. Checks include supersession, update/status/duplicate commits, target lock cancellation and retry, foreign/deleted targets, locked expiry/cleanup, concurrent admission and receipt reservations, and 500-row batches. They also retain existing denied user/application deletion, schema/role/Flyway-history privilege checks. No user database was migrated.
+
+Frontend regression coverage includes exact update acknowledgement, literal uploaded markup, error descriptions and cross-page focus, draft/replacement invalidation, lost/malformed responses, read-only reconciliation without automatic POST replay, unresolved mutation locking, full-history refresh, stale accounts/session guards and receipt reopening after 404/410 retirement. JSDOM deliberately shims native dialog and scrolling APIs; these checks do not establish browser modal behavior.
+
+The three reviewers worked independently using GPT-6.1 Sol / High. All reports finished before fixes began; each reviewer then rechecked the changes in their scope. Backend review also identified four test-coverage gaps, addressed by five additional passing lifecycle tests. Security review found the encoded-route admission discrepancy; frontend review found stale retirement hiding new receipts and unresolved replacement previews retaining confirmation. A further real-socket regression found the failed-read retry issue, independently rechecked by the security reviewer.
+
+Checks used Node 25.2.0, Java 21.0.12.1 (Java 17 compilation target), cached Maven 3.9.11 and disposable PostgreSQL 18.6. The Windows Maven wrapper still fails before launch (`Cannot index into a null array`); cached Maven was invoked directly with an explicit workspace-local repository under ignored `.superpowers/sdd/2026-10-15-csv-import/m2`. Restricted javac ZipFS access required approved execution outside the sandbox. `npm.ps1` is blocked by execution policy, so `npm.cmd` was used. The maintained Node HTTP smoke runner is used because the Python launcher is unavailable.
+
+Actual browser visual/reflow/theme checks, native modal Tab/Shift+Tab/Escape behavior and screen-reader announcements remain **blocked**: computer-use inventory had no browsers, and both in-app and Chrome launch attempts returned unavailable. Native Node FormData and JSDOM are separate evidence, not browser verification. PostgreSQL 17 and a Java 17 runtime were not tested; Flyway warns that PostgreSQL 18 is newer than its tested support range. Hosted proxy/deployment behavior and external SMTP delivery were not verified.
+
 ## Main review fixes - October 4, 2026
 
 Fixed the four review findings on local `main`: verification counter lock contention/deadlock, verification requests bypassing the shared authentication work cap, stale application responses expiring a newer session, and concurrent duplicate registration returning a conflict instead of acceptance.
@@ -67,7 +92,7 @@ npm run build
 npm run test:smoke
 ```
 
-The Node smoke runner uses only built-in modules and required project runtimes. The older Python runner remains available for environments that already use it.
+The Node smoke runner uses built-in Node modules and dynamically imports the project's Vite development dependency for proxy checks. Install development dependencies with `npm ci` (or explicitly `npm ci --include=dev`) before running it. The older Python runner remains available for environments that already use it.
 
 ## Security implementation verification â€” September 17, 2026
 
@@ -185,3 +210,174 @@ Docker/Compose execution requires a Docker host. HTTPS/proxy/Secure-cookie check
 Tested the already running local app at 127.0.0.1:8080 and Mailpit at 127.0.0.1:8025. A UUID-named synthetic account was registered and activated through its actual captured verification message. The real in-app browser submitted Forgot password, displayed neutral acceptance, showed the reset email in Mailpit and opened its link; the URL fragment was scrubbed and empty required fields blocked submission. Password submission and negative checks used independent HTTP clients. Seven check groups passed: verification/two sessions, captured reset/private unknown-address behavior, page GET and rejected CSRF/short-password submissions preserving authentication, successful confirmation/old-session revocation, used/unknown token rejection, old-password failure/new-password login with application/theme preservation, and a credential-free password-change notification in Mailpit.
 
 The repeatable unattended command `node tests/local-mailpit-smoke.mjs` also passed all seven groups, including exact known/unknown response comparison. Interactive browser-request mode was run separately; it does not itself compare the browser response body. The script requires a TTY before creating fixtures if an inspection pause is requested. An initial headless pause was stopped and rerun in a terminal. No application defect was reproduced. Independent harness review found no actionable safety/data-scoping problem and clarified HTTP-vs-browser evidence wording. Syntax and whitespace checks passed. Email-link origin validation was checked against both captured message types and rejected an incorrect origin. After testing, the local launcher was restarted to clear the process-local signup/login budgets consumed by fixtures; health and all eight captured messages persisted. Both local services remain available; only identifiable synthetic test records/messages were added.
+
+## CSV import review fixes — 2026-10-20
+
+Fixed the confirmation resource-control gap and the runtime privilege verifier's any-versus-all DML checks from the review of `2b52a702bfcdae251834b22246689ec62e0ff104`.
+
+Confirmation POSTs now share the existing owner/process write permits with previews. Authentication and CSRF precede admission and body reads. A bounded incremental reader checks the existing absolute deadline between underlying socket reads; fixed-length HTTP/1.1, the 4096-byte confirmation ceiling, and strict JSON remain enforced. Status reads remain outside work permits. Persisted reservations and commit/receipt transactions were not changed.
+
+Regression evidence before the fix: a continuously dripping confirmation produced no response within the test's 4.5-second observation window despite its configured 1.5-second deadline; a same-owner confirmation reached validation (HTTP 400) while another body was pending instead of returning 429. After the fix, raw-socket tests return 408 for a continuous drip, release capacity after idle timeout/disconnect, reject owner/process excess work, and permit status reads. Tests also cover decoded route aliases, body-free authentication/CSRF/transport/size rejection, malformed JSON, a valid exact-4096-byte confirmation, and duplicate receipts. The test tightens existing configuration rather than changing production defaults.
+
+The PostgreSQL regression independently removes each of 35 required table/column grants, invokes the real `psql` verifier, and restores the grant in `finally`. Before the fix, 29 missing grants were incorrectly accepted. After the fix, every omission fails verification; the provisioned and restored roles pass. Prohibited-privilege checks and grants are unchanged.
+
+| Check | Result |
+| --- | --- |
+| Backend suite | 136 passed, no failures/errors/skips; includes 7 new real HTTP confirmation tests |
+| Real PostgreSQL integration | 3 passed: fresh provisioning, legacy upgrade, and 35 independent grant-removal cases |
+| Frontend suite | 68 passed |
+| TypeScript/Vite build | Passed |
+| Executable JAR with rebuilt UI | Packaged successfully after the frontend build |
+| Bundled real HTTP/SMTP/H2 restart smoke | Passed, including assets, verification, authentication, CSRF, conflicts, undo and restart persistence |
+| Parallel independent reviews | Request/resource controls and PostgreSQL verifier: no actionable findings |
+| Patch whitespace check | `git diff --check` passed |
+
+Commands used (`taskMaven` is the cached Maven 3.9.11 executable):
+
+```powershell
+# Repository root
+npm.cmd test
+npm.cmd run build
+# backend/
+$taskMaven = 'C:/Users/jeffr/.m2/wrapper/dists/apache-maven-3.9.11/03d7e36a140982eea48e22c1dcac01d8862b2550b2939e09a0809bbc5182a5bc/bin/mvn.cmd'
+& $taskMaven '-Dmaven.repo.local=C:/Users/jeffr/.m2/repository' test
+& $taskMaven '-Dmaven.repo.local=C:/Users/jeffr/.m2/repository' '-Dtest=PostgresPrivilegesIT' '-Dpostgres.test.bin=C:/Program Files/PostgreSQL/18/bin' test
+& $taskMaven '-Dmaven.repo.local=C:/Users/jeffr/.m2/repository' '-Pwith-ui' '-DskipTests' package
+# Repository root; installed Python executable avoids the WindowsApps alias
+& 'C:/Users/jeffr/AppData/Local/Programs/DeepSeek Harness/resources/runtime/primary-runtime/dependencies/python/python.exe' tests/http_smoke.py
+git diff --check
+```
+
+Environment adaptations: PowerShell blocks the `npm.ps1` shim, so `npm.cmd` was used. The Maven wrapper's Windows path resolution failed; the cached Maven executable with an explicit local repository was used. One compilation attempt reported a dependency-path error; the subsequent focused tests, full suite, and packaging succeeded. Local PostgreSQL launch required execution outside the restricted process sandbox; it initialized and stopped only disposable test clusters under `backend/target`.
+
+Limits: PostgreSQL checks used installed PostgreSQL 18.6; Flyway emitted its existing warning that this version is newer than its tested support range. The Docker/PostgreSQL 17 path, production load tests, and browser UI QA were not run for this patch. The transaction permit-lifetime coverage gap was subsequently closed by the dedicated real-HTTP tests recorded below. No source-backed bypass or regression remained in either review.
+
+## CSV import transaction permit lifetime — 2026-10-20
+
+Added `ImportCommitPermitServerTest` against baseline `fbbcd589454321f30bb39c7adb172c5b29a9c91b`. The final patch changes only tests and documentation. Runtime admission, parsing, persistence, grants and transaction behavior are unchanged.
+
+The test-only repository advisor proceeds with the real `ImportPreviewRepository.complete` SQL before registering transaction synchronization. In `beforeCommit`, each test verifies the active transaction is `ImportCommitService.commit`, observes the flushed application rows and pending COMPLETED receipt on the transaction-bound connection, then holds completion with a bounded latch. An outer HTTP observer proves the full advertised confirmation body was read and later signals after the security/admission filter has returned. An outside database snapshot simultaneously sees only the original PREVIEW and no new applications or receipt, establishing that real SQL ran but has not committed.
+
+Both success and rollback scenarios use real authenticated, CSRF-protected HTTP confirmations and a test-only process limit of one. While the transaction is paused, valid same-owner and different-owner confirmations return 429 with exact `IMPORT_BUSY`; GET returns the original PREVIEW without a receipt. Success verifies the durable receipt, application IDs/versions, metadata cleanup, duplicate receipt and later writes by both owners. Rollback throws a controlled test-only `TEST_FORCED_ROLLBACK` ApiException from `beforeCommit`, verifies `STATUS_ROLLED_BACK`, exact original metadata/canonical payload and reservation preservation, no partial applications/receipt, then successfully retries the identical confirmation. Recovery probes await outer request completion, not merely transaction completion. Gates are released in finally blocks and outstanding response futures are cancelled on cleanup; no arbitrary sleeps or manually acquired work permits are used.
+
+Mutation sensitivity was executed, not inferred: the controller was temporarily constructor-injected with the real work limiter and released its owner permit immediately after `confirmations.read(request)`. Both tests failed at the intended `assertBusy` assertion because a competing valid import returned a successful receipt while the original transaction was still paused. The mutant Maven run exited 1 with 2 assertion failures, 0 errors and 0 skips. A finally block restored the controller's exact original bytes; SHA256 before/after was `556E647F96EF2B0E4C32483E3F4DE5F96B4BDD91CCD4AB87234F3094AADB719B`. Production sources have no diff against the baseline after restoration.
+
+| Check | Actual result |
+| --- | --- |
+| New test class before mutation | 2 passed, 0 failures/errors/skips |
+| Deliberate early-release mutation | Both tests failed as intended; mutation removed |
+| Restored new tests plus confirmation transport and lifecycle tests | 27 passed, 0 failures/errors/skips |
+| Full backend suite after restoration | 138 passed, 0 failures/errors/skips |
+| Independent parallel reviews | Transaction/test correctness and resource/compatibility: no actionable defects |
+| Final patch whitespace check | `git diff --check` passed |
+
+Execution used the documented cached Maven fallback, from `backend/`:
+
+```powershell
+$taskMaven = 'C:/Users/jeffr/.m2/wrapper/dists/apache-maven-3.9.11/03d7e36a140982eea48e22c1dcac01d8862b2550b2939e09a0809bbc5182a5bc/bin/mvn.cmd'
+& $taskMaven '-Dmaven.repo.local=C:/Users/jeffr/.m2/repository' '-Dtest=ImportCommitPermitServerTest' test
+& $taskMaven '-Dmaven.repo.local=C:/Users/jeffr/.m2/repository' '-Dtest=ImportCommitPermitServerTest,ImportConfirmationTransportServerTest,ImportLifecycleTest' test
+& $taskMaven '-Dmaven.repo.local=C:/Users/jeffr/.m2/repository' test
+# Repository root
+git diff --check
+```
+
+Local execution evidence and the reversible mutation runner are ignored outputs under `backend/target/sdd/import-transaction-permit-tests/`: `early-release-mutation.log`, copied `mutation-*` JUnit reports, `focused-restored.log`, and `backend-suite.log`. These are disposable local evidence, not required runtime files.
+
+Subagent work: one read-only boundary investigator, one exclusive test implementer, and two fresh independent parallel reviewers; all used GPT-6.1 Sol High. The parent independently checked code/results, ran the mutation and restored suites, and owned documentation/integration.
+
+Review disposition: both reviewers noted that process capacity one makes the new class's same-owner rejection also a consequence of process saturation. This is complementary coverage rather than a new runtime defect: existing `ImportConfirmationTransportServerTest.decodedCommitAliasesShareOwnerAdmissionWithPreview` uses two process slots and holds only one while checking same-owner exclusion; it passed in the 27-test and full runs. The new tests specifically establish permit lifetime through actual commit and rollback, as requested.
+
+Limits: the new transaction tests use isolated in-memory H2 and add no PostgreSQL-specific claim. PostgreSQL integration, frontend build/tests, bundled smoke and browser checks were not rerun for this test/documentation-only patch; their earlier recorded results above remain historical. No infrastructure blocked the requested checks, no production behavior change was needed, and no mutation remains.
+
+## Continuous integration implementation — 2026-10-20
+
+Added GitHub Actions application verification and container-build jobs with the exact-success `CI required` gate. Coverage, trust boundaries, timeouts, reproduction commands and the separate branch-protection recommendation are documented in [docs/CI.md](docs/CI.md). No branch-protection or other repository setting was changed.
+
+The results below are new local evidence from Windows for this CI change. They are separate from the historical runs above. Execution used checksum-verified portable Temurin **17.0.20.1+1** and Node **22.23.3** with npm **10.9.9**, plus Maven **3.9.11** and actionlint **1.7.12**. Backend execution and the packaged-JAR smoke used the actual Java 17 runtime, rather than a newer JDK with a Java 17 compilation target.
+
+| Check | Actual result |
+| --- | --- |
+| `npm ci --include=dev` | Passed after repairing two missing package-lock records; see installation note below |
+| `npm test` | 68 passed, no failures or skips |
+| `npm run build` | Strict TypeScript and production Vite build passed |
+| Maven `clean test` on actual Java 17 | 138 passed, no failures/errors/skips; local Windows unit-suite runtime was approximately 2 minutes 32 seconds |
+| Maven `-Pwith-ui -DskipTests package` after the successful test run | Passed against the same unchanged backend source; skipping applied only to this packaging step |
+| Bundled frontend verification | All 5 files in the rebuilt `dist` were byte-identical to their copies in the executable JAR |
+| `npm run test:smoke` on Node 22 / Java 17 | Passed, exit 0; real HTTP/assets, SMTP verification/authentication, preferences, CRUD/undo, multipart CSV Add/Update/preservation, native FormData through bundled serving and the Vite proxy, CSRF, atomic conflict, duplicate receipts, lost-response GET reconciliation, and application/import recovery across a JVM restart |
+| CI guard tests | 16 passed, including real CLI exit codes, missing/failing/cancelled/skipped job results, invalid reports, and each missing PostgreSQL scenario |
+| actionlint 1.7.12 | Passed |
+| Bash syntax checks | All 7 multiline workflow Bash blocks passed `bash -n`; Maven wrapper and PostgreSQL provisioning-script syntax checks passed |
+| Node smoke-runner syntax | `node --check tests/http_smoke.mjs` passed |
+| Actual `postgres-it` Failsafe invocation | Failed as required, exit 1: 3 discovered tests, 3 errors, 0 skips because Docker is absent; this establishes failure propagation, not PostgreSQL correctness |
+| CI report guard against those actual failed PostgreSQL reports | Rejected the reports with exit 1 |
+| Local Compose validation and both image builds/runtime checks | Unavailable locally because Docker is absent; the hosted results are recorded separately below |
+| Fresh independent reviews | CI correctness/reproducibility and security/resource reviews found no actionable findings; the security reviewer independently reran all 16 guard tests successfully |
+
+The initial `npm ci` failed because `package-lock.json` omitted the required `@emnapi/core` and `@emnapi/runtime` **1.10.0** records. The lockfile repair adds only those two records and changes no dependency version. The subsequent `npm ci --include=dev`, tests and build all passed. npm audit also reported **2 existing high-severity advisories** involving `source-map-js` and `vite`; their versions remain unchanged. Resolving those advisories is outside this CI change.
+
+The Maven commands used with the verified Java 17 runtime, from `backend/`, were:
+
+```powershell
+mvn -B -ntp '-Dmaven.repo.local=C:/Users/jeffr/.m2/repository' clean test
+mvn -B -ntp '-Dmaven.repo.local=C:/Users/jeffr/.m2/repository' '-Pwith-ui' '-DskipTests' package
+# Expected failure here: this machine has no Docker daemon.
+mvn -B -ntp '-Dmaven.repo.local=C:/Users/jeffr/.m2/repository' '-Ppostgres-it' failsafe:integration-test failsafe:verify
+```
+
+The local 138-test backend result includes the two pre-existing, uncommitted `ImportCommitPermitServerTest` cases. The isolated CI-only publication excludes that test class and its plan while preserving the local work, so that published snapshot contains 136 backend tests, as confirmed by the hosted run below. This count difference reflects source scope; the workflow does not hard-code backend test counts.
+
+The successful test run precedes the packaging-only skip above. CI itself does not skip tests: it uses one `sh ./mvnw -B -ntp -Pwith-ui,postgres-it clean verify` invocation, then requires valid executed test reports before running smoke.
+
+Local Docker remains absent; the failed local PostgreSQL attempt above is separate from the successful hosted PostgreSQL/container execution below. Full Compose rollout and migration-failure startup gating are separate from the selected CI build checks and were not run. Browser visual/accessibility checks, hosted deployment and external SMTP delivery were not run. Local Windows timings do not measure hosted workflow runtime.
+
+### Hosted verification
+
+[GitHub Actions run 39469068417](https://github.com/Jeffreyw7/Internship-Tracker-Demo/actions/runs/39469068417) **succeeded** for CI source commit [`6e47873f0812b634cd0c6c446b3d91bc300ee705`](https://github.com/Jeffreyw7/Internship-Tracker-Demo/commit/6e47873f0812b634cd0c6c446b3d91bc300ee705) in [draft PR #1](https://github.com/Jeffreyw7/Internship-Tracker-Demo/pull/1), targeting `CSV-import`. It ran on Ubuntu 24.04 with Node 22 and actual Temurin **17.0.20.1**.
+
+| Hosted check | Actual result |
+| --- | --- |
+| Frontend tests/build | 68 tests passed; production build passed |
+| Backend unit suite | 136 passed, no failures/errors/skips |
+| Real PostgreSQL 17 Testcontainers integration | All 3 scenarios passed against PostgreSQL **17.11**, no failures/errors/skips; 52.08 seconds |
+| Required Maven report guard | Verified 136 backend tests and all 3 PostgreSQL scenarios |
+| Bundled HTTP/SMTP/Vite/H2 restart smoke | Passed |
+| Compose configuration | Passed |
+| Both `migrate` and `app` image builds/runtime checks | Passed; both runtime users were non-root and Java 17 |
+| `Application verification` / `Container builds` / `CI required` | All succeeded; respective job durations were **4 minutes 25 seconds**, **3 minutes 21 seconds**, and **6 seconds** |
+
+The PostgreSQL scenarios exercised provisioning, legacy upgrade, runtime grants and import behavior. This run establishes the PostgreSQL 17 and container-build coverage that could not execute locally. It does not establish full Compose rollout or migration-failure startup gating.
+
+A separate, existing Git Credential Manager credential supplied workflow publication permission; the GitHub CLI credential alone lacked that permission. The isolated CI publication used a temporary index, preserving the current branch/index and the pre-existing uncommitted regression test/plan. No image was published and no repository setting was changed. The hosted evidence above applies to the linked source commit; later documentation or formatting updates have their own run.
+
+Final published revision `e4c23169fac13474d0ff84c93e7afe0ce3b1b44e` was independently rerun after the documentation/formatting update: [run 39470045165](https://github.com/Jeffreyw7/Internship-Tracker-Demo/actions/runs/39470045165) passed all three jobs. Application verification took 4m45s, container builds 3m23s, and CI required 6s. The final logs again confirm 136 backend tests plus all 3 PostgreSQL tests without skips, bundled smoke success and exact-success required results. The preceding hosted run remains valid evidence for the original CI snapshot; the latest run confirms the final PR head. Existing Spring Security AntPathRequestMatcher deprecation warnings remain non-failing and outside this CI change.
+
+### Publication follow-up
+
+The subsequent commit-and-push request includes the previously preserved `ImportCommitPermitServerTest` class and its plan, along with the CI design/plan/review records. The 136-test hosted results above apply to the linked earlier CI-only snapshots; the complete published source now includes the two locally verified regression cases. Its hosted backend suite is expected to contain 138 tests. The new head's CI result must be read from PR #1 checks; this publication note does not claim a new passing run.
+
+## Password Reset final merge review — October 29, 2026
+
+Reviewed the combined Password-Reset implementation and main `94b062c94638597c9c92e83fa141f8d98cfd3d43`, including main's CSV import and CI changes. Parallel GPT-6.1 Sol High reviews covered frontend integration, database compatibility and security. Independent follow-up reviews checked the local migration bridge and the corrected expiry test fixture. Review findings and resolutions by category:
+
+- **Database compatibility:** main already assigns V4 to CSV import. Reset is now V5 with identical SQL/checksum. `LocalLegacyPasswordResetMigration` and `start-local.ps1` provide an explicitly enabled, local-only file-backed H2 bridge for the unpublished reset-only demo. It validates the exact old migration history and reset schema, creates an adjacent consistent ZIP backup before changing history, then applies the missing CSV migration. Production and ambiguous histories fail closed; fresh/main databases migrate normally. Six regression scenarios cover data/control preservation, actual backup restoration, rejection paths and repeat startup. See [migration strategy](backend/src/main/java/com/campus/tracker/migration/LocalLegacyPasswordResetMigration.java), [tests](backend/src/test/java/com/campus/tracker/migration/LocalLegacyPasswordResetMigrationTest.java), and [local recovery instructions](docs/LOCAL-PASSWORD-RESET.md).
+- **Security:** the combined filter chain retains primary-database credential-epoch checks before import admission and CSRF, explicit authenticated-session publication and both recovery/import body guards. Import test sessions now represent real verified users with actual credential epochs; stale sessions cannot upload or read imports. Runtime grant verification covers both features, with separate retention-role upgrade paths from V3 and V4. See [security configuration](backend/src/main/java/com/campus/tracker/config/SecurityConfig.java), [transport regression tests](backend/src/test/java/com/campus/tracker/application/importing/ImportTransportServerTest.java), and [PostgreSQL verification](backend/src/test/java/com/campus/tracker/PostgresPrivilegesIT.java).
+- **Frontend and maintainability:** resolved shared transport conflicts while preserving serialized authentication, cross-tab invalidation, stale-operation guards, unknown import outcomes and no automatic write replay. Combined HTTP smoke coverage retains CSV import and password-reset flows. See [shared transport](src/data/api.ts), [import tests](tests/application-import.test.mjs), and [HTTP smoke](tests/http_smoke.mjs).
+- **CI and test reliability:** supplied the newly required synthetic retention password to Compose validation. CI now requires all seven PostgreSQL scenarios across privilege/upgrade, restore and monitoring suites instead of accepting only the older three-case privilege suite. The full backend run exposed an expiry fixture using separately sampled H2/JVM timestamps; its test-only controlled clock now checks exact equality while preserving the creation-before-expiry constraint. See [workflow](.github/workflows/ci.yml), [report guard](.github/scripts/check_ci.py), [guard regression tests](.github/scripts/test_check_ci.py), and [expiry integration test](backend/src/test/java/com/campus/tracker/PasswordResetIntegrationTest.java).
+
+Final verification of the resolved combined tree:
+
+| Check | Result |
+| --- | --- |
+| `npm.cmd test` | 92 passed, no skips |
+| `npm.cmd run build` | TypeScript and Vite production build passed |
+| Maven `-Pwith-ui,postgres-it -Dpostgres.test.bin=<portable-PG17-bin> verify` | 208 backend tests and 7 PostgreSQL integration tests passed, no failures/errors/skips; packaged JAR built |
+| `python -B .github/scripts/check_ci.py reports backend` | Confirmed all 208 backend tests and all 7 required PostgreSQL scenarios executed without skips |
+| `python -B -m unittest discover -s .github/scripts -p 'test_*.py'` | 17 passed |
+| `node --test deploy/probe-edge.test.mjs` | 5 passed |
+| `npm.cmd run test:smoke` | Passed combined real HTTP/assets, SMTP verification/reset/notice, slow-body deadline, session revocation, token single use, old/new login, data/theme preservation, CRUD/undo, CSV multipart/native FormData through bundled/Vite routes, CSRF, atomic conflict, duplicate receipts, lost-response reconciliation, and JVM restart persistence |
+| `git diff --cached --check` | Passed after resolving every conflict |
+
+Actual local demo upgrade: the running app created `backend/data/local-password-reset/campus.before-reset-lineage-3ee370b4-0af3-4dfb-b823-fd99a5ae0fb4.zip` before rewriting the legacy row. Before/after counts matched: 3 users, 3 applications, credential-epoch sum 2, 3 reset-token records and 2 audit events. All 8 Mailpit message IDs remained unchanged. A second startup passed normal migration validation without creating another backup. The app health endpoint reported UP and the inbox remained available. Private database/inbox files and build/test logs remain ignored by Git.
+
+The final local run used Node 25.2.0, Java 21.0.12.1 compiling for Java 17, Maven 3.9.11 and actual PostgreSQL 17.11. Docker/container builds and hosted CI were not rerun for this combined revision; historical hosted results above apply only to their linked commits. Hosted HTTPS/proxy and external SMTP activation checks remain deployment work. No new actionable review finding remained after the fixes and follow-up review. The requested merge is local; no push or public deployment is included.

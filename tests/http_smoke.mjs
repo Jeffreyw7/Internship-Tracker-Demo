@@ -68,10 +68,11 @@ function rememberCookies(headers) {
   }
 }
 
-function call(route, { method = 'GET', data, headers = {}, expected = 200, form = false } = {}) {
+function call(route, { method = 'GET', data, rawBody, headers = {}, expected = 200, form = false } = {}) {
   return new Promise((resolve, reject) => {
     let body;
-    if (data !== undefined) {
+    if (rawBody !== undefined) body = rawBody;
+    else if (data !== undefined) {
       body = form ? new URLSearchParams(data).toString() : JSON.stringify(data);
       headers = { ...headers, 'Content-Type': form ? 'application/x-www-form-urlencoded' : 'application/json' };
     }
@@ -98,9 +99,50 @@ function call(route, { method = 'GET', data, headers = {}, expected = 200, form 
   });
 }
 
+async function importPreview(csv, options, headers, expected = 201) {
+  const boundary = 'campus-smoke-boundary';
+  const parts = [
+    `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="synthetic.csv"\r\nContent-Type: text/csv\r\n\r\n${csv}\r\n`,
+    `--${boundary}\r\nContent-Disposition: form-data; name="options"\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(options)}\r\n`,
+    `--${boundary}--\r\n`,
+  ];
+  return call('/api/application-imports/preview', { method: 'POST', rawBody: Buffer.from(parts.join('')),
+    headers: { ...headers, 'Content-Type': `multipart/form-data; boundary=${boundary}` }, expected });
+}
+
+function importCommit(preview, headers, expected = 200) {
+  return call(`/api/application-imports/${preview.id}/commit`, { method: 'POST', headers, expected,
+    data: { reviewDigest: preview.reviewDigest, acknowledgement: { existingApplicationsToUpdate: preview.counts.updated } } });
+}
+
 async function csrf() {
   const token = await call('/api/auth/csrf');
   return { [token.headerName]: token.token };
+}
+
+async function nativePreview(origin, csv, options, headers) {
+  const form = new FormData();
+  form.append('file', new Blob([csv], { type: 'text/csv' }), 'applications.csv');
+  form.append('options', new Blob([JSON.stringify(options)], { type: 'application/json' }));
+  const response = await fetch(origin + '/api/application-imports/preview', {
+    method: 'POST', headers: { ...headers, Cookie: [...cookies].map(([key, value]) => `${key}=${value}`).join('; ') }, body: form,
+  });
+  const body = await response.json();
+  assert.equal(response.status, 201, JSON.stringify(body));
+  return body;
+}
+
+// Deliberately discard the response body after dispatch; only GET may establish the outcome.
+async function loseCommitResponse(preview, headers) {
+  const body = JSON.stringify({ reviewDigest: preview.reviewDigest, acknowledgement: { existingApplicationsToUpdate: preview.counts.updated } });
+  await new Promise((resolve, reject) => {
+    const request = http.request(`${base}/api/application-imports/${preview.id}/commit`, {
+      method: 'POST', headers: { ...headers, Cookie: [...cookies].map(([key, value]) => `${key}=${value}`).join('; '),
+        'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+    }, response => { response.destroy(); resolve(); });
+    request.once('error', reject);
+    request.end(body);
+  });
 }
 
 async function verificationToken() {
@@ -192,7 +234,7 @@ async function start() {
   throw new Error(`Java startup timed out:\n${fs.readFileSync(logPath, 'utf8').slice(-3000)}`);
 }
 
-let server;
+let server, vite;
 try {
   server = await start();
   const page = (await call('/')).toString('utf8');
@@ -227,6 +269,56 @@ try {
   await call(applicationPath, { expected: 404 });
   const restored = await call(applicationPath + '/restore', { method: 'POST', headers: { ...headers, 'If-Match': String(deleted.version) } });
   assert.equal(restored.notes, draft.notes);
+
+  // Use real multipart bytes so CSRF, transport limits and strict parsing run through the embedded container.
+  const csv = '\ufeffCompany,Role,Notes\r\n"CSV, Company",CSV Intern,"=literal\nsecond line"\r\n';
+  const options = { schemaVersion: 1, mapping: { 0: 'company', 1: 'role', 2: 'notes' }, dateFormat: 'ISO', rows: [] };
+  await importPreview(csv, options, {}, 403);
+  const preview = await importPreview(csv, options, headers);
+  assert.equal(preview.committable, true);
+  assert.equal(preview.counts.added, 1);
+  await importCommit(preview, {}, 403);
+  await call(`/api/application-imports/${preview.id}/commit`, { method: 'POST', headers, expected: 422,
+    data: { reviewDigest: preview.reviewDigest, acknowledgement: { existingApplicationsToUpdate: 1 } } });
+  const receipt = await importCommit(preview, headers);
+  assert.equal(receipt.counts.added, 1);
+  assert.deepEqual(await importCommit(preview, headers), receipt);
+  assert.deepEqual((await call(`/api/application-imports/${preview.id}`)).receipt, receipt);
+  const csvApplication = await call(`/api/applications/${receipt.rows[0].applicationId}`);
+  assert.equal(csvApplication.company, 'CSV, Company');
+  assert.equal(csvApplication.notes, '=literal\nsecond line');
+
+  const updateCsv = `Application ID,Company,Notes\n${restored.id},,CSV updated\n`;
+  const updateOptions = { schemaVersion: 1, mapping: { 0: 'applicationId', 1: 'company', 2: 'notes' }, dateFormat: 'ISO', rows: [] };
+  const updatePreview = await importPreview(updateCsv, updateOptions, headers);
+  assert.equal(updatePreview.counts.updated, 1);
+  assert.equal(updatePreview.rows[0].after.company, restored.company);
+  const updateReceipt = await importCommit(updatePreview, headers);
+  assert.equal(updateReceipt.counts.updated, 1);
+  assert.equal((await call(applicationPath)).notes, 'CSV updated');
+
+  const conflictingCsv = `Application ID,Company,Role,Notes\n,Must roll back,Intern,\n${restored.id},,,Import change\n`;
+  const conflictingOptions = { schemaVersion: 1, mapping: { 0: 'applicationId', 1: 'company', 2: 'role', 3: 'notes' }, dateFormat: 'ISO', rows: [] };
+  const conflictingPreview = await importPreview(conflictingCsv, conflictingOptions, headers);
+  const beforeConflict = await call(applicationPath);
+  await call(applicationPath, { method: 'PUT', headers: { ...headers, 'If-Match': String(beforeConflict.version) }, data: { ...draft, notes: 'Concurrent edit retained' } });
+  const conflict = await importCommit(conflictingPreview, headers, 409);
+  assert.equal(conflict.code, 'IMPORT_TARGET_CHANGED');
+  assert.equal((await call('/api/applications')).totalElements, 12, 'Failed batch cannot leave the Add row behind.');
+  const nativeOptions = { ...options, mapping: { 0: 'company', 1: 'role' } };
+  const native = await nativePreview(base, 'Company,Role\nNative multipart,Intern\n', nativeOptions, headers);
+  const { createServer } = await import('vite');
+  vite = await createServer({ root, logLevel: 'warn', optimizeDeps: { noDiscovery: true, include: [] },
+    server: { host: '127.0.0.1', port: 0, proxy: { '/api': { target: base } } } });
+  await vite.listen();
+  const proxyOrigin = `http://127.0.0.1:${vite.httpServer.address().port}`;
+  const proxied = await nativePreview(proxyOrigin, 'Company,Role\nNative multipart,Intern\n', { ...nativeOptions, supersedesPreviewId: native.id }, headers);
+  assert.equal((await call(`/api/application-imports/${native.id}`)).status, 'SUPERSEDED');
+  await loseCommitResponse(proxied, headers);
+  const recoveredReceipt = (await call(`/api/application-imports/${proxied.id}`)).receipt;
+  assert.equal(recoveredReceipt.counts.added, 1, 'GET recovers completion without replaying the lost commit.');
+  await vite.close(); vite = undefined;
+  const restartPreview = await importPreview('Company,Role\nAfter restart,Intern\n', { ...options, mapping: { 0: 'company', 1: 'role' } }, headers);
   await stalledResetBody(await csrf());
   const recovery=await call('/api/auth/password-reset/request',{method:'POST',data:{email:identity.email},headers:await csrf(),expected:202});
   assert.equal(recovery.status,'PASSWORD_RESET_REQUEST_ACCEPTED');
@@ -240,7 +332,7 @@ try {
   await call('/api/auth/login',{method:'POST',data:{...identity,password:oldPassword},headers:await csrf(),form:true,expected:401});
   await call('/api/auth/login',{method:'POST',data:identity,headers:await csrf(),form:true});
   assert.deepEqual(await call('/api/me/preferences'),{themePreference:'dark'});
-  assert.equal((await call('/api/applications')).totalElements,11);
+  assert.equal((await call('/api/applications')).totalElements,13);
   for (let attempt=0;attempt<150&&!messages.some(message=>message.includes('Your password was changed'));attempt++) await new Promise(resolve=>setTimeout(resolve,100));
   assert.ok(messages.some(message=>message.includes('Your password was changed')),'Password-change notice must reach SMTP capture');
   await stop(server); server = undefined;
@@ -250,11 +342,18 @@ try {
   await call('/api/auth/me', { expected: 401 });
   await call('/api/auth/login', { method: 'POST', data: identity, headers: await csrf(), form: true });
   assert.deepEqual(await call('/api/me/preferences'), { themePreference: 'dark' });
-  assert.equal((await call(applicationPath)).notes, 'Survives a complete JVM restart');
-  assert.equal((await call('/api/applications')).totalElements, 11);
+  assert.equal((await call(applicationPath)).notes, 'Concurrent edit retained');
+  assert.deepEqual((await call(`/api/application-imports/${preview.id}`)).receipt, receipt, 'Original receipt survives JVM restart.');
+  assert.deepEqual(await importCommit(preview, await csrf()), receipt, 'Duplicate commit after restart does not repeat writes.');
+  assert.equal((await call(`/api/application-imports/${restartPreview.id}`)).status, 'PREVIEW');
+  assert.equal((await importCommit(restartPreview, await csrf())).counts.added, 1);
+  assert.deepEqual((await call(`/api/application-imports/${proxied.id}`)).receipt, recoveredReceipt);
+  assert.equal((await call('/api/applications')).totalElements, 14);
+  await call('/api/application-imports/00000000-0000-0000-0000-000000000000/commit', { method: 'POST', expected: 404, headers: await csrf(),
+    data: { reviewDigest: 'missing', acknowledgement: { existingApplicationsToUpdate: 0 } } });
   await call('/api/auth/logout', { method: 'POST', headers: await csrf(), expected: 204 });
   await call('/api/applications', { expected: 401 });
-  console.log('PASS: real HTTP page/assets, verification, reset SMTP link/notice, slow-body deadline, session revocation, token single use, old/new credentials, data/theme preservation, CRUD, CSRF, conflict, delete/undo, logout, and H2 restart persistence.');
+  console.log('PASS: real HTTP/assets, verification, reset SMTP link/notice, slow-body deadline, session revocation, token single use, old/new credentials, data/theme preservation, CRUD/undo, multipart CSV, native FormData bundled/Vite proxy, CSRF, atomic conflict, duplicate receipts, lost-response GET reconciliation, and application/import JVM restart recovery.');
   if (process.argv.includes('--hold-browser')) {
     // Synthetic fixtures only. Keep the disposable app alive for a real browser pass.
     messages.length=0;
@@ -275,7 +374,8 @@ try {
   if (fs.existsSync(logPath)) console.error(fs.readFileSync(logPath, 'utf8').slice(-5000));
   process.exitCode = 1;
 } finally {
-  await stop(server).catch(error => console.error(error));
+  await vite?.close();
+  await stop(server).catch(error => { console.error(error); process.exitCode = 1; });
   fs.closeSync(log);
   for (const socket of smtpSockets) socket.destroy();
   await new Promise(resolve => smtp.close(resolve));

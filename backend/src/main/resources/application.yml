@@ -62,6 +62,19 @@ server:
 # Allow demo signup locally; the production profile changes this default.
 campus:
   registration-enabled: ${REGISTRATION_ENABLED:true}
+  # Tighten these import ceilings when needed; startup rejects increases or nonpositive values.
+  imports:
+    file-bytes: 2097152
+    options-bytes: 262144
+    request-bytes: 3145728
+    data-records: 500
+    source-columns: 32
+    cell-bytes: 65536
+    header-bytes: 256
+    preview-work-ms: 30000
+    parse-work-ms: 10000
+    upload-read-ms: 5000
+    process-preview-count: 4
   auth-abuse:
     maximum-keys: 10000
     maximum-active: 2
