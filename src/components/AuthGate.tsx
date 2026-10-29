@@ -1,7 +1,7 @@
 // Checks the session and switches between account forms and the signed-in workspace.
 import { useEffect, useLayoutEffect, useState, useSyncExternalStore, type FormEvent } from 'react';
 import { GraduationCap, LockKeyhole, ArrowRight } from 'lucide-react';
-import { ApiError, authApi, type User } from '../data/api';
+import { ApiError, authApi, subscribeSessionChanges, type User } from '../data/api';
 import App from '../App';
 import { PASSWORD_REQUIREMENTS, passwordError } from '../domain/password';
 import { useTheme } from '../theme/ThemeProvider';
@@ -32,11 +32,19 @@ export default function AuthGate() {
   const [samples,setSamples]=useState(true);
   // Load the current profile and listen for session-expiration events from the API layer.
   useEffect(()=>{
-    let alive=true;
-    authApi.me().then(u=>{if(alive)setUser(u);}).catch(e=>{if(alive&&!(e instanceof ApiError&&e.status===401))setError(e.message);}).finally(()=>{if(alive)setLoading(false);});
-    const expired=()=>{setUser(null);setError('Your session ended. Sign in to continue.');};
+    let alive=true,revision=0;
+    const loadProfile=()=>{
+      const current=++revision;
+      setUser(null);setLoading(true);setPassword('');setError('');
+      authApi.me().then(u=>{if(alive&&current===revision)setUser(u);})
+        .catch(e=>{if(alive&&current===revision&&!(e instanceof ApiError&&e.status===401))setError(e.message);})
+        .finally(()=>{if(alive&&current===revision)setLoading(false);});
+    };
+    loadProfile();
+    const unsubscribe=subscribeSessionChanges(loadProfile);
+    const expired=()=>{revision++;setUser(null);setLoading(false);setError('Your session ended. Sign in to continue.');};
     window.addEventListener('campus:session-expired',expired);
-    return()=>{alive=false;window.removeEventListener('campus:session-expired',expired);};
+    return()=>{alive=false;unsubscribe();window.removeEventListener('campus:session-expired',expired);};
   },[]);
   // Validate new passwords locally, perform the selected auth action, and clear credentials on success.
   async function submit(e:FormEvent) {

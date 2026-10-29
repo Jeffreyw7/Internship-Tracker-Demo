@@ -46,8 +46,32 @@ export function parseImportStatus(v:unknown):ImportStatus {
 export const IMPORT_POINTER_KEY='campus:pending-import';
 type PointerStorage=Pick<Storage,'getItem'|'setItem'|'removeItem'>;
 export interface ImportPointer {ownerId:string;previewId:string}
-export function readImportPointer(storage:PointerStorage|undefined,ownerId:string):ImportPointer|null {
-  try {const p:unknown=JSON.parse(storage?.getItem(IMPORT_POINTER_KEY)??'null');if(object(p)&&p.ownerId===ownerId&&uuid(p.previewId))return {ownerId,previewId:p.previewId};storage?.removeItem(IMPORT_POINTER_KEY);}catch{/* Storage is optional; server ownership remains authoritative. */}return null;
+const ownerPointerKey=(ownerId:string)=>`${IMPORT_POINTER_KEY}:${encodeURIComponent(ownerId)}`;
+function storedPointer(storage:PointerStorage|undefined,key:string):ImportPointer|null {
+  const p:unknown=JSON.parse(storage?.getItem(key)??'null');
+  return object(p)&&typeof p.ownerId==='string'&&uuid(p.previewId)?{ownerId:p.ownerId,previewId:p.previewId}:null;
 }
-export function writeImportPointer(storage:PointerStorage|undefined,ownerId:string,previewId:string) {try{storage?.setItem(IMPORT_POINTER_KEY,JSON.stringify({ownerId,previewId}));}catch{/* Recovery remains available by its visible reference. */}}
-export function clearImportPointer(storage:PointerStorage|undefined) {try{storage?.removeItem(IMPORT_POINTER_KEY);}catch{/* Private browsing may disable storage. */}}
+function clearLegacyPointer(storage:PointerStorage|undefined,ownerId:string){
+  if(storedPointer(storage,IMPORT_POINTER_KEY)?.ownerId===ownerId)storage?.removeItem(IMPORT_POINTER_KEY);
+}
+export function readImportPointer(storage:PointerStorage|undefined,ownerId:string):ImportPointer|null {
+  try {
+    const key=ownerPointerKey(ownerId),scoped=storedPointer(storage,key);
+    if(scoped?.ownerId===ownerId)return scoped;
+    const legacy=storedPointer(storage,IMPORT_POINTER_KEY);
+    if(legacy?.ownerId===ownerId){
+      // Do not remove the old reference unless the per-account replacement was persisted.
+      try {storage?.setItem(key,JSON.stringify(legacy));storage?.removeItem(IMPORT_POINTER_KEY);} catch { /* Still return the readable legacy reference. */ }
+      return legacy;
+    }
+  }catch{/* Storage is optional; server ownership remains authoritative. */}
+  return null;
+}
+export function writeImportPointer(storage:PointerStorage|undefined,ownerId:string,previewId:string) {
+  try {storage?.setItem(ownerPointerKey(ownerId),JSON.stringify({ownerId,previewId}));clearLegacyPointer(storage,ownerId);}
+  catch{/* Recovery remains available by its visible reference. */}
+}
+export function clearImportPointer(storage:PointerStorage|undefined,ownerId:string) {
+  try {storage?.removeItem(ownerPointerKey(ownerId));clearLegacyPointer(storage,ownerId);}
+  catch{/* Private browsing may disable storage. */}
+}

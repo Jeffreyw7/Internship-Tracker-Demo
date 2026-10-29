@@ -278,3 +278,14 @@ Final published revision `e4c23169fac13474d0ff84c93e7afe0ce3b1b44e` was independ
 ### Publication follow-up
 
 The subsequent commit-and-push request includes the previously preserved `ImportCommitPermitServerTest` class and its plan, along with the CI design/plan/review records. The 136-test hosted results above apply to the linked earlier CI-only snapshots; the complete published source now includes the two locally verified regression cases. Its hosted backend suite is expected to contain 138 tests. The new head's CI result must be read from PR #1 checks; this publication note does not claim a new passing run.
+
+
+## 2026-10-29 application review fixes
+
+See [review findings, fixes, and complete verification limits](docs/superpowers/reviews/2026-10-29-application-review-fixes.md).
+
+- Clean Node 22.23.3 install, all 79 frontend tests, and production build passed; npm audit reported zero vulnerabilities.
+- Clean Maven verification passed 140 backend tests and all 3 real PostgreSQL integration tests, with no skips. The report guard and all 16 CI guard unit tests passed.
+- Backend validation used Java 21.0.12.1 and local disposable PostgreSQL 18.6, not the CI Java 17/PostgreSQL 17 Docker matrix. Docker was unavailable, and the cached Java 17 installation was incomplete.
+- The final UI was rebundled; all 5 dist files matched the executable JAR. The bundled HTTP/multipart/Vite/restart smoke test passed.
+- One independent reviewer checked the fixes twice; the final pass reported no actionable findings. Cross-tab UI behavior was covered in JSDOM, not a native browser.

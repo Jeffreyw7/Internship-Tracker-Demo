@@ -20,7 +20,7 @@ export function useApplications(ownerId:string) {
     try {const list=await applicationApi.list(valid);assertCurrent(valid);setApps(list);setReady(true);setError('');return true;}
     catch(e){if(valid()){setError(e instanceof Error?e.message:'Could not load applications.');setReady(false);}return false;}
   },[guard]);
-  const releasePending=useCallback(()=>{pending.current=null;setPendingImport(null);setRecoveryPreview(null);clearImportPointer(tabStorage());},[]);
+  const releasePending=useCallback(()=>{pending.current=null;setPendingImport(null);setRecoveryPreview(null);clearImportPointer(tabStorage(),ownerId);},[ownerId]);
   const completeImport=useCallback(async(receipt:ImportReceipt,current:()=>boolean)=>{
     assertCurrent(current);setImportReceipt(receipt);setRetiredImport(null);releasePending();const refreshed=await load(current);if(current())setImportRefreshFailed(!refreshed);return receipt;
   },[load,releasePending]);
