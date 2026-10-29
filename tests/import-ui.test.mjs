@@ -136,7 +136,7 @@ test('unknown commit holds the hook write lock while a read refresh recovers and
     rows:[{rowNumber:1,action:'Update',applicationId:targetId,resultVersion:1}]};
   globalThis.fetch=async(url,options={})=>{
     if(url==='/api/auth/csrf')return response({token:'token',headerName:'X-CSRF-TOKEN'});
-    if(url.startsWith('/api/applications?')){historyReads++;return failHistory?response({message:'Read failed'},503):response({content:[application()],totalPages:1});}
+    if(url.startsWith('/api/applications?')){historyReads++;return failHistory?response({message:'Read failed'},503):response({content:[application()],totalElements:1,totalPages:1,page:0,size:100});}
     if(url.endsWith('/commit')){writes++;failHistory=true;return new Response('{',{headers:{'Content-Type':'application/json'}});}
     if(url===`/api/application-imports/${id}`)return response(complete?{status:'COMPLETED',receipt}:{status:'PREVIEW',preview:preview()});
     throw Error('Unexpected request '+url+' '+options.method);
@@ -158,7 +158,7 @@ test('an old hook save response cannot populate or unlock a remounted account',a
   let account='First',resolveSave;
   globalThis.fetch=async(url,options={})=>{
     if(url==='/api/auth/csrf')return response({token:'token',headerName:'X-CSRF-TOKEN'});
-    if(url.startsWith('/api/applications?'))return response({content:[application(account)],totalPages:1});
+    if(url.startsWith('/api/applications?'))return response({content:[application(account)],totalElements:1,totalPages:1,page:0,size:100});
     if(options.method==='PUT')return new Promise(resolve=>{resolveSave=resolve;});
     throw Error('Unexpected request '+url);
   };
@@ -199,7 +199,7 @@ for(const terminal of [404,410])for(const completion of ['direct','reconcile'])t
   sessionStorage.setItem('campus:pending-import',JSON.stringify({ownerId:id,previewId:id}));
   globalThis.fetch=async(url)=>{
     if(url==='/api/auth/csrf')return response({token:'token',headerName:'X-CSRF-TOKEN'});
-    if(url.startsWith('/api/applications?'))return response({content:[application()],totalPages:1});
+    if(url.startsWith('/api/applications?'))return response({content:[application()],totalElements:1,totalPages:1,page:0,size:100});
     if(url===`/api/application-imports/${id}`)return response({code:terminal===404?'IMPORT_NOT_FOUND':'IMPORT_PREVIEW_EXPIRED',message:'Review no longer available'},terminal);
     if(url==='/api/application-imports/preview')return response(next,201);
     if(url===`/api/application-imports/${targetId}/commit`){writes++;return completion==='direct'?response(receipt):new Response('{',{headers:{'Content-Type':'application/json'}});}
@@ -243,4 +243,57 @@ for(const lineage of ['predecessor','successor'])test(`unchanged replacement pre
   assert.equal(statusReads,lineage==='successor'?2:1);assert.equal(previewWrites,2,'Status recovery cannot upload the unchanged file again.');assert.equal(commitWrites,0);
   assert.equal(button('Review final confirmation').disabled,false);await click(button('Review final confirmation'));
   assert.equal(button('Import 0 new applications and update 1 existing applications').disabled,true,'Recovered review requires a new acknowledgement.');
+});
+
+
+test('a cross-tab account change replaces the workspace identity before loading its history',async()=>{
+  const {default:AuthGate}=await import('../src/components/AuthGate.tsx');
+  const {ThemeProvider}=await import('../src/theme/ThemeProvider.tsx');
+  let account={id:'account-a',displayName:'Alice Workspace',email:'a@example.test'};
+  const reads=[];
+  globalThis.fetch=async(url,init)=>{
+    const response=value=>new Response(JSON.stringify(value),{headers:{'Content-Type':'application/json'}});
+    if(url==='/api/auth/me')return response(account);
+    if(url==='/api/me/preferences')return response({themePreference:'system'});
+    if(url.startsWith('/api/applications?')){
+      reads.push(init.headers.get('X-Campus-Account'));
+      return response({content:[],totalElements:0,totalPages:0,page:0,size:100});
+    }
+    throw new Error('Unexpected request: '+url);
+  };
+  container=document.createElement('div');document.body.append(container);root=createRoot(container);
+  await act(async()=>root.render(createElement(StrictMode,null,createElement(ThemeProvider,null,createElement(AuthGate)))));
+  assert.ok(container.textContent.includes('Alice Workspace'));
+  account={id:'account-b',displayName:'Bob Workspace',email:'b@example.test'};
+  await act(async()=>window.dispatchEvent(new window.StorageEvent('storage',{
+    key:'campus:session-change',newValue:'another-login',storageArea:window.localStorage,
+  })));
+  assert.ok(container.textContent.includes('Bob Workspace'));
+  assert.ok(!container.textContent.includes('Alice Workspace'));
+  assert.equal(reads.at(-1),'account-b');
+});
+
+
+test('unknown imports keep separate write locks through account A to B to A remounts',async()=>{
+  let completeA=false,commits=0;
+  const receipt={importId:id,receiptId:targetId,completedAt:'2026-10-15T12:05:00Z',retainUntil:'2026-11-14T12:05:00Z',counts:preview().counts,rows:[]};
+  globalThis.fetch=async(url)=>{
+    if(url==='/api/auth/csrf')return response({token:'token',headerName:'X-CSRF-TOKEN'});
+    if(url.startsWith('/api/applications?'))return response({content:[application()],totalElements:1,totalPages:1,page:0,size:100});
+    if(url.endsWith('/commit')){commits++;return new Response('{',{headers:{'Content-Type':'application/json'}});}
+    if(url===`/api/application-imports/${id}`)return response(completeA?{status:'COMPLETED',receipt}:{status:'PREVIEW',preview:preview()});
+    if(url===`/api/application-imports/${targetId}`)return response({status:'PREVIEW',preview:preview({id:targetId})});
+    throw Error('Unexpected request '+url);
+  };
+  await mountProbe(id);
+  await act(async()=>assert.rejects(hook.commitImport(preview()),/not yet confirmed/));
+  await mountProbe(targetId);assert.equal(hook.pendingImport,null);
+  await act(async()=>{hook.clearImportRecovery();});
+  await act(async()=>assert.rejects(hook.commitImport(preview({id:targetId})),/not yet confirmed/));
+  await mountProbe(id);
+  assert.equal(hook.pendingImport?.previewId,id);assert.equal(hook.busy,true);
+  await assert.rejects(hook.save({...record,appliedDate:'',deadline:'',followUpDate:''}),/pending import/);
+  completeA=true;await act(async()=>{await hook.reconcileImport();});assert.equal(hook.pendingImport,null);
+  await mountProbe(targetId);assert.equal(hook.pendingImport?.previewId,targetId);assert.equal(hook.busy,true);
+  assert.equal(commits,2,'Rebinding and recovery must never replay either import commit.');
 });

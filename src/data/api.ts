@@ -35,6 +35,25 @@ export function assertCurrent(isCurrent:()=>boolean) {if(!isCurrent())throw new 
 let csrf: { token: string; headerName: string } | null = null;
 // Invalidate expiration side effects from requests belonging to an older login.
 let sessionGeneration = 0;
+let accountId:string|null=null;
+const SESSION_CHANGE_KEY='campus:session-change';
+function invalidateSession(){sessionGeneration++;csrf=null;accountId=null;}
+function bindSessionAccount(id:string){
+  if(accountId!==id){if(accountId!==null){sessionGeneration++;csrf=null;}accountId=id;}
+}
+function notifySessionChange(){
+  // This is an invalidation signal only; never persist credentials or account data.
+  try {window.localStorage.setItem(SESSION_CHANGE_KEY,crypto.randomUUID());} catch { /* The server account header still guards requests. */ }
+}
+export function subscribeSessionChanges(changed:()=>void):()=>void {
+  const receive=(event:StorageEvent)=>{
+    if(event.key!==SESSION_CHANGE_KEY&&event.key!==null)return;
+    try {if(event.storageArea!==window.localStorage)return;} catch {return;}
+    invalidateSession();changed();
+  };
+  window.addEventListener('storage',receive);
+  return ()=>window.removeEventListener('storage',receive);
+}
 // Multi-request operations keep the same account boundary across all their requests.
 export function sessionGuard():()=>boolean {
   const generation=sessionGeneration;
@@ -62,6 +81,7 @@ export async function request<T>(path:string, init:RequestInit={}, isCurrent:()=
   const headers=new Headers(init.headers);
   if(write && csrf) headers.set(csrf.headerName,csrf.token);
   headers.set('Accept','application/json');
+  if(accountId&&path!=='/auth/me'&&path!=='/auth/login')headers.set('X-Campus-Account',accountId);
   let response:Response;
   try {response=await fetch('/api'+path,{...init,headers,credentials:'same-origin',cache:'no-store'});}
   catch {throw new ApiError(0,'Cannot reach the Java server. Check the connection and try again.');}
@@ -70,14 +90,14 @@ export async function request<T>(path:string, init:RequestInit={}, isCurrent:()=
     // Account-scoped background requests must not expire a newer session after logout/login.
     if(response.status===401 && path!=='/auth/login' && path!=='/auth/me' && typeof window!=='undefined'
         && generation===sessionGeneration && isCurrent()) {
-      sessionGeneration++;csrf=null;
+      invalidateSession();
       window.dispatchEvent(new Event('campus:session-expired'));
     }
     // Do not automatically replay writes; the server may already have committed the change.
     throw error;
   }
   // Handle successful responses with no JSON body, such as logout.
-  if(response.status===204) return undefined as T;
+  if(response.status===204){assertCurrent(current);return undefined as T;}
   if(!response.headers.get('content-type')?.includes('application/json')) throw new ApiError(503,'The Java API is unavailable. Start Spring Boot and try again.');
   const data:unknown=await response.json();assertCurrent(current);return data as T;
 }
@@ -87,13 +107,13 @@ export interface User {id:string;displayName:string;email:string}
 export interface VerificationAccepted {status:'VERIFICATION_REQUEST_ACCEPTED';message:string}
 // Expose profile lookup and account actions to the authentication screen.
 export const authApi={
-  me:()=>request<User>('/auth/me'),
+  async me(){const user=await request<User>('/auth/me');bindSessionAccount(user.id);return user;},
   // Submit credentials in Spring Security\'s expected form format, then refresh the rotated CSRF token.
   async login(email:string,password:string) {
-    sessionGeneration++;
-    await refreshCsrf();
-    const user=await request<User>('/auth/login',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({email:email.trim(),password})});
-    csrf=null;await refreshCsrf();sessionGeneration++;return user;
+    invalidateSession();const current=sessionGuard();
+    await refreshCsrf(current);
+    const user=await request<User>('/auth/login',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({email:email.trim(),password})},current);
+    csrf=null;await refreshCsrf(current);sessionGeneration++;accountId=user.id;notifySessionChange();return user;
   },
   // Accepted registration does not authenticate; mailbox confirmation and login are explicit.
   async register(displayName:string,email:string,password:string,includeSamples:boolean) {
@@ -109,5 +129,5 @@ export const authApi={
     return request<{status:'EMAIL_VERIFIED'}>('/auth/email-verification/confirm',{method:'POST',...jsonBody({token,password})});
   },
   // End the server session and discard the in-memory CSRF token.
-  async logout(){await request<void>('/auth/logout',{method:'POST'});sessionGeneration++;csrf=null;}
+  async logout(){await request<void>('/auth/logout',{method:'POST'});invalidateSession();notifySessionChange();}
 };

@@ -13,6 +13,8 @@ All routes are under `/api`. The production JAR serves React and the API from th
 7. Fetch `/api/auth/csrf` again after login because Spring Security rotates the session and clears the pre-login CSRF token.
 8. `GET /api/auth/me` returns the signed-in profile. `POST /api/auth/logout` invalidates the session.
 
+The browser also sends `X-Campus-Account` with the profile ID established by login or `/auth/me`. When that optional header differs from the authenticated session, the server returns `401 ACCOUNT_CHANGED` before parsing the body or executing a write, including logout. It never selects or authorizes an account from this header. Cross-tab login/logout signals clear the old workspace and recheck `/auth/me`; the server check remains effective when browser storage notifications are unavailable.
+
 The CSRF token is kept only in frontend memory. The session cookie is HttpOnly. API authentication errors return JSON rather than an HTML login redirect.
 
 Verification links use 32 random bytes encoded as a 43-character base64url token and expire after 24 hours. Tokens are single-use. The browser removes the fragment from the address bar immediately and requires an explicit password-confirmation submission; opening or previewing the link does not activate an account. Accounts present when Flyway V3 is applied are exempt and continue to sign in without verification. Accounts created afterward are never exempt.
@@ -37,7 +39,7 @@ Verification links use 32 random bytes encoded as a 43-character base64url token
 | DELETE | `/applications/{id}` | Soft-delete; returns the new record/version for undo |
 | POST | `/applications/{id}/restore` | Restore a deleted record; requires its current version |
 
-`sort` accepts `updated`, `company`, `deadline`, or `applied`. `status` uses the labels below. The `q` filter is case-insensitive over company, role, location and notes. The frontend additionally searches interview-stage names in its cached history. Deleted records are excluded from listing and ordinary GET.
+`sort` accepts `updated`, `company`, `deadline`, `applied`, or `created` (immutable creation time ascending, then ID). The frontend uses `created` for full-history loading so edits cannot move records between pages. If totals change or the traversal contains duplicate/missing records, loading fails with a refresh prompt instead of accepting an incomplete history. This is not a transaction snapshot across requests. `status` uses the labels below. The `q` filter is case-insensitive over company, role, location and notes. The frontend additionally searches interview-stage names in its cached history. Deleted records are excluded from listing and ordinary GET.
 
 List response:
 
@@ -158,3 +160,6 @@ Persisted one-minute rate windows default to 10/60 previews, 10/60 commits and 6
 Import errors include 400 malformed/forbidden content, 401 authentication, 403 CSRF, 404 unavailable metadata, 409 changed targets/policy/review, 410 expired/superseded preview, 411 required length, 413 resource limit, 422 invalid/unacknowledged review, 429 rate/storage/work capacity, and 503 busy database work. Treat ambiguous failures after commit dispatch as unknown outcomes and check status. Successful commit plus a failed history refresh is still a successful import; retry only the read.
 
 Exports now include Application ID and structured stages without stage IDs. Exports and downloaded reports quote CSV and prefix formula-leading text to reduce spreadsheet risk. Spreadsheet behavior varies, and a reimport can preserve that literal safety apostrophe; lossless round trips are not promised.
+
+
+Pending CSV import recovery references in `sessionStorage` are scoped to the owner account. Switching accounts never overwrites or clears another account's unresolved import. Returning to that account restores its write lock and read-only status reconciliation. Existing single-slot references migrate only when their owner returns, and remain readable if storage quota prevents migration. References contain only the owner and preview IDs, never uploaded rows or credentials.

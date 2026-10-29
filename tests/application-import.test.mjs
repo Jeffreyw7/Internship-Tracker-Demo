@@ -1,7 +1,7 @@
 import {test,afterEach} from 'node:test';
 import assert from 'node:assert/strict';
 import {csvCell,applicationCsv} from '../src/domain/applicationCsv.ts';
-import {parsePreview,parseReceipt,parseImportStatus,readImportPointer,writeImportPointer} from '../src/domain/applicationImport.ts';
+import {parsePreview,parseReceipt,parseImportStatus,readImportPointer,writeImportPointer,clearImportPointer} from '../src/domain/applicationImport.ts';
 import {applicationImportApi,ImportOutcomeUnknown} from '../src/data/applicationImportApi.ts';
 import {request,StaleSessionError,refreshCsrf} from '../src/data/api.ts';
 import {createImportWorkflow} from '../src/domain/importWorkflow.ts';
@@ -59,7 +59,8 @@ for(const response of [()=>json({message:'busy'},503),()=>new Response('<html>pr
 test('recovery storage retains only account and import references and never expires locally',()=>{
   const values=new Map();const storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
   writeImportPointer(storage,'owner',preview.id);assert.deepEqual(readImportPointer(storage,'owner'),{ownerId:'owner',previewId:preview.id});
-  assert.equal(readImportPointer(storage,'another'),null);assert.equal(values.size,0);
+  assert.equal(readImportPointer(storage,'another'),null);assert.equal(values.size,1);
+  assert.deepEqual(readImportPointer(storage,'owner'),{ownerId:'owner',previewId:preview.id});
 });
 test('corrections invalidate confirmation and supersede through more than five revisions',async()=>{
   const inputs=[];let number=0;
@@ -106,4 +107,32 @@ test('terminal missing preview needs explicit duplicate-risk acknowledgement bef
   workflow.activate();workflow.chooseFile(new File(['x'],'x.csv'));await workflow.createPreview();workflow.edit(o=>({...o,dateFormat:'DMY'}));await workflow.createPreview();await workflow.recoverPreview();
   assert.equal(workflow.getSnapshot().requiresDuplicateAcknowledgement,true);workflow.restartReview(false);assert.ok(workflow.getSnapshot().retiredReference);await workflow.createPreview();assert.equal(uploads,2);
   workflow.restartReview(true);assert.equal(workflow.getSnapshot().preview,null);assert.equal(workflow.getSnapshot().retiredReference,null);assert.equal(uploads,2);
+});
+
+
+test('each account can retain and clear its own unknown import without erasing another',()=>{
+  const values=new Map();const storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
+  const other='22222222-2222-4222-8222-222222222222';
+  writeImportPointer(storage,'owner',preview.id);writeImportPointer(storage,'another',other);
+  clearImportPointer(storage,'another');
+  assert.deepEqual(readImportPointer(storage,'owner'),{ownerId:'owner',previewId:preview.id});
+  assert.equal(readImportPointer(storage,'another'),null);
+});
+
+test('legacy recovery survives an unrelated account mount and migrates only for its owner',()=>{
+  const values=new Map([['campus:pending-import',JSON.stringify({ownerId:'owner',previewId:preview.id})]]);
+  const storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
+  assert.equal(readImportPointer(storage,'another'),null);clearImportPointer(storage,'another');
+  assert.deepEqual(readImportPointer(storage,'owner'),{ownerId:'owner',previewId:preview.id});
+  assert.equal(values.has('campus:pending-import'),false);
+  clearImportPointer(storage,'owner');assert.equal(values.size,0);
+});
+
+
+test('a quota failure during legacy migration keeps the readable recovery reference',()=>{
+  const legacy=JSON.stringify({ownerId:'owner',previewId:preview.id});
+  const values=new Map([['campus:pending-import',legacy]]);
+  const storage={getItem:k=>values.get(k)??null,setItem:()=>{throw Error('quota');},removeItem:k=>values.delete(k)};
+  assert.deepEqual(readImportPointer(storage,'owner'),{ownerId:'owner',previewId:preview.id});
+  assert.equal(values.get('campus:pending-import'),legacy);
 });

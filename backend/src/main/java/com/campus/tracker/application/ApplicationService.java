@@ -47,6 +47,7 @@ public class ApplicationService {
             case "deadline" -> Sort.by("deadline").ascending();
             case "applied" -> Sort.by("appliedDate").descending();
             case "updated" -> Sort.by("updatedAt").descending();
+            case "created" -> Sort.by("createdAt").ascending();
             default -> throw new ApiException(HttpStatus.BAD_REQUEST, "Unknown sort order.");
         };
         var results = repository.findAll(spec, PageRequest.of(page, size, order.and(Sort.by("id"))));
