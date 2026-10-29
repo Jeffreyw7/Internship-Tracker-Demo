@@ -4,6 +4,8 @@ The complete Java edition of the Campus workspace: a **Java 17 / Spring Boot 3.5
 
 ## Quick start in VS Code
 
+For the free local app **with password reset and a local email inbox**, run `powershell -ExecutionPolicy Bypass -File .\start-local.ps1` after building the bundled JAR. See [the local Password Reset guide](docs/LOCAL-PASSWORD-RESET.md). It needs no Docker or cloud account and keeps demo data separate from the default database.
+
 Install a JDK **17 or newer** and **Node.js 22.18 or newer**. Open this project folder in VS Code. Maven is supplied by the included wrapper; the first run downloads Maven and Java dependencies.
 
 From the project root:
