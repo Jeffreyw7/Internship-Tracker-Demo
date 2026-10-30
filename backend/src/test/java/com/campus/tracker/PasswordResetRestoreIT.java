@@ -58,6 +58,7 @@ class PasswordResetRestoreIT {
    }
 
    db.restart();
+   source=admin(db,db.getJdbcUrl());
    // Password, epoch, token consumption, audit and notice survive a real clean PostgreSQL restart.
    assertThat(source.queryForObject("SELECT credential_version FROM campus_users WHERE id=?",Long.class,account)).isEqualTo(1);
    assertThat(source.queryForObject("SELECT consumed_at IS NOT NULL FROM password_reset_tokens WHERE id=?",Boolean.class,spent.id())).isTrue();

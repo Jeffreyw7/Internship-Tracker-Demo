@@ -560,6 +560,7 @@ class PostgresPrivilegesIT {
  /** Local mode always initializes its own cluster; it cannot target an existing database. */
  static final class TestDatabase implements AutoCloseable {
   private PostgreSQLContainer<?> container;
+  private String containerJdbcUrl;
   private Path binaryDirectory, dataDirectory, log;
   private int port;
   private final String username;
@@ -572,6 +573,7 @@ class PostgresPrivilegesIT {
      .withEnv("MIGRATION_DATABASE_PASSWORD","migration-'quote-password").withEnv("RUNTIME_DATABASE_PASSWORD","runtime-'quote-password")
      .withEnv("RETENTION_DATABASE_PASSWORD","retention-'quote-password");
     container.start();
+    containerJdbcUrl=container.getJdbcUrl();
     container.copyFileToContainer(MountableFile.forHostPath(Path.of("../deploy/postgres").toAbsolutePath()),"/scripts");
     container.copyFileToContainer(MountableFile.forHostPath(Path.of("../deploy/monitoring").toAbsolutePath()),"/monitoring");
    } else {
@@ -585,7 +587,7 @@ class PostgresPrivilegesIT {
     try(var c=DriverManager.getConnection("jdbc:postgresql://127.0.0.1:"+port+"/postgres",username,password);var s=c.createStatement()) {s.execute("CREATE DATABASE campus");}
    }
   }
-  String getJdbcUrl(){return container!=null?container.getJdbcUrl():"jdbc:postgresql://127.0.0.1:"+port+"/campus";}
+  String getJdbcUrl(){return container!=null?containerJdbcUrl:"jdbc:postgresql://127.0.0.1:"+port+"/campus";}
   String getUsername(){return username;}
   String getPassword(){return password;}
   String restoredJdbcUrl(){return getJdbcUrl().replace("/campus","/campus_restored");}
@@ -601,8 +603,17 @@ class PostgresPrivilegesIT {
    check(databaseCommand("pg_restore","--exit-on-error","-U",username,"-d","campus_restored",backupPath()));
   }
   void restart() throws Exception {
-   if(container!=null) container.getDockerClient().restartContainerCmd(container.getContainerId()).exec();
-   else check(process("pg_ctl","-D",dataDirectory.toString(),"-m","fast","-w","restart"));
+   String previousUrl=getJdbcUrl();
+   if(container!=null) {
+    container.getDockerClient().restartContainerCmd(container.getContainerId()).exec();
+    // Raw Docker restart can remap the ephemeral host port; Testcontainers retains its startup inspection.
+    var bindings=container.getCurrentContainerInfo().getNetworkSettings().getPorts().getBindings()
+        .get(com.github.dockerjava.api.model.ExposedPort.tcp(PostgreSQLContainer.POSTGRESQL_PORT));
+    assertThat(bindings).as("Restarted PostgreSQL port mapping").isNotEmpty();
+    containerJdbcUrl=container.getJdbcUrl().replace(":"+container.getMappedPort(PostgreSQLContainer.POSTGRESQL_PORT)+"/",
+        ":"+bindings[0].getHostPortSpec()+"/");
+   } else check(process("pg_ctl","-D",dataDirectory.toString(),"-m","fast","-w","restart"));
+   System.out.println("PostgreSQL restart endpoint: "+previousUrl+" -> "+getJdbcUrl());
    long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
    while(true) {
     try(var connection=DriverManager.getConnection(getJdbcUrl(),username,password)) {return;}
