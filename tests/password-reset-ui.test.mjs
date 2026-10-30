@@ -103,7 +103,7 @@ test('recovery session checks preserve account boundaries, input, and pending re
   let finishConfirmation;
   let profileCalls=0;
   let profileStatus=503;
-  const profile={id:'signed-in-account',displayName:'Student',email:'student@example.test'};
+  let profile={id:'signed-in-account',displayName:'Student',email:'student@example.test'};
   globalThis.fetch=async url=>{
     if(url==='/api/auth/me') {
       profileCalls++;

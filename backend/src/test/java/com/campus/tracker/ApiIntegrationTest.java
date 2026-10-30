@@ -34,6 +34,43 @@ class ApiIntegrationTest {
     private static final String PASSWORD = "Campus-test-123!";
     record Account(String email, MockHttpSession session) {}
 
+    @Test void staleAccountHeaderCannotReadWriteOrLogoutTheNewSession() throws Exception {
+        Account a=account(false), b=account(false);
+        String expected=users.findByEmail(a.email()).orElseThrow().getId().toString();
+        String current=users.findByEmail(b.email()).orElseThrow().getId().toString();
+        mvc.perform(get("/api/applications").session(b.session()).header("X-Campus-Account",expected))
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("ACCOUNT_CHANGED"));
+        mvc.perform(post("/api/applications").session(b.session()).with(csrf()).header("X-Campus-Account",expected)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(draft())))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/application-imports/preview").session(b.session()).header("X-Campus-Account",expected)
+                .contentType("multipart/form-data; boundary=broken").content("malformed body"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/auth/logout").session(b.session()).with(csrf()).header("X-Campus-Account",expected))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/applications").session(b.session()).header("X-Campus-Account",current))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
+        mvc.perform(get("/api/auth/me").session(b.session()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(current));
+    }
+
+    @Test void immutableHistoryOrderKeepsAnEditedRecordOnItsUnreadPage() throws Exception {
+        Account account=account(false);
+        JsonNode first=create(account,draft()),second=create(account,draft()),third=create(account,draft());
+        JsonNode page=body(mvc.perform(get("/api/applications?sort=created&size=2&page=0").session(account.session()))
+                .andExpect(status().isOk()).andReturn());
+        assertThat(page.path("content").get(0).path("id").asText()).isEqualTo(first.path("id").asText());
+        assertThat(page.path("content").get(1).path("id").asText()).isEqualTo(second.path("id").asText());
+        Map<String,Object> edited=draft();edited.put("company","Edited on another tab");
+        mvc.perform(put("/api/applications/"+third.path("id").asText()).session(account.session()).with(csrf())
+                .header("If-Match",third.path("version").asText()).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(edited))).andExpect(status().isOk());
+        mvc.perform(get("/api/applications?sort=created&size=2&page=1").session(account.session()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.content[0].id").value(third.path("id").asText()))
+                .andExpect(jsonPath("$.content[0].company").value("Edited on another tab"));
+    }
+
     @Test void preferencesAreValidatedIsolatedAndPersistAcrossSessions() throws Exception {
         Account a = account(false), b = account(false);
         mvc.perform(get("/api/me/preferences").session(a.session()))

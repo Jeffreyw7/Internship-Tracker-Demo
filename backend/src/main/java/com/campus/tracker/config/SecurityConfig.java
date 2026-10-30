@@ -84,6 +84,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.csrfTokenRepository(new HttpSessionCsrfTokenRepository()))
                 .addFilterBefore(new ImportNoStoreFilter(), HeaderWriterFilter.class)
                 .addFilterBefore(new ImportHeaderFilter(json), CsrfFilter.class)
+                .addFilterBefore(new AccountBoundaryFilter(json), ImportHeaderFilter.class)
                 .addFilterBefore(new AuthAbuseFilter(limiter, policies, json), ImportHeaderFilter.class)
                 .addFilterBefore(versions, AuthAbuseFilter.class)
                 .addFilterAfter(new ResetInputFilter(json,capacity), CsrfFilter.class)

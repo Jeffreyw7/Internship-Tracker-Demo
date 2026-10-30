@@ -381,3 +381,31 @@ Final verification of the resolved combined tree:
 Actual local demo upgrade: the running app created `backend/data/local-password-reset/campus.before-reset-lineage-3ee370b4-0af3-4dfb-b823-fd99a5ae0fb4.zip` before rewriting the legacy row. Before/after counts matched: 3 users, 3 applications, credential-epoch sum 2, 3 reset-token records and 2 audit events. All 8 Mailpit message IDs remained unchanged. A second startup passed normal migration validation without creating another backup. The app health endpoint reported UP and the inbox remained available. Private database/inbox files and build/test logs remain ignored by Git.
 
 The final local run used Node 25.2.0, Java 21.0.12.1 compiling for Java 17, Maven 3.9.11 and actual PostgreSQL 17.11. Docker/container builds and hosted CI were not rerun for this combined revision; historical hosted results above apply only to their linked commits. Hosted HTTPS/proxy and external SMTP activation checks remain deployment work. No new actionable review finding remained after the fixes and follow-up review. The requested merge is local; no push or public deployment is included.
+
+## 2026-10-29 application review fixes
+
+See [review findings, fixes, and complete verification limits](docs/superpowers/reviews/2026-10-29-application-review-fixes.md).
+
+- Clean Node 22.23.3 install, all 79 frontend tests, and production build passed; npm audit reported zero vulnerabilities.
+- Clean Maven verification passed 140 backend tests and all 3 real PostgreSQL integration tests, with no skips. The report guard and all 16 CI guard unit tests passed.
+- Backend validation used Java 21.0.12.1 and local disposable PostgreSQL 18.6, not the CI Java 17/PostgreSQL 17 Docker matrix. Docker was unavailable, and the cached Java 17 installation was incomplete.
+- The final UI was rebundled; all 5 dist files matched the executable JAR. The bundled HTTP/multipart/Vite/restart smoke test passed.
+- One independent reviewer checked the fixes twice; the final pass reported no actionable findings. Cross-tab UI behavior was covered in JSDOM, not a native browser.
+
+
+## 2026-10-29 Spring Security endpoint matcher migration
+
+- Replaced the three deprecated `AntPathRequestMatcher` instances in `AuthEndpoints` with `PathPatternRequestMatcher`. Login and registration remain POST-only; the CSRF path matcher retains all-method matching so the abuse filter's existing GET/HEAD and unsafe-request accounting remains unchanged.
+- Three characterization tests passed against the original implementation and the replacement: exact case-sensitive paths, HTTP methods, trailing/extra segments, context paths, query independence, and servlet-path/path-info splits.
+- Clean `mvn -Pwith-ui clean verify` passed all 143 backend tests with no failures or skips on local Java 21. Existing authentication, CSRF, context-path throttling, work-limit and session tests passed. No `AntPathRequestMatcher` compiler warnings remained; unrelated deprecation/runtime notices remain outside this change.
+- The bundled HTTP/SMTP/native multipart/Vite proxy/restart smoke test passed. Frontend sources did not change. Java 17, PostgreSQL 17 and container builds are verified separately by this branch's hosted CI.
+- The same independent read-only reviewer found no actionable findings or concrete bypass on firewall-accepted paths. Native encoded-path browser probes were not performed locally.
+
+## Password Reset publication integration — October 29, 2026
+
+Before publication, GitHub main had advanced to `402c347a32f448a76dacc3613b5210450df27733`. Integrated its account-isolation, complete-history, import-recovery and endpoint-matcher changes without replacing either history. Backend and independent frontend reviews found no remaining actionable integration defect after resolving shared transport and authentication-gate conflicts.
+
+- Serialized logout retains `X-Campus-Account` until confirmed success; a failed logout retains the account boundary. Profile rechecks can bind a new identity while invalidating requests from the previous account. New regressions cover both, including recovery UI during an actual account change.
+- Retained Vite 8.3.5, jsdom 29.1.1 and source-map-js 1.2.2. A fresh audit found a high-severity transitive development dependency issue in undici 7.30.0; its compatible 7.30.1 patch cleared the audit without changing the application API.
+- Final local checks passed: 213 backend tests without failures/errors/skips, 105 frontend tests without failures/skips, the TypeScript/Vite production build, and npm audit with zero reported vulnerabilities. Source/lockfile conflict markers were removed and diff whitespace checks passed.
+- These local integration checks used Java 21 and Node 25. Java 17, real PostgreSQL 17, container builds and the combined packaged HTTP/SMTP smoke are checked by the GitHub main-push CI run; older hosted runs above do not establish results for this new integration.

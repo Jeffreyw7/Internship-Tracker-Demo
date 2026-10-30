@@ -1,6 +1,6 @@
 // Adapts editable frontend drafts and versioned API calls to persisted application records.
 import { type Application, type ApplicationDraft, validateDraft } from '../domain/application.ts';
-import { request, jsonBody, sessionGuard } from './api.ts';
+import { ApiError, request, jsonBody, sessionGuard } from './api.ts';
 // Match the server\'s paginated response envelope.
 interface ApplicationPage {content:Application[];totalElements:number;totalPages:number;page:number;size:number}
 // Whitelist editable fields and convert empty date inputs to JSON null.
@@ -13,14 +13,18 @@ export function toPayload(a:ApplicationDraft) {
 export const applicationApi={
   async list(guard:()=>boolean=()=>true):Promise<Application[]> {
     const accountCurrent=sessionGuard();const isCurrent=()=>accountCurrent()&&guard();
-    // Cache personal history for instant cross-view filtering; the REST API supports paginated server queries.
-    const first=await request<ApplicationPage>('/applications?size=100&page=0',{},isCurrent);
+    // An immutable creation order keeps ordinary edits from moving unread records behind the cursor.
+    const first=await request<ApplicationPage>('/applications?sort=created&size=100&page=0',{},isCurrent);
     const apps=[...first.content];
+    const changed=()=>new ApiError(409,'Your application history changed while loading. Refresh and try again.');
     for(let page=1;page<first.totalPages;page++) {
-      const next=await request<ApplicationPage>(`/applications?size=100&page=${page}`,{},isCurrent);apps.push(...next.content);
+      const next=await request<ApplicationPage>(`/applications?sort=created&size=100&page=${page}`,{},isCurrent);
+      if(next.totalElements!==first.totalElements||next.totalPages!==first.totalPages)throw changed();
+      apps.push(...next.content);
     }
-    // Deduplicate records if updates moved a record between pages while loading.
-    return [...new Map(apps.map(a=>[a.id,a])).values()];
+    // Concurrent additions/deletions must not turn a partial traversal into a successful export.
+    if(apps.length!==first.totalElements||new Set(apps.map(a=>a.id)).size!==apps.length)throw changed();
+    return apps;
   },
   // Choose create or update and send the version header only for existing records.
   save(draft:ApplicationDraft,id?:string,version?:number,isCurrent:()=>boolean=()=>true):Promise<Application> {

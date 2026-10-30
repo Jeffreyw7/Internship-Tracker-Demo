@@ -41,8 +41,8 @@ test('conflicted updates reject and are never retried automatically',async()=>{
   await refreshCsrf();await assert.rejects(()=>applicationApi.save(draft(),'app-1',0),e=>e instanceof ApiError&&e.status===409);
   assert.equal(writes,1);
 });
-test('paged histories are fully loaded and duplicate boundaries are removed',async()=>{
-  globalThis.fetch=async(url)=>url.endsWith('page=0')?json({content:[{id:'a'}],totalPages:2}):json({content:[{id:'a'},{id:'b'}],totalPages:2});
+test('paged histories are fully loaded',async()=>{
+  globalThis.fetch=async(url)=>url.endsWith('page=0')?json({content:[{id:'a'}],totalElements:2,totalPages:2,page:0,size:1}):json({content:[{id:'b'}],totalElements:2,totalPages:2,page:1,size:1});
   assert.deepEqual((await applicationApi.list()).map(a=>a.id),['a','b']);
 });
 test('delete and undo use the version returned by the delete endpoint',async()=>{
@@ -151,4 +151,29 @@ test('an account switch stops old history pagination before its next dispatch',a
     finishFirst(json({content:[{id:'old-app'}],totalPages:2}));await rejected;
     assert.equal(expired,0);assert.equal(nextPageCalls,0);
   } finally {if(previousWindow===undefined)delete globalThis.window;else globalThis.window=previousWindow;}
+});
+
+
+test('history traversal keeps an edited later application without moving page boundaries',async()=>{
+  const records=Array.from({length:101},(_,i)=>({id:String(i),updatedAt:i}));
+  let reads=0;
+  globalThis.fetch=async(url)=>{
+    const query=new URL(url,'http://localhost').searchParams;
+    const page=Number(query.get('page'));
+    if(reads++===1) records[100].updatedAt=-1;
+    const ordered=query.get('sort')==='created'?[...records]:[...records].sort((a,b)=>a.updatedAt-b.updatedAt);
+    return json({content:ordered.slice(page*100,(page+1)*100),totalElements:101,totalPages:2,page,size:100});
+  };
+  const loaded=await applicationApi.list();
+  assert.equal(loaded.length,101);
+  assert.equal(loaded.find(a=>a.id==='100')?.updatedAt,-1);
+});
+
+test('history changes during pagination fail instead of returning an incomplete export',async()=>{
+  globalThis.fetch=async(url)=>{
+    const page=Number(new URL(url,'http://localhost').searchParams.get('page'));
+    return json(page===0?{content:[{id:'a'}],totalElements:2,totalPages:2,page,size:1}
+      :{content:[],totalElements:1,totalPages:1,page,size:1});
+  };
+  await assert.rejects(applicationApi.list(),e=>e instanceof ApiError&&e.status===409);
 });

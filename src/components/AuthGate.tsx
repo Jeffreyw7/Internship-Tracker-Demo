@@ -1,7 +1,7 @@
 // Checks the session and switches between account forms and the signed-in workspace.
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
 import { GraduationCap, LockKeyhole, ArrowRight } from 'lucide-react';
-import { ApiError, authApi, sessionGuard, subscribeSessionChanges, type User } from '../data/api';
+import { ApiError, authApi, subscribeSessionChanges, type User } from '../data/api';
 import App from '../App';
 import { PASSWORD_REQUIREMENTS, passwordError } from '../domain/password';
 import { useTheme } from '../theme/ThemeProvider';
@@ -43,8 +43,8 @@ export default function AuthGate() {
     let alive=true;
     function loadProfile() {
       const current=++revision.current;
-      const guard=sessionGuard();
-      const active=()=>alive && current===revision.current && guard();
+      // The profile adapter invalidates old account work when it binds a new identity.
+      const active=()=>alive && current===revision.current;
       authApi.me().then(u=>{if(active()){setUser(u);setLoading(false);}}).catch(e=>{
         if(!active())return;
         // Only an explicit unauthenticated response establishes an anonymous session.

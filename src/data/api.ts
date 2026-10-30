@@ -35,11 +35,15 @@ export function assertCurrent(isCurrent:()=>boolean) {if(!isCurrent())throw new 
 let csrf: { token: string; headerName: string } | null = null;
 // Invalidate expiration side effects from requests belonging to an older login.
 let sessionGeneration = 0;
+let accountId:string|null=null;
+function bindSessionAccount(id:string){
+  if(accountId!==id){if(accountId!==null){sessionGeneration++;csrf=null;}accountId=id;}
+}
 let authTail: Promise<unknown> = Promise.resolve();
 const SESSION_KEY = 'campus:auth-session-changed';
 let sessionChannel: BroadcastChannel | null = null;
 let sessionSubscribers = 0;
-const changedSession = () => { sessionGeneration++; csrf=null; };
+const changedSession = (clearAccount=true) => { sessionGeneration++; csrf=null;if(clearAccount)accountId=null; };
 const staleSession = () => new ApiError(409,'Your session changed. Please try the action again.',undefined,'AUTH_SESSION_CHANGED');
 
 // Serialize all session-creating requests locally and across same-origin tabs where supported.
@@ -63,7 +67,9 @@ function receiveSessionChange() {
   window.dispatchEvent(new Event('campus:session-changed'));
 }
 function storageSessionChange(event: StorageEvent) {
-  if (event.key === SESSION_KEY) receiveSessionChange();
+  if (event.key !== SESSION_KEY && event.key !== 'campus:session-change' && event.key !== null) return;
+  try {if(event.storageArea && event.storageArea !== window.localStorage)return;} catch {return;}
+  receiveSessionChange();
 }
 export function subscribeSessionChanges(listener: () => void): () => void {
   if (typeof window === 'undefined') return () => {};
@@ -88,7 +94,8 @@ export function subscribeSessionChanges(listener: () => void): () => void {
 }
 export function authTransition<T>(action: (isCurrent: () => boolean) => Promise<T>, discardCsrf = false): Promise<T> {
   return serializedAuth(async () => {
-    changedSession();
+    // Retain the expected account while authorizing logout and other credential changes.
+    changedSession(false);
     const isCurrent=sessionGuard();
     try {
       const result=await action(isCurrent);
@@ -145,6 +152,7 @@ export async function request<T>(path:string, init:RequestInit={}, isCurrent:()=
   const headers=new Headers(init.headers);
   if(write && csrf) headers.set(csrf.headerName,csrf.token);
   headers.set('Accept','application/json');
+  if(accountId&&path!=='/auth/me'&&path!=='/auth/login')headers.set('X-Campus-Account',accountId);
   let response:Response;
   try {response=await fetch('/api'+path,{...init,headers,credentials:'same-origin',cache:'no-store'});}
   catch {throw new ApiError(0,'Cannot reach the Java server. Check the connection and try again.');}
@@ -171,13 +179,13 @@ export interface User {id:string;displayName:string;email:string}
 export interface VerificationAccepted {status:'VERIFICATION_REQUEST_ACCEPTED';message:string}
 // Expose profile lookup and account actions to the authentication screen.
 export const authApi={
-  me:()=>request<User>('/auth/me'),
+  async me(){const user=await request<User>('/auth/me');bindSessionAccount(user.id);return user;},
   // Submit credentials in Spring Security\'s expected form format, then refresh the rotated CSRF token.
   async login(email:string,password:string) {
     return authTransition(async isCurrent => {
       await refreshAuthCsrf(isCurrent);
       const user=await request<User>('/auth/login',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({email:email.trim(),password})},isCurrent);
-      csrf=null;await refreshAuthCsrf(isCurrent);return user;
+      csrf=null;await refreshAuthCsrf(isCurrent);accountId=user.id;return user;
     });
   },
   // Accepted registration does not authenticate; mailbox confirmation and login are explicit.
@@ -200,5 +208,5 @@ export const authApi={
     });
   },
   // End the server session and discard the in-memory CSRF token.
-  async logout(){return authTransition(async isCurrent => {await refreshAuthCsrf(isCurrent);await request<void>('/auth/logout',{method:'POST'},isCurrent);},true);}
+  async logout(){return authTransition(async isCurrent => {await refreshAuthCsrf(isCurrent);await request<void>('/auth/logout',{method:'POST'},isCurrent);accountId=null;},true);}
 };
