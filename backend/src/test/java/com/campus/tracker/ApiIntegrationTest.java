@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.scheduling.annotation.ScheduledAnnotationBeanPostProcessor;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
@@ -31,8 +33,15 @@ class ApiIntegrationTest {
     @Autowired UserRepository users;
     @Autowired PasswordEncoder passwords;
     @Autowired JdbcTemplate jdbc;
+    @Autowired ObjectProvider<ScheduledAnnotationBeanPostProcessor> schedulers;
     private static final String PASSWORD = "Campus-test-123!";
     record Account(String email, MockHttpSession session) {}
+
+    @Test void sharedTestProfileDoesNotRegisterBackgroundDatabaseTasks() {
+        assertThat(schedulers.stream().flatMap(processor -> processor.getScheduledTasks().stream()).toList())
+                .as("Cached test contexts must not leave scheduled jobs running against shared databases")
+                .isEmpty();
+    }
 
     @Test void staleAccountHeaderCannotReadWriteOrLogoutTheNewSession() throws Exception {
         Account a=account(false), b=account(false);

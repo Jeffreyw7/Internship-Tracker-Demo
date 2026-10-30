@@ -123,7 +123,9 @@ class ImportTransportServerTest {
         socket.getOutputStream().flush(); return socket;
     }
     private void assertValidUpload(Session session) throws Exception {
-        var response = client.send(HttpRequest.newBuilder(uri("/api/application-imports/preview"))
+        // The timeout wait can also expire the session GET's pooled connection; check capacity on a fresh connection.
+        var freshClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
+        var response = freshClient.send(HttpRequest.newBuilder(uri("/api/application-imports/preview"))
                 .header("Cookie", session.cookie()).header("X-CSRF-TOKEN", session.token())
                 .header("Content-Type", "multipart/form-data; boundary=boundary")
                 .POST(HttpRequest.BodyPublishers.ofString(multipart())).build(), HttpResponse.BodyHandlers.ofString());
