@@ -9,12 +9,17 @@ import java.util.List;
 import java.util.UUID;
 
 public record CampusPrincipal(UUID id, String displayName, String email, String passwordHash,
-                              boolean emailAccessAllowed) implements UserDetails {
+                              boolean emailAccessAllowed, Long credentialVersion) implements UserDetails {
+    // A missing epoch in an older serialized session must fail closed, including epoch-zero accounts.
+    public CampusPrincipal(UUID id, String displayName, String email, String passwordHash, boolean emailAccessAllowed) {
+        this(id, displayName, email, passwordHash, emailAccessAllowed, null);
+    }
     // Copy the database account into the UserDetails shape required by authentication.
     public static CampusPrincipal from(CampusUser user) {
         return new CampusPrincipal(user.getId(), user.getDisplayName(), user.getEmail(), user.getPasswordHash(),
-                user.canAuthenticate());
+                user.canAuthenticate(), user.getCredentialVersion());
     }
+    @Override public String toString() { return "CampusPrincipal[redacted]"; }
     // All accounts currently share the ordinary user role.
     @Override public Collection<? extends GrantedAuthority> getAuthorities() { return List.of(new SimpleGrantedAuthority("ROLE_USER")); }
     // Supply the stored hash to the authentication provider for password verification.

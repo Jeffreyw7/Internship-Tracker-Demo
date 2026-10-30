@@ -39,10 +39,11 @@ test('invalid successful commit body is unknown and never automatically replayed
 test('guards stop stale operations before dispatch and after awaited CSRF',async()=>{
   let calls=0;globalThis.fetch=async()=>{calls++;return json({});};
   await assert.rejects(()=>request('/application-imports/x/commit',{method:'POST'},()=>false),StaleSessionError);assert.equal(calls,0);
-  let finishCsrf,current=true,writes=0;
-  globalThis.fetch=async(url)=>url.endsWith('/csrf')?new Promise(resolve=>{finishCsrf=resolve;}):(writes++,json(receipt));
+  let finishCsrf,csrfStarted,current=true,writes=0;
+  const started=new Promise(resolve=>{csrfStarted=resolve;});
+  globalThis.fetch=async(url)=>url.endsWith('/csrf')?new Promise(resolve=>{finishCsrf=resolve;csrfStarted();}):(writes++,json(receipt));
   const pending=applicationImportApi.commit(preview,()=>current);const rejected=assert.rejects(pending,StaleSessionError);
-  current=false;finishCsrf(json({token:'new-token',headerName:'X-CSRF-TOKEN'}));await rejected;assert.equal(writes,0);
+  await started;current=false;finishCsrf(json({token:'new-token',headerName:'X-CSRF-TOKEN'}));await rejected;assert.equal(writes,0);
 });
 test('status only reads and follows runtime-validated server envelopes',async()=>{
   const calls=[];globalThis.fetch=async(url,init)=>{calls.push({url,init});return json({status:'COMPLETED',receipt});};

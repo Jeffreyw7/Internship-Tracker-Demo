@@ -23,6 +23,14 @@ import org.springframework.transaction.support.TransactionTemplate;
 import static org.assertj.core.api.Assertions.*;
 
 class AuthRateLimiterTest {
+    @Test void suppressedRecipientDoesNotSpendSharedMailCapacity() {
+        var source = source();
+        var jdbc = new JdbcTemplate(source);
+        var limiter = new AuthRateLimiter(jdbc, new MutableClock(), "test-rate-limit-secret-long-enough", true);
+        assertThat(limiter.reserveEmail("student@example.test")).isTrue();
+        for (int i = 0; i < 20; i++) assertThat(limiter.reserveEmail("student@example.test")).isFalse();
+        assertThat(jdbc.queryForObject("SELECT attempts FROM auth_rate_limits WHERE scope='mail-global-day'", Integer.class)).isEqualTo(1);
+    }
     @Test void aBucketCreatedBetweenUpdateAndReadStillAdmitsAnAvailableAttempt() throws Exception {
         var source = source();
         var missed = new CountDownLatch(1);

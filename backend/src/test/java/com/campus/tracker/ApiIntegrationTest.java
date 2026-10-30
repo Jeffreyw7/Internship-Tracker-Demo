@@ -193,8 +193,8 @@ class ApiIntegrationTest {
 
     // Check Unicode and exact length boundaries, including successful login afterward.
     @Test void registrationAcceptsStrongPasswordsAtCharacterAndByteBoundaries() throws Exception {
-        for (String password : List.of("Abcdefghij1!", "Ab1!" + "a".repeat(68),
-                "Ab1!" + "é".repeat(34), "Ab1!" + "😀".repeat(8), "Àbcdefghij1!")) {
+        for (String password : List.of("unusual passphrase words", "Ab1!" + "a".repeat(68),
+                "Ab1!" + "é".repeat(34), "Ab1!" + "😀".repeat(15), "Àbcdefghijklmn1!")) {
             String email = "accepted-" + UUID.randomUUID() + "@example.test";
             mvc.perform(post("/api/auth/register").with(csrf()).contentType(MediaType.APPLICATION_JSON)
                     .content(json.writeValueAsString(Map.of("email", email, "password", password,

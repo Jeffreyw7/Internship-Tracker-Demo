@@ -134,6 +134,83 @@ The Windows PostgreSQL harness now redirects subprocess output to files and uses
 
 Security status: implementation and local verification complete. Docker rollout verification remains outstanding. No user database upgrade, public deployment, or remote push was performed. Existing PostgreSQL installations require the explicit procedure in docs/DATABASE-SECURITY.md.
 
+## Password reset verification - October 12, 2026
+
+Environment: Node25.2.0, Java21.0.12.1 compiling the Java17 target, cached Maven3.9.11, Spring Boot3.5.16, Vite8.0.16, disposable PostgreSQL18.6 clusters.
+
+| Check | Result |
+| --- | --- |
+| Frontend/API and mounted UI tests | 61 passed; no failures/skips |
+| TypeScript and Vite build | Passed |
+| Backend unit/H2 integration suite | 112 passed; no failures/errors/skips |
+| PostgreSQL fresh/legacy/V3 upgrades, restricted roles, HTTP recovery and lock-sensitive expiry | 3 passed; no failures/errors/skips |
+| Wrapped socket-timeout and saturated pre-body admission regression | 2 passed in final packaging check |
+| Bundled real HTTP and loopback SMTP capture | Passed reset link/notice, stalled body408, single use, session revocation, old/new password login, data/theme preservation and H2 JVM-restart persistence |
+| Dependency audit after patched Vite/source-map-js updates | Zero reported vulnerabilities |
+| Independent source review | Four P2 findings addressed; category/file references in docs/PASSWORD-RESET.md |
+
+The startup test uses fresh JVMs with valid and unreadable supplemental blocklists. Other regressions cover post-commit database failure, completion rollback, concurrent single use, cutoff/primary-clock expiry, stale-cookie protection, mail-purpose/key tampering, suppression budgets, disabled dispatch, notification failure and recovery health pause. The mounted jsdom regression verifies focus during password entry/pending confirmation and preserves uncertain and successful completion results.
+
+Commands: `npm.cmd test`, `npm.cmd run build`, `npm.cmd audit --json`, cached Maven `test`, `-Pwith-ui,postgres-it '-Dpostgres.test.bin=C:/Program Files/PostgreSQL/18/bin' verify`, final `-Pwith-ui -Dtest=ResetInputFilterTest package`, and `npm.cmd run test:smoke`. Maven used explicit local repository/user-home arguments because the wrapper/cache paths were inaccessible inside the sandbox; authorized elevated execution ran the installed cached Maven. All data and SMTP recipients were synthetic. Logs and test clusters remain ignored build outputs.
+
+Limits: PostgreSQL17, Docker/Compose rollout, actual browser rendering and supported mail-client fragment handling, hosted/external SMTP delivery, production load/SLO monitoring, and backup/failover/restore exercises were not run. CUA exposed no browser surface; jsdom is mounted DOM verification, not a browser visual check. Flyway warns that PostgreSQL18 exceeds its tested17 support range; passing local18 tests does not replace testing the deployed database version. Recovery is disabled in production pending the runbook release gates. No user database upgrade, public deployment or remote push was performed.
+
+Additional regression evidence: temporarily restoring the prior focus handler made the mounted test fail with both password fields cleared; restoring the fix passed7/7. The bundled smoke initially reproduced400 instead of408 for Tomcat's wrapped socket timeout; normalization plus the wrapped-exception unit test and final bundled smoke passed.
+
+## Parallel design review and admission follow-up - October 15, 2026
+
+Three parallel GPT-6.1 Sol High agents completed research-backed reviews of recovery practices, maintainability and security against the current design and selected implementation. Recovery and maintainability reviews found no new concrete defect in scope. Security found one low-severity issue: health and maintenance fallback writes could bypass database-work admission when their initial permit acquisition failed. Both tasks now defer on saturation and acquire a new permit before any fallback JDBC update; the security reviewer confirmed the fix by inspecting the diff.
+
+Four parameterized cases in `ResetBackgroundAdmissionTest` reproduced the defect before the fix, then passed. They verify no JDBC work under saturation, a held permit during the fallback update and permit release afterward. The targeted run passed19 tests including recovery integration; the full backend suite passed116 tests with zero failures/errors/skips and the bundled executable JAR packaged successfully. Commands used cached Maven with the existing explicit local repository/user-home arguments: `-Dtest=ResetBackgroundAdmissionTest test` (red), `-Dtest=ResetBackgroundAdmissionTest,PasswordResetIntegrationTest test` (green), and `-Pwith-ui package` (full).
+
+Source references and research links are recorded by category in `docs/PASSWORD-RESET.md`. Frontend and PostgreSQL suites were not repeated because this follow-up changes only background Java admission/failure handling; their October12 results above are historical evidence, not new runs. Production deployment, provider/browser checks, load/monitoring and restore/failover gates remain unchanged.
+
+The final bundled `npm.cmd run test:smoke` passed on October15 using disposable file-backed H2 and local SMTP capture: reset link/notice, slow-body408, single use, session revocation, old/new login, preserved data/theme, and JVM-restart persistence. No user database or external mailbox was used.
+
+## Repeated review and fixes - October 29, 2026
+
+Continued `Password-Reset` from `1d8d528` in the current Internship Tracker workspace. Independent GPT-6.1 Sol High reviews covered backend/session security, recovery UI and operations. The first pass found shared-session invalidation races, session-check failures incorrectly treated as anonymous, and overdue issued links missing from the health pause. The second security pass found that an older rejected login could overwrite a newer login before the success-handler fence. Final independent reviews of the corrected files found no remaining actionable findings in those scopes.
+
+Regression evidence: delayed API and login rejection tests first invalidated the replacement session; the BCrypt race first returned 401 for the newer login's next request; two overdue-mail cases first failed to pause intake. The first login persistence configuration failed two regressions because Spring replaced the fluent repository setting. Configuring the built login filter through `ObjectPostProcessor` fixed that override. Login now checks the epoch and publishes authentication under one session mutex, while passive rejection and reset completion clear only request-local context. Existing API epoch checks enforce logical session revocation.
+
+| Fresh check | Result |
+| --- | --- |
+| Frontend/API and mounted recovery UI tests | 61 passed; no failures/skips |
+| TypeScript and Vite production build | Passed |
+| Full backend unit/H2 integration suite | 129 passed; no failures/errors/skips |
+| PostgreSQL 18.6 integration scenarios | 3 passed; no failures/errors/skips |
+| Bundled executable JAR | Packaged successfully with current frontend assets |
+| Bundled HTTP/loopback SMTP smoke | Passed reset link/notice, slow-body deadline, single use, session revocation, old/new credentials, data/theme preservation and H2 JVM-restart persistence |
+| Independent final review | No remaining actionable findings in frontend, operations or security/concurrency scopes |
+
+The PostgreSQL tests include the new fresh/overdue/drained link-health assertions using the restricted runtime role, as well as existing migration/privilege, real HTTP recovery and lock-sensitive expiry coverage. H2 regressions also cover pending/sending mail, consumed/revoked/expired or mismatched links, deferred notices, session races and a primary-read outage preserving another account's session.
+
+Commands: `npm.cmd test`, `npm.cmd run build`, focused Maven regression runs, cached Maven `-Pwith-ui,postgres-it '-Dpostgres.test.bin=C:/Program Files/PostgreSQL/18/bin' verify`, and `npm.cmd run test:smoke`. Maven used the existing explicit local-repository/user-home arguments with authorized cache access. Build/test logs and disposable database clusters are ignored outputs; the smoke test removed its own temporary H2 database and used only a loopback SMTP capture server.
+
+Production activation remains gated by the runbook. PostgreSQL 17, Docker rollout, real browser/mail-client behavior, external SMTP delivery, production load/monitoring and restore/failover drills were not established by these local checks. Flyway still warns that PostgreSQL 18 is beyond its tested 17 support range. No user database, external mailbox or production deployment was changed.
+
+## Production readiness checks - October 29, 2026
+
+The [readiness report](docs/PASSWORD-RESET-READINESS.md) records fresh evidence and the remaining hosted gates. This pass closes the PostgreSQL 17, real-browser and isolated restore gaps above: 64 frontend tests, TypeScript/Vite build, final 129-test backend suite, five deployment-probe regressions, three PostgreSQL 17 migration/privilege scenarios, one restricted monitoring scenario and one backup/restore/reconciliation scenario passed. PostgreSQL checks ran in separate disposable 17.11 clusters; the corrected restore rerun passed independently. The rebuilt HTTP/SMTP smoke passed and the real in-app browser verified mobile layout, fragment scrubbing, refresh/dismissal, explicit sign-out and cross-tab transitions.
+
+Fixes include Docker environment-file exclusions and frontend test execution, token-free refresh guidance, a schema-valid deterministic expired-token fixture, and PostgreSQL 17-compatible restore-script failure guards. A tiny H2/loopback capacity probe passed generic intake, throttling/Retry-After, notice delivery and log-redaction checks; its measured latencies are recorded with sample counts and do not establish production SLOs. Transport probes measured a five-second stall cutoff and approximately nine-second late-byte cutoff, confirming the documented need for an edge total deadline.
+
+The restore drill first demonstrates old hashes and a spent active link returning in a pre-reset backup while the restored database is offline. Guard failures leave state untouched. Reconciliation blocks all restored passwords, revokes verification/reset challenges, erases queued payloads, advances ordering/epochs and preserves audit/counters; controlled fresh mailbox recovery then succeeds while old credentials and links remain rejected. Clean PostgreSQL restart persistence passed; managed crash/failover remains separate. Independent cross-reviews found no additional actionable restore or monitoring defects.
+
+Commands included cached Maven `-Pwith-ui,postgres-it -Dtest=PasswordResetIntegrationTest -Dpostgres.test.bin=<portable-PG17-bin> verify`, the targeted corrected `-Dit.test=PasswordResetRestoreIT` rerun, final Maven `test`, `npm.cmd test`, `npm.cmd run build`, `node --test deploy/probe-edge.test.mjs`, `node tests/reset-readiness-load.mjs`, and `node tests/http_smoke.mjs --hold-browser`. The first full runs exposed the unstable current-instant expiry fixture and the PostgreSQL 17 guard exit behavior; final runs passed after correction. The load/probe harnesses also caught and corrected their own cache-directive/timing assertions.
+
+Docker/Compose execution requires a Docker host. HTTPS/proxy/Secure-cookie checks, external SMTP/domain/client delivery, sustained production-equivalent load, live dashboards/on-call alerts, durable audit export and managed failover require the staging target and operator/provider access. None is marked passed. Recovery remains disabled pending those hosted checks and release approval.
+
+## Free local launcher - October 29, 2026
+
+`start-local.ps1` supplies a Docker-free Windows alternative: the bundled Java app, a separate persistent H2 database and a pinned, checksum-verified Mailpit capture inbox. `-PrepareOnly` successfully reported Mailpit 1.31.1. A real launch on isolated ports 18080/18025/11025 with data under `backend/target/local-launcher-check` passed app/inbox health and confirmed all listeners bind to 127.0.0.1. Synthetic registration, verification, reset email capture, password completion, old-password rejection and new-password login passed through HTTP and Mailpit's API. Ctrl+C stopped all three listeners while preserving the H2 and inbox files. Independent review caught case-sensitive matching of inherited Mailpit settings; matching is now case-insensitive. Restart with an invalid lowercase forwarding setting still started the capture-only inbox, preserved all three messages and accepted the saved reset password. Duplicate ports were rejected. PowerShell parsing and `git diff --check` passed. No application runtime code changed; the full frontend/backend suites were not repeated for this launcher/documentation addition. See [local setup](docs/LOCAL-PASSWORD-RESET.md).
+
+## Running app + actual Mailpit end-to-end check - October 29, 2026
+
+Tested the already running local app at 127.0.0.1:8080 and Mailpit at 127.0.0.1:8025. A UUID-named synthetic account was registered and activated through its actual captured verification message. The real in-app browser submitted Forgot password, displayed neutral acceptance, showed the reset email in Mailpit and opened its link; the URL fragment was scrubbed and empty required fields blocked submission. Password submission and negative checks used independent HTTP clients. Seven check groups passed: verification/two sessions, captured reset/private unknown-address behavior, page GET and rejected CSRF/short-password submissions preserving authentication, successful confirmation/old-session revocation, used/unknown token rejection, old-password failure/new-password login with application/theme preservation, and a credential-free password-change notification in Mailpit.
+
+The repeatable unattended command `node tests/local-mailpit-smoke.mjs` also passed all seven groups, including exact known/unknown response comparison. Interactive browser-request mode was run separately; it does not itself compare the browser response body. The script requires a TTY before creating fixtures if an inspection pause is requested. An initial headless pause was stopped and rerun in a terminal. No application defect was reproduced. Independent harness review found no actionable safety/data-scoping problem and clarified HTTP-vs-browser evidence wording. Syntax and whitespace checks passed. Email-link origin validation was checked against both captured message types and rejected an incorrect origin. After testing, the local launcher was restarted to clear the process-local signup/login budgets consumed by fixtures; health and all eight captured messages persisted. Both local services remain available; only identifiable synthetic test records/messages were added.
+
 ## CSV import review fixes — 2026-10-20
 
 Fixed the confirmation resource-control gap and the runtime privilege verifier's any-versus-all DML checks from the review of `2b52a702bfcdae251834b22246689ec62e0ff104`.
@@ -279,6 +356,31 @@ Final published revision `e4c23169fac13474d0ff84c93e7afe0ce3b1b44e` was independ
 
 The subsequent commit-and-push request includes the previously preserved `ImportCommitPermitServerTest` class and its plan, along with the CI design/plan/review records. The 136-test hosted results above apply to the linked earlier CI-only snapshots; the complete published source now includes the two locally verified regression cases. Its hosted backend suite is expected to contain 138 tests. The new head's CI result must be read from PR #1 checks; this publication note does not claim a new passing run.
 
+## Password Reset final merge review — October 29, 2026
+
+Reviewed the combined Password-Reset implementation and main `94b062c94638597c9c92e83fa141f8d98cfd3d43`, including main's CSV import and CI changes. Parallel GPT-6.1 Sol High reviews covered frontend integration, database compatibility and security. Independent follow-up reviews checked the local migration bridge and the corrected expiry test fixture. Review findings and resolutions by category:
+
+- **Database compatibility:** main already assigns V4 to CSV import. Reset is now V5 with identical SQL/checksum. `LocalLegacyPasswordResetMigration` and `start-local.ps1` provide an explicitly enabled, local-only file-backed H2 bridge for the unpublished reset-only demo. It validates the exact old migration history and reset schema, creates an adjacent consistent ZIP backup before changing history, then applies the missing CSV migration. Production and ambiguous histories fail closed; fresh/main databases migrate normally. Six regression scenarios cover data/control preservation, actual backup restoration, rejection paths and repeat startup. See [migration strategy](backend/src/main/java/com/campus/tracker/migration/LocalLegacyPasswordResetMigration.java), [tests](backend/src/test/java/com/campus/tracker/migration/LocalLegacyPasswordResetMigrationTest.java), and [local recovery instructions](docs/LOCAL-PASSWORD-RESET.md).
+- **Security:** the combined filter chain retains primary-database credential-epoch checks before import admission and CSRF, explicit authenticated-session publication and both recovery/import body guards. Import test sessions now represent real verified users with actual credential epochs; stale sessions cannot upload or read imports. Runtime grant verification covers both features, with separate retention-role upgrade paths from V3 and V4. See [security configuration](backend/src/main/java/com/campus/tracker/config/SecurityConfig.java), [transport regression tests](backend/src/test/java/com/campus/tracker/application/importing/ImportTransportServerTest.java), and [PostgreSQL verification](backend/src/test/java/com/campus/tracker/PostgresPrivilegesIT.java).
+- **Frontend and maintainability:** resolved shared transport conflicts while preserving serialized authentication, cross-tab invalidation, stale-operation guards, unknown import outcomes and no automatic write replay. Combined HTTP smoke coverage retains CSV import and password-reset flows. See [shared transport](src/data/api.ts), [import tests](tests/application-import.test.mjs), and [HTTP smoke](tests/http_smoke.mjs).
+- **CI and test reliability:** supplied the newly required synthetic retention password to Compose validation. CI now requires all seven PostgreSQL scenarios across privilege/upgrade, restore and monitoring suites instead of accepting only the older three-case privilege suite. The full backend run exposed an expiry fixture using separately sampled H2/JVM timestamps; its test-only controlled clock now checks exact equality while preserving the creation-before-expiry constraint. See [workflow](.github/workflows/ci.yml), [report guard](.github/scripts/check_ci.py), [guard regression tests](.github/scripts/test_check_ci.py), and [expiry integration test](backend/src/test/java/com/campus/tracker/PasswordResetIntegrationTest.java).
+
+Final verification of the resolved combined tree:
+
+| Check | Result |
+| --- | --- |
+| `npm.cmd test` | 92 passed, no skips |
+| `npm.cmd run build` | TypeScript and Vite production build passed |
+| Maven `-Pwith-ui,postgres-it -Dpostgres.test.bin=<portable-PG17-bin> verify` | 208 backend tests and 7 PostgreSQL integration tests passed, no failures/errors/skips; packaged JAR built |
+| `python -B .github/scripts/check_ci.py reports backend` | Confirmed all 208 backend tests and all 7 required PostgreSQL scenarios executed without skips |
+| `python -B -m unittest discover -s .github/scripts -p 'test_*.py'` | 17 passed |
+| `node --test deploy/probe-edge.test.mjs` | 5 passed |
+| `npm.cmd run test:smoke` | Passed combined real HTTP/assets, SMTP verification/reset/notice, slow-body deadline, session revocation, token single use, old/new login, data/theme preservation, CRUD/undo, CSV multipart/native FormData through bundled/Vite routes, CSRF, atomic conflict, duplicate receipts, lost-response reconciliation, and JVM restart persistence |
+| `git diff --cached --check` | Passed after resolving every conflict |
+
+Actual local demo upgrade: the running app created `backend/data/local-password-reset/campus.before-reset-lineage-3ee370b4-0af3-4dfb-b823-fd99a5ae0fb4.zip` before rewriting the legacy row. Before/after counts matched: 3 users, 3 applications, credential-epoch sum 2, 3 reset-token records and 2 audit events. All 8 Mailpit message IDs remained unchanged. A second startup passed normal migration validation without creating another backup. The app health endpoint reported UP and the inbox remained available. Private database/inbox files and build/test logs remain ignored by Git.
+
+The final local run used Node 25.2.0, Java 21.0.12.1 compiling for Java 17, Maven 3.9.11 and actual PostgreSQL 17.11. Docker/container builds and hosted CI were not rerun for this combined revision; historical hosted results above apply only to their linked commits. Hosted HTTPS/proxy and external SMTP activation checks remain deployment work. No new actionable review finding remained after the fixes and follow-up review. The requested merge is local; no push or public deployment is included.
 
 ## 2026-10-29 application review fixes
 
@@ -298,3 +400,18 @@ See [review findings, fixes, and complete verification limits](docs/superpowers/
 - Clean `mvn -Pwith-ui clean verify` passed all 143 backend tests with no failures or skips on local Java 21. Existing authentication, CSRF, context-path throttling, work-limit and session tests passed. No `AntPathRequestMatcher` compiler warnings remained; unrelated deprecation/runtime notices remain outside this change.
 - The bundled HTTP/SMTP/native multipart/Vite proxy/restart smoke test passed. Frontend sources did not change. Java 17, PostgreSQL 17 and container builds are verified separately by this branch's hosted CI.
 - The same independent read-only reviewer found no actionable findings or concrete bypass on firewall-accepted paths. Native encoded-path browser probes were not performed locally.
+
+## Password Reset publication integration — October 29, 2026
+
+Before publication, GitHub main had advanced to `402c347a32f448a76dacc3613b5210450df27733`. Integrated its account-isolation, complete-history, import-recovery and endpoint-matcher changes without replacing either history. Backend and independent frontend reviews found no remaining actionable integration defect after resolving shared transport and authentication-gate conflicts.
+
+- Serialized logout retains `X-Campus-Account` until confirmed success; a failed logout retains the account boundary. Profile rechecks can bind a new identity while invalidating requests from the previous account. New regressions cover both, including recovery UI during an actual account change.
+- Retained Vite 8.3.5, jsdom 29.1.1 and source-map-js 1.2.2. A fresh audit found a high-severity transitive development dependency issue in undici 7.30.0; its compatible 7.30.1 patch cleared the audit without changing the application API.
+- Final local checks passed: 213 backend tests without failures/errors/skips, 105 frontend tests without failures/skips, the TypeScript/Vite production build, and npm audit with zero reported vulnerabilities. Source/lockfile conflict markers were removed and diff whitespace checks passed.
+- These local integration checks used Java 21 and Node 25. Java 17, real PostgreSQL 17, container builds and the combined packaged HTTP/SMTP smoke are checked by the GitHub main-push CI run; older hosted runs above do not establish results for this new integration.
+
+### Hosted restart-fixture correction
+
+The first [PR CI run](https://github.com/Jeffreyw7/Internship-Tracker-Demo/actions/runs/40998116842) passed container builds, frontend checks, all 213 backend tests and six PostgreSQL scenarios. The restore drill failed to reconnect after raw Docker restart because its harness retained Testcontainers' cached startup port. The installed 1.21.4 implementation obtains `getMappedPort` from cached container inspection; fresh inspection is available separately.
+
+The test harness now refreshes its JDBC port from current Docker inspection after the real restart and rebinds the drill's admin datasource to that endpoint. URL parameters and every persistence, old-password, spent-link, logical-backup, restore and reconciliation assertion remain intact. An independent read-only review found no actionable issue. The focused real PostgreSQL 17.11 restore/restart scenario passed locally without failures/errors/skips using `test-compile failsafe:integration-test failsafe:verify -Dit.test=PasswordResetRestoreIT` and the isolated portable-PG17 setting. The Docker path requires the next hosted run; no production code or operator database was changed.

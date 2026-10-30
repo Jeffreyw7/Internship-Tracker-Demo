@@ -18,6 +18,8 @@ public class CampusUser {
     @Column(name = "theme_preference", nullable = false, length = 6) private String themePreference = "system";
     @Column(name = "email_verified_at") private Instant emailVerifiedAt;
     @Column(name = "email_verification_exempt", nullable = false) private boolean emailVerificationExempt;
+    @Column(name = "credential_version", nullable = false) private long credentialVersion;
+    @Column(name = "reset_request_cutoff", nullable = false) private long resetRequestCutoff;
 
     // Provide the no-argument constructor JPA needs when loading database rows.
     protected CampusUser() {}
@@ -35,6 +37,18 @@ public class CampusUser {
     public String getThemePreference() { return themePreference; }
     public Instant getEmailVerifiedAt() { return emailVerifiedAt; }
     public boolean isEmailVerificationExempt() { return emailVerificationExempt; }
+    public long getCredentialVersion() { return credentialVersion; }
+    public long getResetRequestCutoff() { return resetRequestCutoff; }
+    // Called only under the account lock; no identity, verification, or appearance fields change.
+    public void replacePassword(String hash, long cutoff) {
+        if (hash == null || hash.isBlank() || cutoff <= resetRequestCutoff) {
+            throw new IllegalArgumentException("Invalid credential replacement");
+        }
+        long nextVersion = Math.incrementExact(credentialVersion);
+        this.passwordHash = hash;
+        this.credentialVersion = nextVersion;
+        this.resetRequestCutoff = cutoff;
+    }
     public boolean canAuthenticate() { return emailVerifiedAt != null || emailVerificationExempt; }
     public void verifyEmail(Instant verifiedAt) { this.emailVerifiedAt = verifiedAt; }
 }

@@ -56,3 +56,35 @@ test('overlapping initial profile requests can both establish the same account',
   completions[0](json(a));assert.deepEqual(await first,a);
   completions[1](json(a));assert.deepEqual(await second,a);
 });
+
+
+test('serialized logout retains the expected account before a shared cookie change',async()=>{
+  globalThis.window=new EventTarget();
+  const tab=await import('../src/data/api.ts?tab=serialized-logout');
+  let serverUser=a,logoutWrites=0,sentAccount;
+  globalThis.fetch=async(url,init)=>{
+    if(url==='/api/auth/me')return json(serverUser);
+    if(url==='/api/auth/csrf')return json({token:'token',headerName:'X-CSRF-TOKEN'});
+    sentAccount=init.headers.get('X-Campus-Account');
+    if(sentAccount!==serverUser.id)return json({code:'ACCOUNT_CHANGED',message:'Account changed'},401);
+    logoutWrites++;return new Response(null,{status:204});
+  };
+  await tab.authApi.me();serverUser=b;
+  await assert.rejects(tab.authApi.logout(),e=>e.code==='AUTH_SESSION_CHANGED');
+  assert.equal(sentAccount,a.id);assert.equal(logoutWrites,0);
+});
+
+test('login binds subsequent account requests and failed logout preserves their boundary',async()=>{
+  const tab=await import('../src/data/api.ts?tab=serialized-login');
+  let sentAccount;
+  globalThis.fetch=async(url,init)=>{
+    if(url==='/api/auth/csrf')return json({token:'token',headerName:'X-CSRF-TOKEN'});
+    if(url==='/api/auth/login')return json(b);
+    sentAccount=init.headers.get('X-Campus-Account');
+    return url==='/api/auth/logout'?json({message:'Temporarily unavailable'},503):json({owner:b.id});
+  };
+  await tab.authApi.login(b.email,'Synthetic passphrase');
+  await assert.rejects(tab.authApi.logout(),e=>e.status===503);
+  assert.deepEqual(await tab.request('/applications'),{owner:b.id});
+  assert.equal(sentAccount,b.id);
+});

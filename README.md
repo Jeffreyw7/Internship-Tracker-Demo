@@ -4,6 +4,8 @@ The complete Java edition of the Campus workspace: a **Java 17 / Spring Boot 3.5
 
 ## Quick start in VS Code
 
+For the free local app **with password reset and a local email inbox**, run `powershell -ExecutionPolicy Bypass -File .\start-local.ps1` after building the bundled JAR. See [the local Password Reset guide](docs/LOCAL-PASSWORD-RESET.md). It needs no Docker or cloud account and keeps demo data separate from the default database.
+
 Install a JDK **17 or newer** and **Node.js 22.18 or newer**. Open this project folder in VS Code. Maven is supplied by the included wrapper; the first run downloads Maven and Java dependencies.
 
 From the project root:
@@ -71,7 +73,7 @@ java -jar target/campus-tracker-2.0.0.jar
 
 Use `.\mvnw.cmd` in place of `./mvnw` on Windows. The `with-ui` profile copies the built React files into the executable JAR, so Java serves both the website and `/api` from the same origin. The ordinary backend build does not download or build Node dependencies.
 
-New accounts require a password with at least 12 characters, including an uppercase letter, a lowercase letter, a number, and a symbol. Unicode letters, numbers, and symbols are supported. Passwords must fit within 72 UTF-8 bytes for BCrypt; spaces do not count as symbols. The server enforces the same policy as the signup form. Existing accounts can still sign in with their original passwords.
+New and reset passwords require at least 15 Unicode characters and must pass a common-password blocklist. No composition rules apply. Passwords must fit within 72 UTF-8 bytes for BCrypt. The server enforces the same policy as the signup form. Existing accounts can still sign in with their original passwords.
 
 ## What works
 
@@ -83,12 +85,11 @@ New accounts require a password with at least 12 characters, including an upperc
 - CSRF-protected writes, HttpOnly session cookies, BCrypt password hashing, request validation, ownership checks on all application operations, and optimistic concurrency checks.
 - Light, Dark, and System appearance, with the signed-in choice saved to the account and refreshed on other devices when they regain focus or while visible.
 
-Follow-ups are displayed in the workspace. They do not send notifications or create calendar events. The app does not include password reset, admin account management or recruitment integrations.
+Follow-ups are displayed in the workspace. They do not send notifications or create calendar events. The app includes emailed password reset; production activation requires the checks in [the recovery runbook](docs/PASSWORD-RESET.md). Admin account management and recruitment integrations are not included.
 
 ## Not currently supported
 
 - Email notifications or calendar events for follow-ups and interviews.
-- Password reset.
 - Admin account management.
 - Recruitment-platform integrations.
 
@@ -96,7 +97,7 @@ Follow-ups are displayed in the workspace. They do not send notifications or cre
 
 H2 is the default for a self-contained local project. To use local PostgreSQL with Docker:
 
-1. Copy `.env.example` to `.env` and replace all three database password placeholders with distinct secrets.
+1. Copy `.env.example` to `.env` and replace all four database password placeholders with distinct secrets.
 2. Run `docker compose up --build`.
 3. Open http://localhost:8080 and create an account.
 4. Open the local capture inbox at http://localhost:8025, follow the verification link, and enter the signup password to activate the account.
@@ -114,7 +115,10 @@ For an existing PostgreSQL instance, select `SPRING_PROFILES_ACTIVE=prod` and se
 | `COOKIE_SECURE` | `true` with HTTPS; `false` only for local HTTP |
 | `SERVER_ADDRESS` | Defaults to `127.0.0.1`; containers use `0.0.0.0` |
 | `PORT` | Defaults to `8080` |
-| `PUBLIC_ORIGIN` | Public HTTPS origin used to build verification links, such as `https://tracker.example.edu` |
+| `PUBLIC_ORIGIN` | Public HTTPS origin used to build verification and reset links, such as `https://tracker.example.edu` |
+| `HELP_DESTINATION` | HTTPS support/report destination included in password-change notices |
+| `RESET_AUDIT_SECRET` / `RESET_AUDIT_KEY_ID` | Independent secret of at least 32 characters and its audit pseudonym key ID |
+| `PASSWORD_BLOCKLIST_FILE` | Optional maintained UTF-8 supplemental password blocklist; unreadable configuration prevents startup |
 | `MAIL_SENDER` | Verified sender address used for verification email |
 | `SMTP_HOST` / `SMTP_PORT` | SMTP relay endpoint; port defaults to `587` |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | SMTP relay credentials |
@@ -145,7 +149,7 @@ The API uses server-side pagination, optional search/status filters, bounded pag
 
 The UI currently fetches the user's paginated history into memory to keep its existing cross-view filtering and summaries immediate. For very large histories, connect the table directly to server-side queries and add separate aggregate/activity endpoints. The API boundary already supports that change; this project has not been load-tested.
 
-Sessions are in memory for this single-instance version. A multi-instance deployment needs shared sessions (for example Spring Session/Redis) or sticky routing, plus PostgreSQL, HTTPS, coordinated worker capacity and database backups. Add password reset before opening public self-service registration.
+Sessions are in memory for this single-instance version. A multi-instance deployment needs shared sessions (for example Spring Session/Redis) or sticky routing, plus PostgreSQL, HTTPS, coordinated worker capacity and database backups. Complete the password-reset release gates before opening public self-service registration.
 
 See [docs/API.md](docs/API.md) for request examples and the endpoint contract.
 
@@ -183,6 +187,6 @@ This ZIP is the Java edition for local development or a JVM/container host. **Th
 
 Authentication now has bounded peer-IP/account limits, a shared limit on active password/account-creation work, and a budget for anonymous CSRF session allocation. Throttled requests return HTTP 429 with Retry-After. See [authentication controls](docs/AUTHENTICATION-SECURITY.md) for configuration and operational limits.
 
-The PostgreSQL Compose stack now separates provisioning, migrations, and runtime access. Set all three distinct password values in .env.example. The web container receives only campus_runtime credentials; a one-shot migration service must finish successfully before it starts. For external PostgreSQL deployments, run MigrationMain separately with campus_migrator credentials before starting the production web application; production no longer runs Flyway inside the web process.
+The PostgreSQL Compose stack now separates provisioning, migrations, and runtime access. Set all four distinct password values in .env.example. The web container receives only campus_runtime credentials; a one-shot migration service must finish successfully before it starts. For external PostgreSQL deployments, run MigrationMain separately with campus_migrator credentials before starting the production web application; production no longer runs Flyway inside the web process.
 
 **Existing PostgreSQL volumes require the explicit upgrade procedure.** Updating environment variables does not alter existing roles or passwords. Preserve the volume, test a backup restore, and follow [database deployment and upgrade instructions](docs/DATABASE-SECURITY.md).

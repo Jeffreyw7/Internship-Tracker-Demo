@@ -4,7 +4,7 @@ The source files contain comments above the main classes, functions, and logical
 
 ## Request flow
 
-1. `src/main.tsx` captures and removes a verification token from the URL fragment before rendering, then mounts `AuthGate`, which checks the current session before opening the workspace.
+1. `src/main.tsx` mounts `AuthGate`; its imported authentication-link stores capture and remove verification/reset fragments before React renders. `AuthGate` checks the session before opening the workspace.
 2. `src/App.tsx` organizes the workspace views and delegates data changes to `useApplications`.
 3. `src/data/applicationApi.ts` converts editor drafts into API requests. `src/data/api.ts` handles cookies, CSRF headers, and errors.
 4. Spring Security checks authentication and CSRF before a backend controller handles the request. A pending account receives `EMAIL_VERIFICATION_REQUIRED` only after its password is accepted.
@@ -63,3 +63,7 @@ The import route bypasses Spring's standard multipart resolver. Header-only CSRF
 - `.vscode/settings.json`: configures the Java editor's null analysis setting.
 
 Compiled output in `dist/` and `backend/target/`, installed dependencies, local databases, and third-party tooling are not source documentation targets.
+
+## Password reset architecture
+
+Flyway `V4__password_reset.sql` adds credential epochs and sequence cutoffs, encrypted intake, digest-only challenges, private database control and pseudonymous security events. It generalizes the encrypted mail outbox to explicit verification/reset/notification purposes. `auth/reset` owns admission, short transactional completion, leased asynchronous issuance, health and retention. Session epoch enforcement is in `auth/CredentialVersionFilter.java`; frontend recovery/auth coordination remains in typed adapters and AuthGate. See [the recovery runbook](PASSWORD-RESET.md) and system design for transaction boundaries and release gates.

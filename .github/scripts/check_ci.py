@@ -12,6 +12,17 @@ POSTGRES_SCENARIOS = {
     "freshDatabaseHasOnlyRequiredRuntimePrivileges",
     "legacyUpgradePreservesRecordsAndMigrationHistory",
     "verifierRejectsEveryMissingRequiredDmlPrivilege",
+    "existingV3ProvisioningAddsSeparateRetentionIdentityBeforeRecoveryMigration",
+    "existingV4ProvisioningAddsSeparateRetentionIdentityBeforeRecoveryMigration",
+}
+REQUIRED_POSTGRES = {
+    POSTGRES_SUITE: POSTGRES_SCENARIOS,
+    "com.campus.tracker.PasswordResetRestoreIT": {
+        "restoreReconciliationPreventsSpentLinksAndOldPasswordsReturning",
+    },
+    "com.campus.tracker.PostgresMonitoringIT": {
+        "privateReportFindsBacklogsAndMissingExportEvidenceWithoutReadingSecrets",
+    },
 }
 
 
@@ -49,7 +60,7 @@ def read_report(path):
 
 
 def require_reports(backend):
-    """Require real unskipped unit tests and the named PostgreSQL IT suite."""
+    """Require unskipped unit tests and every named PostgreSQL release scenario."""
     target = Path(backend) / "target"
     unit_paths = sorted((target / "surefire-reports").glob("TEST-*.xml"))
     integration_paths = sorted((target / "failsafe-reports").glob("TEST-*.xml"))
@@ -59,14 +70,14 @@ def require_reports(backend):
     integration = [read_report(path) for path in integration_paths]
     if sum(count for _, count, _ in unit) <= 0:
         raise ValueError("No backend unit tests were executed")
-    postgres = [(count, names) for name, count, names in integration if name == POSTGRES_SUITE]
-    postgres_count = sum(count for count, _ in postgres)
-    executed = set().union(*(names for _, names in postgres))
-    missing = POSTGRES_SCENARIOS - executed
-    if missing:
-        raise ValueError(f"Required PostgreSQL scenarios did not execute: {sorted(missing)}")
-    if postgres_count <= 0:
-        raise ValueError(f"No unskipped {POSTGRES_SUITE} tests were executed")
+    postgres_count = 0
+    for suite, required in REQUIRED_POSTGRES.items():
+        reports = [(count, names) for name, count, names in integration if name == suite]
+        executed = set().union(*(names for _, names in reports))
+        missing = required - executed
+        if missing:
+            raise ValueError(f"Required PostgreSQL scenarios did not execute in {suite}: {sorted(missing)}")
+        postgres_count += sum(count for count, _ in reports)
     return sum(count for _, count, _ in unit), postgres_count
 
 
@@ -83,7 +94,7 @@ def main():
             print("Both required jobs succeeded.")
         else:
             unit_count, postgres_count = require_reports(args.backend)
-            print(f"Verified {unit_count} backend tests and {postgres_count} PostgreSQL privilege tests; none skipped.")
+            print(f"Verified {unit_count} backend tests and {postgres_count} PostgreSQL integration tests; none skipped.")
     except (ValueError, OSError) as error:
         print(f"CI check failed: {error}", file=sys.stderr)
         return 1

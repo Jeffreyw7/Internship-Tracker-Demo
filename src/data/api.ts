@@ -36,23 +36,81 @@ let csrf: { token: string; headerName: string } | null = null;
 // Invalidate expiration side effects from requests belonging to an older login.
 let sessionGeneration = 0;
 let accountId:string|null=null;
-const SESSION_CHANGE_KEY='campus:session-change';
-function invalidateSession(){sessionGeneration++;csrf=null;accountId=null;}
 function bindSessionAccount(id:string){
   if(accountId!==id){if(accountId!==null){sessionGeneration++;csrf=null;}accountId=id;}
 }
-function notifySessionChange(){
-  // This is an invalidation signal only; never persist credentials or account data.
-  try {window.localStorage.setItem(SESSION_CHANGE_KEY,crypto.randomUUID());} catch { /* The server account header still guards requests. */ }
+let authTail: Promise<unknown> = Promise.resolve();
+const SESSION_KEY = 'campus:auth-session-changed';
+let sessionChannel: BroadcastChannel | null = null;
+let sessionSubscribers = 0;
+const changedSession = (clearAccount=true) => { sessionGeneration++; csrf=null;if(clearAccount)accountId=null; };
+const staleSession = () => new ApiError(409,'Your session changed. Please try the action again.',undefined,'AUTH_SESSION_CHANGED');
+
+// Serialize all session-creating requests locally and across same-origin tabs where supported.
+function serializedAuth<T>(action: () => Promise<T>): Promise<T> {
+  const run = async ():Promise<T> => typeof navigator !== 'undefined' && navigator.locks
+    ? await navigator.locks.request('campus-auth-transition', action) : await action();
+  const result = authTail.then(run,run);
+  authTail = result.catch(() => undefined);
+  return result;
 }
-export function subscribeSessionChanges(changed:()=>void):()=>void {
-  const receive=(event:StorageEvent)=>{
-    if(event.key!==SESSION_CHANGE_KEY&&event.key!==null)return;
-    try {if(event.storageArea!==window.localStorage)return;} catch {return;}
-    invalidateSession();changed();
+function notifyOtherTabs() {
+  if (typeof window === 'undefined') return;
+  if (sessionChannel) sessionChannel.postMessage('session-changed');
+  else {
+    try { window.localStorage.setItem(SESSION_KEY,crypto.randomUUID()); }
+    catch { /* Focus refresh remains available if browser storage is disabled. */ }
+  }
+}
+function receiveSessionChange() {
+  changedSession();
+  window.dispatchEvent(new Event('campus:session-changed'));
+}
+function storageSessionChange(event: StorageEvent) {
+  if (event.key !== SESSION_KEY && event.key !== 'campus:session-change' && event.key !== null) return;
+  try {if(event.storageArea && event.storageArea !== window.localStorage)return;} catch {return;}
+  receiveSessionChange();
+}
+export function subscribeSessionChanges(listener: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const browser=window;
+  if (sessionSubscribers++ === 0) {
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        sessionChannel=new BroadcastChannel('campus-auth-session');
+        sessionChannel.onmessage=event => { if(event.data === 'session-changed') receiveSessionChange(); };
+      } catch { sessionChannel=null; /* Storage events and focus remain available. */ }
+    }
+    browser.addEventListener('storage',storageSessionChange);
+  }
+  browser.addEventListener('campus:session-changed',listener);
+  return () => {
+    browser.removeEventListener('campus:session-changed',listener);
+    if (--sessionSubscribers === 0) {
+      sessionChannel?.close();sessionChannel=null;
+      browser.removeEventListener('storage',storageSessionChange);
+    }
   };
-  window.addEventListener('storage',receive);
-  return ()=>window.removeEventListener('storage',receive);
+}
+export function authTransition<T>(action: (isCurrent: () => boolean) => Promise<T>, discardCsrf = false): Promise<T> {
+  return serializedAuth(async () => {
+    // Retain the expected account while authorizing logout and other credential changes.
+    changedSession(false);
+    const isCurrent=sessionGuard();
+    try {
+      const result=await action(isCurrent);
+      if (!isCurrent()) throw staleSession();
+      return result;
+    } catch(error) {
+      if(!isCurrent()) throw staleSession();
+      throw error;
+    } finally {
+      sessionGeneration++;
+      if(discardCsrf) csrf=null;
+      // Even a lost response can represent a committed credential or session change.
+      notifyOtherTabs();
+    }
+  });
 }
 // Multi-request operations keep the same account boundary across all their requests.
 export function sessionGuard():()=>boolean {
@@ -60,15 +118,28 @@ export function sessionGuard():()=>boolean {
   return ()=>generation===sessionGeneration;
 }
 // Fetch the session token and detect when a static server is answering instead of Java.
-export async function refreshCsrf(isCurrent:()=>boolean=()=>true) {
-  const generation=sessionGeneration;assertCurrent(isCurrent);
-  const response = await fetch('/api/auth/csrf', { credentials:'same-origin', cache:'no-store' });
+export async function refreshAuthCsrf(isCurrent: () => boolean = sessionGuard()) {
+  if(!isCurrent()) throw staleSession();
+  let response:Response;
+  try { response=await fetch('/api/auth/csrf', { credentials:'same-origin', cache:'no-store' }); }
+  catch { throw new ApiError(0,'Cannot reach the Java server. Check the connection and try again.'); }
   // Translate HTTP failures and notify the authentication gate when a protected session expires.
   if(!response.ok) throw await responseError(response, 'Cannot connect to the Java server. Start the backend and try again.');
   if(!response.headers.get('content-type')?.includes('application/json')) throw new ApiError(503, 'The Java API is not running. Start Spring Boot and try again.');
-  const token:unknown=await response.json();assertCurrent(()=>generation===sessionGeneration&&isCurrent());
-  if(!token||typeof token!=='object'||!('token' in token)||typeof token.token!=='string'||!token.token||!('headerName' in token)||typeof token.headerName!=='string'||!token.headerName)throw new ApiError(503,'The server returned an invalid security token. Refresh your connection and try again.');
+  const token:unknown=await response.json();
+  if(!isCurrent()) throw staleSession();
+  if(!token || typeof token !== 'object' || !('token' in token) || typeof token.token !== 'string' || !token.token
+      || !('headerName' in token) || typeof token.headerName !== 'string' || !token.headerName) throw new ApiError(503,'The Java API returned an invalid session token.');
   csrf={token:token.token,headerName:token.headerName};
+}
+export function refreshCsrf(isCurrent:()=>boolean=()=>true) {
+  const session=sessionGuard();const current=()=>session()&&isCurrent();
+  assertCurrent(current);
+  return serializedAuth(async()=>{
+    assertCurrent(current);
+    try {await refreshAuthCsrf(current);} catch(error) {assertCurrent(isCurrent);throw error;}
+    assertCurrent(current);
+  });
 }
 // Attach CSRF headers to writes and include same-origin session credentials.
 export async function request<T>(path:string, init:RequestInit={}, isCurrent:()=>boolean=()=>true):Promise<T> {
@@ -90,14 +161,15 @@ export async function request<T>(path:string, init:RequestInit={}, isCurrent:()=
     // Account-scoped background requests must not expire a newer session after logout/login.
     if(response.status===401 && path!=='/auth/login' && path!=='/auth/me' && typeof window!=='undefined'
         && generation===sessionGeneration && isCurrent()) {
-      invalidateSession();
+      changedSession();
       window.dispatchEvent(new Event('campus:session-expired'));
     }
+    if(response.status===403 && generation===sessionGeneration && isCurrent()) csrf=null;
     // Do not automatically replay writes; the server may already have committed the change.
     throw error;
   }
   // Handle successful responses with no JSON body, such as logout.
-  if(response.status===204){assertCurrent(current);return undefined as T;}
+  if(response.status===204) {assertCurrent(current);return undefined as T;}
   if(!response.headers.get('content-type')?.includes('application/json')) throw new ApiError(503,'The Java API is unavailable. Start Spring Boot and try again.');
   const data:unknown=await response.json();assertCurrent(current);return data as T;
 }
@@ -110,24 +182,31 @@ export const authApi={
   async me(){const user=await request<User>('/auth/me');bindSessionAccount(user.id);return user;},
   // Submit credentials in Spring Security\'s expected form format, then refresh the rotated CSRF token.
   async login(email:string,password:string) {
-    invalidateSession();const current=sessionGuard();
-    await refreshCsrf(current);
-    const user=await request<User>('/auth/login',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({email:email.trim(),password})},current);
-    csrf=null;await refreshCsrf(current);sessionGeneration++;accountId=user.id;notifySessionChange();return user;
+    return authTransition(async isCurrent => {
+      await refreshAuthCsrf(isCurrent);
+      const user=await request<User>('/auth/login',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({email:email.trim(),password})},isCurrent);
+      csrf=null;await refreshAuthCsrf(isCurrent);accountId=user.id;return user;
+    });
   },
   // Accepted registration does not authenticate; mailbox confirmation and login are explicit.
   async register(displayName:string,email:string,password:string,includeSamples:boolean) {
-    await refreshCsrf();
-    return request<VerificationAccepted>('/auth/register',{method:'POST',...jsonBody({displayName:displayName.trim(),email:email.trim(),password,includeSamples})});
+    return authTransition(async isCurrent => {
+      await refreshAuthCsrf(isCurrent);
+      return request<VerificationAccepted>('/auth/register',{method:'POST',...jsonBody({displayName:displayName.trim(),email:email.trim(),password,includeSamples})},isCurrent);
+    });
   },
   async resendVerification(email:string) {
-    await refreshCsrf();
-    return request<VerificationAccepted>('/auth/email-verification/resend',{method:'POST',...jsonBody({email:email.trim()})});
+    return authTransition(async isCurrent => {
+      await refreshAuthCsrf(isCurrent);
+      return request<VerificationAccepted>('/auth/email-verification/resend',{method:'POST',...jsonBody({email:email.trim()})},isCurrent);
+    });
   },
   async confirmVerification(token:string,password:string) {
-    await refreshCsrf();
-    return request<{status:'EMAIL_VERIFIED'}>('/auth/email-verification/confirm',{method:'POST',...jsonBody({token,password})});
+    return authTransition(async isCurrent => {
+      await refreshAuthCsrf(isCurrent);
+      return request<{status:'EMAIL_VERIFIED'}>('/auth/email-verification/confirm',{method:'POST',...jsonBody({token,password})},isCurrent);
+    });
   },
   // End the server session and discard the in-memory CSRF token.
-  async logout(){await request<void>('/auth/logout',{method:'POST'});invalidateSession();notifySessionChange();}
+  async logout(){return authTransition(async isCurrent => {await refreshAuthCsrf(isCurrent);await request<void>('/auth/logout',{method:'POST'},isCurrent);accountId=null;},true);}
 };
