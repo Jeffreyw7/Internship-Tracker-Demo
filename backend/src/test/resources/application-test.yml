@@ -6,6 +6,9 @@ spring:
     password:
 campus:
   registration-enabled: true
+  # Cached test contexts share this database; lifecycle tests invoke cleanup explicitly.
+  imports:
+    cleanup-enabled: false
   reset:
     health-enabled: false
   # Legacy workflow suite shares one peer IP; focused abuse tests override these.
