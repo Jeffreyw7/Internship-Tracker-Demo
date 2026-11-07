@@ -41,9 +41,11 @@ test('conflicted updates reject and are never retried automatically',async()=>{
   await refreshCsrf();await assert.rejects(()=>applicationApi.save(draft(),'app-1',0),e=>e instanceof ApiError&&e.status===409);
   assert.equal(writes,1);
 });
-test('paged histories are fully loaded',async()=>{
-  globalThis.fetch=async(url)=>url.endsWith('page=0')?json({content:[{id:'a'}],totalElements:2,totalPages:2,page:0,size:1}):json({content:[{id:'b'}],totalElements:2,totalPages:2,page:1,size:1});
+test('cursor histories are fully loaded with the continuation treated as opaque',async()=>{
+  const calls=[];
+  globalThis.fetch=async(url)=>{calls.push(url);return url==='/api/applications/history?size=100'?json({content:[{id:'a'}],nextCursor:'opaque-continuation'}):json({content:[{id:'b'}],nextCursor:null});};
   assert.deepEqual((await applicationApi.list()).map(a=>a.id),['a','b']);
+  assert.deepEqual(calls,['/api/applications/history?size=100','/api/applications/history?size=100&cursor=opaque-continuation']);
 });
 test('delete and undo use the version returned by the delete endpoint',async()=>{
   const calls=[];globalThis.fetch=async(url,options)=>{if(url==='/api/auth/csrf')return json({token:'token',headerName:'X-CSRF-TOKEN'});calls.push({url,options});return json({id:'a',version:6,deleted:options.method==='DELETE'});};
@@ -142,38 +144,61 @@ test('an account switch stops old history pagination before its next dispatch',a
   globalThis.fetch=async(url)=>{
     if(url==='/api/auth/csrf')return json({token:'token',headerName:'X-CSRF-TOKEN'});
     if(url==='/api/auth/login')return json({id:'new-account',displayName:'New',email:'new@example.test'});
-    if(url.endsWith('page=0'))return new Promise(resolve=>{finishFirst=resolve;});
+    if(url==='/api/applications/history?size=100')return new Promise(resolve=>{finishFirst=resolve;});
     nextPageCalls++;return json({message:'Old session ended'},401);
   };
   try {
     const pending=applicationApi.list();const rejected=assert.rejects(pending,StaleSessionError);
     await authApi.login('new@example.test','Synthetic-password-123!');
-    finishFirst(json({content:[{id:'old-app'}],totalPages:2}));await rejected;
+    finishFirst(json({content:[{id:'old-app'}],nextCursor:'old-next-page'}));await rejected;
     assert.equal(expired,0);assert.equal(nextPageCalls,0);
   } finally {if(previousWindow===undefined)delete globalThis.window;else globalThis.window=previousWindow;}
 });
 
 
-test('history traversal keeps an edited later application without moving page boundaries',async()=>{
-  const records=Array.from({length:101},(_,i)=>({id:String(i),updatedAt:i}));
+test('history traversal loads over 100 records after an earlier deletion and later edit',async()=>{
+  const records=Array.from({length:205},(_,i)=>({id:String(i),updatedAt:i}));
   let reads=0;
   globalThis.fetch=async(url)=>{
     const query=new URL(url,'http://localhost').searchParams;
+    if(reads++===1){records.shift();records.at(-1).updatedAt=-1;}
+    // Emulate the server contract: a cursor selects immutable IDs, whereas offsets shift after deletion.
+    if(url.startsWith('/api/applications/history?')) {
+      const after=query.has('cursor')?Number(query.get('cursor')):-1;
+      const remaining=records.filter(a=>Number(a.id)>after),content=remaining.slice(0,100);
+      return json({content,nextCursor:remaining.length>100?content.at(-1).id:null});
+    }
     const page=Number(query.get('page'));
-    if(reads++===1) records[100].updatedAt=-1;
-    const ordered=query.get('sort')==='created'?[...records]:[...records].sort((a,b)=>a.updatedAt-b.updatedAt);
-    return json({content:ordered.slice(page*100,(page+1)*100),totalElements:101,totalPages:2,page,size:100});
+    return json({content:records.slice(page*100,(page+1)*100),totalElements:records.length,totalPages:Math.ceil(records.length/100),page,size:100});
   };
   const loaded=await applicationApi.list();
-  assert.equal(loaded.length,101);
-  assert.equal(loaded.find(a=>a.id==='100')?.updatedAt,-1);
+  assert.equal(loaded.length,205);
+  assert.deepEqual(loaded.map(a=>a.id),Array.from({length:205},(_,i)=>String(i)));
+  assert.equal(loaded.find(a=>a.id==='204')?.updatedAt,-1);
 });
 
-test('history changes during pagination fail instead of returning an incomplete export',async()=>{
-  globalThis.fetch=async(url)=>{
-    const page=Number(new URL(url,'http://localhost').searchParams.get('page'));
-    return json(page===0?{content:[{id:'a'}],totalElements:2,totalPages:2,page,size:1}
-      :{content:[],totalElements:1,totalPages:1,page,size:1});
-  };
-  await assert.rejects(applicationApi.list(),e=>e instanceof ApiError&&e.status===409);
+test('an emptied final history page terminates after unread deletions',async()=>{
+  globalThis.fetch=async(url)=>json(url.includes('&cursor=')?{content:[],nextCursor:null}:{content:[{id:'a'}],nextCursor:'next'});
+  assert.deepEqual((await applicationApi.list()).map(a=>a.id),['a']);
+});
+
+for(const invalidPage of [
+  {content:[],nextCursor:'next'},
+  {content:[{id:'a'}],nextCursor:null},
+  {content:[{id:'b'}],nextCursor:'next'},
+  {content:[{id:'b'}],nextCursor:'x'.repeat(513)},
+  {content:[{id:'b'}]},
+  {content:Array.from({length:101},(_,i)=>({id:'extra-'+i})),nextCursor:null},
+])test('invalid or cycling history pages fail without returning partial data: '+JSON.stringify(invalidPage).slice(0,70),async()=>{
+  let calls=0;
+  globalThis.fetch=async()=>json(calls++===0?{content:[{id:'a'}],nextCursor:'next'}:invalidPage);
+  await assert.rejects(applicationApi.list(),e=>e instanceof ApiError&&e.status===503);
+  assert.equal(calls,2);
+});
+
+test('workspace invalidation stops history continuation dispatch',async()=>{
+  let current=true,calls=0;
+  globalThis.fetch=async()=>{calls++;current=false;return json({content:[{id:'a'}],nextCursor:'next'});};
+  await assert.rejects(applicationApi.list(()=>current),StaleSessionError);
+  assert.equal(calls,1);
 });

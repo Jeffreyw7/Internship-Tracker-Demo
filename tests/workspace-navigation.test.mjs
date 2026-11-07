@@ -82,7 +82,7 @@ async function render() {
     assert.equal(new Headers(options.headers).get('X-Campus-Account'), account.id);
     assert.equal(options.credentials, 'same-origin');
     if (url === '/api/me/preferences') return json({ themePreference: options.method === 'PUT' ? JSON.parse(options.body).themePreference : 'system' });
-    if (url === '/api/applications?sort=created&size=100&page=0') return json({ content: records, totalElements: records.length, totalPages: 1, page: 0, size: 100 });
+    if (url === '/api/applications/history?size=100') return json({ content: records, nextCursor: null });
     throw new Error('Unexpected request: ' + url);
   };
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);

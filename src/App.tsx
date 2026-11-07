@@ -17,13 +17,13 @@ type Undo={kind:'delete';deleted:Application}|{kind:'update';before:Application;
 type Toast={message:string;undo?:Undo};
 export default function App({user,onLogout}:{user:User;onLogout:()=>Promise<void>}) {
   // Read server-backed data and mutation handlers from the shared hook.
-  const {apps,error,ready,busy,requestBusy,save,remove,restoreDeleted,refresh,pendingImport,recoveryPreview,retiredImport,acknowledgeRetiredImport,importReceipt,importRefreshFailed,commitImport,reconcileImport,retryImportRefresh,clearImportRecovery}=useApplications(user.id);
+  const {apps,error,ready,busy,requestBusy,save,remove,restoreDeleted,refresh,pendingImport,pendingCreate,checkCreate,cancelCreate,getLatest,recoveryPreview,retiredImport,acknowledgeRetiredImport,importReceipt,importRefreshFailed,commitImport,reconcileImport,retryImportRefresh,clearImportRecovery}=useApplications(user.id);
   const [importOpen,setImportOpen]=useState(false);
   // Track navigation and display controls separately from application records.
   const [view,setView]=useState<View>('applications'); const [query,setQuery]=useState('');
   const [tab,setTab]=useState<Tab>('All applications');const [status,setStatus]=useState('All statuses');
   const [sort,setSort]=useState('recent');const [dueOnly,setDueOnly]=useState(false);const [page,setPage]=useState(1);
-  const [drawer,setDrawer]=useState<{id:string|null}|null>(null);const [mobileNav,setMobileNav]=useState(false);
+  const [drawer,setDrawer]=useState<{id:string|null;snapshot?:Application}|null>(null);const [mobileNav,setMobileNav]=useState(false);
   const [toast,setToast]=useState<Toast|null>(null);const searchRef=useRef<HTMLInputElement>(null);
   const mainRef=useRef<HTMLElement>(null);const navToggleRef=useRef<HTMLButtonElement>(null);
   const sidebarRef=useRef<HTMLElement>(null);
@@ -63,9 +63,16 @@ export default function App({user,onLogout}:{user:User;onLogout:()=>Promise<void
   // Return to the application table with a selected pipeline status.
   function filterStatus(s:string){navigate('applications');setTab('All applications');setStatus(s);}
   // Select the application whose detail drawer should open.
-  function open(app:Application){setDrawer({id:app.id});}
+  function open(app:Application){setDrawer({id:app.id,snapshot:app});}
   // Close the editor and notify the user after a confirmed save.
-  async function saveApplication(draft:ApplicationDraft,id?:string,version?:number){await save(draft,id,version);setDrawer(null);setToast({message:id?'Application updated. You’re all set.':'Application added. Here’s to your next opportunity.'});}
+  async function saveApplication(draft:ApplicationDraft,id?:string,version?:number){const result=await save(draft,id,version);setDrawer(null);setToast({message:result.deleted?'This application was saved and later deleted.':id?'Application updated. You’re all set.':'Application added. Here’s to your next opportunity.'});}
+  async function resolveCreate(cancel=false){
+    const result=await (cancel?cancelCreate():checkCreate());
+    if(!result)throw new Error('Save completion is not confirmed. Retry the original save or cancel it before starting another.');
+    if(result.status==='COMPLETED')setDrawer(current=>current?.id===null?null:current);
+    setToast({message:result.status==='CANCELLED'?'Pending save cancelled. Review your draft and save again.':result.application.deleted?'The earlier save completed, but that application has since been deleted.':'The earlier save completed. Your application is available.'});
+  }
+  function resolveCreateFromBanner(cancel=false){void resolveCreate(cancel).catch(e=>setToast({message:e instanceof Error?e.message:'Could not resolve the pending save.'}));}
   // Keep the returned deleted record so undo uses the new server version.
   async function deleteApplication(app:Application){const deleted=await remove(app);setDrawer(null);setToast({message:`${app.company} application deleted.`,undo:{kind:'delete',deleted}});}
   // Complete an interview or clear a follow-up, saving the prior data for undo.
@@ -77,7 +84,7 @@ export default function App({user,onLogout}:{user:User;onLogout:()=>Promise<void
   // Export all loaded applications, add a UTF-8 BOM, and release the temporary download URL.
   function exportCSV(){downloadCsv(applicationCsv(apps),'campus-applications-'+today()+'.csv');setToast({message:'Your application CSV is ready. Formula-leading values may retain a safety apostrophe on reimport.'});}
   // Resolve the drawer selection against current records so the detail view stays up to date.
-  const selected=drawer?.id?apps.find(a=>a.id===drawer.id):null;
+  const selected=drawer?.id?apps.find(a=>a.id===drawer.id)??drawer.snapshot:null;
   const heading=view==='applications'?'Your next chapter starts here.':view==='interviews'?'Turn conversations into opportunities.':'A little follow-up goes a long way.';
   // Render navigation, summaries, the current table or activity list, and modal feedback.
   return <div className="app-shell">
@@ -94,6 +101,7 @@ export default function App({user,onLogout}:{user:User;onLogout:()=>Promise<void
       <main id="workspace-content" ref={mainRef} tabIndex={-1}><section className="welcome"><div><span className="workspace-paper-mark" aria-hidden="true"/><h1>{heading}</h1><p>Keep your opportunities organized. Focus on what comes next.</p></div><button className="button primary add-main" disabled={!ready||busy} onClick={()=>setDrawer({id:null})}><Plus size={17}/> Add application</button></section>
         {error&&<div className="error-box" role="alert">{error} <button className="text-button" disabled={requestBusy} onClick={()=>void refresh()}>Retry connection</button></div>}
         {pendingImport&&<div className="error-box" role="status">Import completion is not yet confirmed. Other changes are locked. <button className="text-button" onClick={()=>setImportOpen(true)}>Check import {pendingImport.previewId}</button></div>}
+        {pendingCreate&&<div className="error-box" role="status">An application save is not confirmed. Check or cancel it before making another change. <button className="text-button" disabled={requestBusy} onClick={()=>resolveCreateFromBanner()}>Check save status</button> <button className="text-button" disabled={requestBusy} onClick={()=>resolveCreateFromBanner(true)}>Cancel pending save</button></div>}
         {/* Use summary cards as shortcuts into the corresponding application filters. */}
         <section className="summary-grid" aria-label="Application summary">
           <button className="summary-card" onClick={()=>{filterStatus('All statuses');setTab('All applications');}}><div className="summary-label">Total applications<span className="summary-icon"><BriefcaseBusiness size={17}/></span></div><div className="summary-value">{counts.total}</div><p>A little momentum, every day</p></button>
@@ -117,7 +125,7 @@ export default function App({user,onLogout}:{user:User;onLogout:()=>Promise<void
     </div>
     {importOpen&&<ApplicationImportDialog onClose={()=>setImportOpen(false)} commit={commitImport} pendingId={pendingImport?.previewId} recoveryPreview={recoveryPreview} retiredImport={retiredImport} acknowledgeRetiredImport={acknowledgeRetiredImport} requestBusy={requestBusy} receipt={importReceipt} refreshFailed={importRefreshFailed} checkStatus={reconcileImport} refresh={retryImportRefresh}/>}
     {/* Mount a fresh editor for the selected record or a blank new application. */}
-    {drawer&&(!drawer.id||selected)&&<ApplicationDrawer key={drawer.id??'new'} application={selected??null} isNew={!drawer.id} onClose={()=>setDrawer(null)} onSave={saveApplication} onDelete={deleteApplication}/>}
+    {drawer&&(!drawer.id||selected)&&<ApplicationDrawer key={drawer.id??'new'} application={selected??null} isNew={!drawer.id} onClose={()=>setDrawer(null)} onSave={saveApplication} onDelete={deleteApplication} onLoadLatest={getLatest} createPending={!drawer.id&&!!pendingCreate} onCheckCreate={()=>resolveCreate()} onCancelCreate={()=>resolveCreate(true)}/>}
     {/* Announce action results and expose the version-aware undo operation. */}
     {toast&&<div className="toast" role="status"><CircleCheck size={18}/><span>{toast.message}</span>{toast.undo&&<button disabled={busy} onClick={undoChange}>Undo</button>}<button className="icon-button" aria-label="Dismiss notification" onClick={()=>setToast(null)}><X size={15}/></button></div>}
   </div>;

@@ -33,13 +33,16 @@ Verification links use 32 random bytes encoded as a 43-character base64url token
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/applications?page=0&size=50&sort=updated&q=&status=` | List this account's active records; page size 1–100 |
+| GET | `/applications/history?size=100` | Traverse history using an immutable creation-time/ID cursor; pass `cursor` on subsequent pages |
 | GET | `/applications/{id}` | One owned, non-deleted application, with ETag |
 | POST | `/applications` | Create an application |
 | PUT | `/applications/{id}` | Replace editable fields; requires `If-Match` |
 | DELETE | `/applications/{id}` | Soft-delete; returns the new record/version for undo |
 | POST | `/applications/{id}/restore` | Restore a deleted record; requires its current version |
 
-`sort` accepts `updated`, `company`, `deadline`, `applied`, or `created` (immutable creation time ascending, then ID). The frontend uses `created` for full-history loading so edits cannot move records between pages. If totals change or the traversal contains duplicate/missing records, loading fails with a refresh prompt instead of accepting an incomplete history. This is not a transaction snapshot across requests. `status` uses the labels below. The `q` filter is case-insensitive over company, role, location and notes. The frontend additionally searches interview-stage names in its cached history. Deleted records are excluded from listing and ordinary GET.
+`sort` accepts `updated`, `company`, `deadline`, `applied`, or `created` (immutable creation time ascending, then ID). These options apply to the legacy offset-paged endpoint. `status` uses the labels below. The `q` filter is case-insensitive over company, role, location and notes. The frontend additionally searches interview-stage names in its cached history. Deleted records are excluded from listing and ordinary GET.
+
+The frontend loads its complete history through `/applications/history`, which returns `{"content":[],"nextCursor":null}`. Omit `cursor` on the first request, then pass the returned non-null cursor unchanged until it is null. Size is bounded to 1–100. Cursors are validated and owner-scoped; queries always use the authenticated owner. Traversal uses immutable `(createdAt,id)` keys and an initial upper bound, so edits and earlier deletions cannot shift unread rows. It is not a point-in-time snapshot: unread records reflect current values/deletion state, and records created above the initial upper bound appear on the next refresh. Restoring a record behind the cursor also requires a refresh. Malformed envelopes, duplicate IDs, and cycling cursors fail the client load instead of accepting incomplete data.
 
 List response:
 
@@ -73,7 +76,15 @@ For new stages, pass null or a client-generated UUID. The server assigns the per
 
 ## Concurrency and undo
 
+The workspace supplies a UUID `Idempotency-Key` on every create POST. The server atomically stores its normalized-payload fingerprint and application ID with the new record. An explicit retry with the same key and payload returns that record's **current** state, including soft deletion; it does not create another record or restore an old version. A changed payload with the same key returns `409 CREATE_KEY_REUSED`. No-key create requests remain supported for existing API clients, but do not provide safe retry semantics.
+
+`GET /application-creates/{key}` returns `{"status":"COMPLETED","application":{...}}` or `{"status":"CANCELLED","application":null}`. Unknown keys return `404 CREATE_NOT_FOUND`; this alone does not prove an earlier request cannot still commit. `DELETE /application-creates/{key}` atomically cancels an unknown request and retains a cancellation tombstone, or returns the already-completed application's current state. A delayed create using a cancelled key returns `409 CREATE_CANCELLED`. These endpoints require authentication and enforce ownership; DELETE additionally requires CSRF. Keys must be canonical UUIDs. Receipts and cancellation tombstones remain durable across restarts and are not automatically purged.
+
+While an ordinary create's outcome is unknown, the browser retains only its owner, key, and payload fingerprint in tab session storage, locks other mutations, and offers status checks, an explicit retry of the unchanged draft, or cancellation. Reloading checks status without replaying a POST. Tab storage must be available before starting a create. Application contents are never cached there. Cancelling a request whose response was lost can recover the completed application instead of cancelling it.
+
 Updates, deletes and restores require `If-Match: "0"` (or the current numeric version). The version increments after every update. Missing `If-Match` returns **428**; a stale version returns **409**. The frontend does not automatically retry writes.
+
+After an edit conflict the drawer preserves the draft, loads the latest application, and pauses saving. Users can adopt the latest values or reapply their edits against the new version. Reapplying preserves remote changes to untouched fields; overlapping edits require explicit acknowledgement. Interview stages are compared as one ordered field. Neither choice saves automatically. Missing records and failed reads preserve the draft and allow another status check.
 
 A successful DELETE response includes the incremented version. Use that version to restore the same ID. Undoing an ordinary edit instead submits the previous field values with the version returned by the edit. Both paths reject intervening changes instead of silently overwriting them.
 

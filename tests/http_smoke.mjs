@@ -232,7 +232,13 @@ try {
 
   const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
   const draft = { company: 'Restart verification', role: 'Java Intern', location: 'Remote', status: 'Applied', appliedDate: yesterday, deadline: null, followUpDate: null, notes: 'Saved through real HTTP', stages: [] };
-  const application = await call('/api/applications', { method: 'POST', data: draft, headers, expected: 201 });
+  const createKey = crypto.randomUUID(), cancelledCreateKey = crypto.randomUUID();
+  const originalCreate = structuredClone(draft);
+  const application = await call('/api/applications', { method: 'POST', data: draft, headers: {...headers,'Idempotency-Key':createKey}, expected: 201 });
+  assert.equal((await call('/api/applications', { method: 'POST', data: draft, headers: {...headers,'Idempotency-Key':createKey}, expected: 201 })).id, application.id);
+  assert.equal((await call(`/api/application-creates/${createKey}`)).application.id, application.id);
+  assert.equal((await call(`/api/application-creates/${cancelledCreateKey}`, {method:'DELETE',headers})).status, 'CANCELLED');
+  assert.equal((await call('/api/applications', {method:'POST',data:draft,headers:{...headers,'Idempotency-Key':cancelledCreateKey},expected:409})).code, 'CREATE_CANCELLED');
   const applicationPath = `/api/applications/${application.id}`;
   draft.notes = 'Survives a complete JVM restart';
   const updated = await call(applicationPath, { method: 'PUT', data: draft, headers: { ...headers, 'If-Match': String(application.version) } });
@@ -242,6 +248,12 @@ try {
   await call(applicationPath, { expected: 404 });
   const restored = await call(applicationPath + '/restore', { method: 'POST', headers: { ...headers, 'If-Match': String(deleted.version) } });
   assert.equal(restored.notes, draft.notes);
+  const traversed=[];let historyCursor=null;
+  do {
+    const page=await call('/api/applications/history?size=3'+(historyCursor?'&cursor='+encodeURIComponent(historyCursor):''));
+    traversed.push(...page.content.map(record=>record.id));historyCursor=page.nextCursor;
+  } while(historyCursor);
+  assert.equal(traversed.length,11);assert.equal(new Set(traversed).size,11);assert.ok(traversed.includes(application.id));
 
   // Use real multipart bytes so CSRF, transport limits and strict parsing run through the embedded container.
   const csv = '\ufeffCompany,Role,Notes\r\n"CSV, Company",CSV Intern,"=literal\nsecond line"\r\n';
@@ -300,6 +312,9 @@ try {
   await call('/api/auth/login', { method: 'POST', data: identity, headers: await csrf(), form: true });
   assert.deepEqual(await call('/api/me/preferences'), { themePreference: 'dark' });
   assert.equal((await call(applicationPath)).notes, 'Concurrent edit retained');
+  const recoveredCreate=await call('/api/applications',{method:'POST',data:originalCreate,headers:{...await csrf(),'Idempotency-Key':createKey},expected:201});
+  assert.equal(recoveredCreate.id,application.id);assert.equal(recoveredCreate.notes,'Concurrent edit retained');
+  assert.equal((await call(`/api/application-creates/${cancelledCreateKey}`)).status,'CANCELLED');
   assert.deepEqual((await call(`/api/application-imports/${preview.id}`)).receipt, receipt, 'Original receipt survives JVM restart.');
   assert.deepEqual(await importCommit(preview, await csrf()), receipt, 'Duplicate commit after restart does not repeat writes.');
   assert.equal((await call(`/api/application-imports/${restartPreview.id}`)).status, 'PREVIEW');
@@ -310,7 +325,7 @@ try {
     data: { reviewDigest: 'missing', acknowledgement: { existingApplicationsToUpdate: 0 } } });
   await call('/api/auth/logout', { method: 'POST', headers: await csrf(), expected: 204 });
   await call('/api/applications', { expected: 401 });
-  console.log('PASS: real HTTP/assets, verification/authentication, preferences, CRUD/undo, multipart CSV add/update/preservation, native FormData bundled/Vite proxy, CSRF, atomic conflict, duplicate receipts, lost-response GET reconciliation, and application/import JVM restart recovery.');
+  console.log('PASS: real HTTP/assets, verification/authentication, preferences, keyed create/retry/cancellation, cursor history, CRUD/undo, multipart CSV add/update/preservation, native FormData bundled/Vite proxy, CSRF, atomic conflict, duplicate receipts, lost-response GET reconciliation, and application/create/import JVM restart recovery.');
 } catch (error) {
   console.error(error);
   if (fs.existsSync(logPath)) console.error(fs.readFileSync(logPath, 'utf8').slice(-5000));

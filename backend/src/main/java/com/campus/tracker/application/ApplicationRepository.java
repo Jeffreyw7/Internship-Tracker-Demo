@@ -13,10 +13,30 @@ import java.util.Optional;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
+import java.time.Instant;
+import org.springframework.data.domain.Pageable;
 
 public interface ApplicationRepository extends JpaRepository<InternshipApplication, UUID>, JpaSpecificationExecutor<InternshipApplication> {
     // Require record ID, signed-in owner, and deletion state in the same database lookup.
     Optional<InternshipApplication> findByIdAndOwnerIdAndDeleted(UUID id, UUID ownerId, boolean deleted);
+
+    @QueryHints(@QueryHint(name = "jakarta.persistence.query.timeout", value = "5000"))
+    Optional<InternshipApplication> findFirstByOwnerIdAndDeletedFalseOrderByCreatedAtDescIdDesc(UUID ownerId);
+
+    // Immutable tuple bounds avoid shifting unread rows when earlier records are deleted.
+    @QueryHints(@QueryHint(name = "jakarta.persistence.query.timeout", value = "5000"))
+    @Query("select a from InternshipApplication a where a.ownerId=:ownerId and a.deleted=false "
+            + "and (a.createdAt<:upperAt or (a.createdAt=:upperAt and a.id<=:upperId)) order by a.createdAt,a.id")
+    List<InternshipApplication> findHistoryFirst(@Param("ownerId") UUID ownerId,
+            @Param("upperAt") Instant upperAt, @Param("upperId") UUID upperId, Pageable page);
+
+    @QueryHints(@QueryHint(name = "jakarta.persistence.query.timeout", value = "5000"))
+    @Query("select a from InternshipApplication a where a.ownerId=:ownerId and a.deleted=false "
+            + "and (a.createdAt>:afterAt or (a.createdAt=:afterAt and a.id>:afterId)) "
+            + "and (a.createdAt<:upperAt or (a.createdAt=:upperAt and a.id<=:upperId)) order by a.createdAt,a.id")
+    List<InternshipApplication> findHistoryAfter(@Param("ownerId") UUID ownerId,
+            @Param("afterAt") Instant afterAt, @Param("afterId") UUID afterId,
+            @Param("upperAt") Instant upperAt, @Param("upperId") UUID upperId, Pageable page);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @QueryHints({@QueryHint(name = "jakarta.persistence.lock.timeout", value = "2000"),

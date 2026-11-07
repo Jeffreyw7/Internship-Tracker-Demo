@@ -136,7 +136,7 @@ test('unknown commit holds the hook write lock while a read refresh recovers and
     rows:[{rowNumber:1,action:'Update',applicationId:targetId,resultVersion:1}]};
   globalThis.fetch=async(url,options={})=>{
     if(url==='/api/auth/csrf')return response({token:'token',headerName:'X-CSRF-TOKEN'});
-    if(url.startsWith('/api/applications?')){historyReads++;return failHistory?response({message:'Read failed'},503):response({content:[application()],totalElements:1,totalPages:1,page:0,size:100});}
+    if(url.startsWith('/api/applications/history?')){historyReads++;return failHistory?response({message:'Read failed'},503):response({content:[application()],nextCursor:null});}
     if(url.endsWith('/commit')){writes++;failHistory=true;return new Response('{',{headers:{'Content-Type':'application/json'}});}
     if(url===`/api/application-imports/${id}`)return response(complete?{status:'COMPLETED',receipt}:{status:'PREVIEW',preview:preview()});
     throw Error('Unexpected request '+url+' '+options.method);
@@ -158,7 +158,7 @@ test('an old hook save response cannot populate or unlock a remounted account',a
   let account='First',resolveSave;
   globalThis.fetch=async(url,options={})=>{
     if(url==='/api/auth/csrf')return response({token:'token',headerName:'X-CSRF-TOKEN'});
-    if(url.startsWith('/api/applications?'))return response({content:[application(account)],totalElements:1,totalPages:1,page:0,size:100});
+    if(url.startsWith('/api/applications/history?'))return response({content:[application(account)],nextCursor:null});
     if(options.method==='PUT')return new Promise(resolve=>{resolveSave=resolve;});
     throw Error('Unexpected request '+url);
   };
@@ -199,7 +199,7 @@ for(const terminal of [404,410])for(const completion of ['direct','reconcile'])t
   sessionStorage.setItem('campus:pending-import',JSON.stringify({ownerId:id,previewId:id}));
   globalThis.fetch=async(url)=>{
     if(url==='/api/auth/csrf')return response({token:'token',headerName:'X-CSRF-TOKEN'});
-    if(url.startsWith('/api/applications?'))return response({content:[application()],totalElements:1,totalPages:1,page:0,size:100});
+    if(url.startsWith('/api/applications/history?'))return response({content:[application()],nextCursor:null});
     if(url===`/api/application-imports/${id}`)return response({code:terminal===404?'IMPORT_NOT_FOUND':'IMPORT_PREVIEW_EXPIRED',message:'Review no longer available'},terminal);
     if(url==='/api/application-imports/preview')return response(next,201);
     if(url===`/api/application-imports/${targetId}/commit`){writes++;return completion==='direct'?response(receipt):new Response('{',{headers:{'Content-Type':'application/json'}});}
@@ -255,9 +255,9 @@ test('a cross-tab account change replaces the workspace identity before loading 
     const response=value=>new Response(JSON.stringify(value),{headers:{'Content-Type':'application/json'}});
     if(url==='/api/auth/me')return response(account);
     if(url==='/api/me/preferences')return response({themePreference:'system'});
-    if(url.startsWith('/api/applications?')){
+    if(url.startsWith('/api/applications/history?')){
       reads.push(init.headers.get('X-Campus-Account'));
-      return response({content:[],totalElements:0,totalPages:0,page:0,size:100});
+      return response({content:[],nextCursor:null});
     }
     throw new Error('Unexpected request: '+url);
   };
@@ -279,7 +279,7 @@ test('unknown imports keep separate write locks through account A to B to A remo
   const receipt={importId:id,receiptId:targetId,completedAt:'2026-10-15T12:05:00Z',retainUntil:'2026-11-14T12:05:00Z',counts:preview().counts,rows:[]};
   globalThis.fetch=async(url)=>{
     if(url==='/api/auth/csrf')return response({token:'token',headerName:'X-CSRF-TOKEN'});
-    if(url.startsWith('/api/applications?'))return response({content:[application()],totalElements:1,totalPages:1,page:0,size:100});
+    if(url.startsWith('/api/applications/history?'))return response({content:[application()],nextCursor:null});
     if(url.endsWith('/commit')){commits++;return new Response('{',{headers:{'Content-Type':'application/json'}});}
     if(url===`/api/application-imports/${id}`)return response(completeA?{status:'COMPLETED',receipt}:{status:'PREVIEW',preview:preview()});
     if(url===`/api/application-imports/${targetId}`)return response({status:'PREVIEW',preview:preview({id:targetId})});

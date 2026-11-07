@@ -29,6 +29,7 @@ class PostgresPrivilegesIT {
    String[][] required={
        {"campus_users","SELECT","INSERT","UPDATE (theme_preference)","UPDATE (email_verified_at)"},
        {"applications","SELECT","INSERT","UPDATE"},
+       {"application_create_receipts","SELECT","INSERT"},
        {"interview_stages","SELECT","INSERT","UPDATE","DELETE"},
        {"application_imports","SELECT","INSERT","UPDATE","DELETE"},
        {"application_import_quota_locks","SELECT","INSERT","UPDATE","DELETE"},
@@ -83,7 +84,7 @@ class PostgresPrivilegesIT {
     s.execute("INSERT INTO interview_stages VALUES ('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000003',0,'Interview',NULL,'PLANNED')");
     s.execute("UPDATE interview_stages SET name='Changed'");
     assertThat(s.executeUpdate("DELETE FROM interview_stages")).isEqualTo(1);
-    for(String denied : new String[]{"CREATE TABLE public.forbidden_probe(id int)","CREATE TEMP TABLE forbidden_temp(id int)","CREATE SCHEMA forbidden_schema","CREATE ROLE forbidden_role","CREATE DATABASE forbidden_db","DROP TABLE applications","ALTER TABLE applications ADD COLUMN forbidden text","TRUNCATE applications","DELETE FROM applications","DELETE FROM campus_users","UPDATE campus_users SET display_name='forbidden'","UPDATE campus_users SET email_verification_exempt=TRUE","UPDATE campus_users SET password_hash='forbidden'","SELECT * FROM flyway_schema_history","SET ROLE campus_migrator","SET ROLE "+db.getUsername()}) {
+    for(String denied : new String[]{"CREATE TABLE public.forbidden_probe(id int)","CREATE TEMP TABLE forbidden_temp(id int)","CREATE SCHEMA forbidden_schema","CREATE ROLE forbidden_role","CREATE DATABASE forbidden_db","DROP TABLE applications","ALTER TABLE applications ADD COLUMN forbidden text","TRUNCATE applications","DELETE FROM applications","DELETE FROM campus_users","UPDATE application_create_receipts SET payload_fingerprint='forbidden'","DELETE FROM application_create_receipts","UPDATE campus_users SET display_name='forbidden'","UPDATE campus_users SET email_verification_exempt=TRUE","UPDATE campus_users SET password_hash='forbidden'","SELECT * FROM flyway_schema_history","SET ROLE campus_migrator","SET ROLE "+db.getUsername()}) {
      assertThatThrownBy(()->s.execute(denied)).as(denied).isInstanceOfSatisfying(SQLException.class,e->assertThat(e.getSQLState()).isEqualTo("42501"));
     }
    }
@@ -109,6 +110,8 @@ class PostgresPrivilegesIT {
           "--debug=false","--logging.level.root=WARN")) {
    var server=(org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext)context;
    verifyConcurrentAuth(context);
+   verifyOrdinaryCreateRecovery(context);
+   verifyApplicationHistoryTraversal(context);
    String base="http://127.0.0.1:"+server.getWebServer().getPort();
    var cookies=new java.net.CookieManager(null,java.net.CookiePolicy.ACCEPT_ALL);
    var client=java.net.http.HttpClient.newBuilder().cookieHandler(cookies).version(java.net.http.HttpClient.Version.HTTP_1_1).build();
@@ -151,6 +154,99 @@ class PostgresPrivilegesIT {
    verifyImportMaximumBatch(context);
    http(client,base,"POST","/api/auth/logout",null,token,204);
   }
+ }
+ private void verifyOrdinaryCreateRecovery(org.springframework.context.ConfigurableApplicationContext context) throws Exception {
+   var jdbc=context.getBean(org.springframework.jdbc.core.JdbcTemplate.class);
+   var creates=context.getBean(com.campus.tracker.application.ApplicationCreateService.class);
+   var applications=context.getBean(com.campus.tracker.application.ApplicationService.class);
+   UUID owner=importAccount(jdbc);String key=UUID.randomUUID().toString();
+   var input=new com.campus.tracker.application.ApplicationDtos.ApplicationRequest("PG durable create","Intern","Remote",
+       com.campus.tracker.application.ApplicationStatus.SAVED,null,null,null,"Original",List.of());
+   List<Object> retries=importRace(()->creates.create(owner,key,input),()->creates.create(owner,key,input));
+   var created=creates.get(owner,key).application();
+   assertThat(retries).containsExactly(created,created);
+   assertThat(jdbc.queryForObject("select count(*) from applications where owner_id=?",Long.class,owner)).isEqualTo(1);
+   assertThat(creates.cancel(owner,key).application()).isEqualTo(created);
+   var changed=new com.campus.tracker.application.ApplicationDtos.ApplicationRequest("PG durable create","Intern","Remote",
+       com.campus.tracker.application.ApplicationStatus.SAVED,null,null,null,"Changed",List.of());
+   assertThatThrownBy(()->creates.create(owner,key,changed)).isInstanceOfSatisfying(com.campus.tracker.common.ApiException.class,
+       failure->assertThat(failure.getCode()).isEqualTo("CREATE_KEY_REUSED"));
+   var edited=applications.update(owner,created.id(),Long.toString(created.version()),changed);
+   var deleted=applications.delete(owner,created.id(),Long.toString(edited.version()));
+   assertThat(creates.create(owner,key,input)).isEqualTo(deleted);
+   assertThat(creates.get(owner,key).application()).isEqualTo(deleted);
+   UUID other=importAccount(jdbc);
+   assertThatThrownBy(()->creates.get(other,key)).isInstanceOfSatisfying(com.campus.tracker.common.ApiException.class,
+       failure->assertThat(failure.getCode()).isEqualTo("CREATE_NOT_FOUND"));
+   assertThat(creates.cancel(other,key).status()).isEqualTo("CANCELLED");
+   assertThatThrownBy(()->creates.create(other,key,input)).isInstanceOfSatisfying(com.campus.tracker.common.ApiException.class,
+       failure->assertThat(failure.getCode()).isEqualTo("CREATE_CANCELLED"));
+   String rolledBackKey=UUID.randomUUID().toString();
+   var manager=context.getBean(org.springframework.transaction.PlatformTransactionManager.class);
+   new org.springframework.transaction.support.TransactionTemplate(manager).executeWithoutResult(tx->{
+       creates.create(owner,rolledBackKey,input);tx.setRollbackOnly();
+   });
+   assertThatThrownBy(()->creates.get(owner,rolledBackKey)).isInstanceOfSatisfying(com.campus.tracker.common.ApiException.class,
+       failure->assertThat(failure.getCode()).isEqualTo("CREATE_NOT_FOUND"));
+   assertThat(jdbc.queryForObject("select count(*) from applications where owner_id=?",Long.class,owner)).isEqualTo(1);
+   for(int attempt=0;attempt<5;attempt++) {
+     String racingKey=UUID.randomUUID().toString();
+     List<Object> race=importRace(()->creates.create(owner,racingKey,input),()->creates.cancel(owner,racingKey));
+     var outcome=creates.get(owner,racingKey);
+     assertThat(race.get(1)).isEqualTo(outcome);
+     if(outcome.status().equals("COMPLETED")) assertThat(race.get(0)).isEqualTo(outcome.application());
+     else assertThat(race.get(0)).isInstanceOfSatisfying(com.campus.tracker.common.ApiException.class,
+         failure->assertThat(failure.getCode()).isEqualTo("CREATE_CANCELLED"));
+   }
+ }
+ private void verifyApplicationHistoryTraversal(org.springframework.context.ConfigurableApplicationContext context) {
+   var jdbc=context.getBean(org.springframework.jdbc.core.JdbcTemplate.class);
+   var history=context.getBean(com.campus.tracker.application.ApplicationHistoryService.class);
+   assertThat(jdbc.queryForObject("select current_user",String.class)).isEqualTo("campus_runtime");
+   UUID owner=importAccount(jdbc),other=importAccount(jdbc);
+   Instant timestamp=Instant.parse("2026-01-01T00:00:00.123456Z");
+   long suffix=UUID.randomUUID().getLeastSignificantBits();
+   // The continuation crosses Java UUID's signed boundary while PostgreSQL orders UUIDs unsigned.
+   List<UUID> ids=List.of(new UUID(0,suffix),new UUID(Long.MAX_VALUE,suffix),new UUID(Long.MIN_VALUE,suffix),
+       new UUID(Long.MIN_VALUE+1,suffix),new UUID(-2,suffix));
+   for(UUID id:ids) insertHistoryApplication(jdbc,owner,id,timestamp);
+   insertHistoryApplication(jdbc,other,UUID.randomUUID(),timestamp);
+   UUID stage=UUID.randomUUID();
+   jdbc.update("insert into interview_stages(id,application_id,position,name,state) values (?,?,0,?,'PLANNED')",
+       stage,ids.get(2),"History interview");
+   var first=history.list(owner,2,null);
+   assertThat(first.content()).extracting(com.campus.tracker.application.ApplicationDtos.ApplicationView::id)
+       .containsExactly(ids.get(0),ids.get(1));
+   assertThat(first.nextCursor()).isNotNull();
+
+   jdbc.update("update applications set deleted=true,version=version+1 where owner_id=? and id in (?,?)",
+       owner,ids.get(0),ids.get(3));
+   jdbc.update("update applications set company=?,version=version+1 where owner_id=? and id=?",
+       "Edited during traversal",owner,ids.get(2));
+   UUID laterIdAtSameTime=new UUID(-1,suffix),laterTimestamp=UUID.randomUUID();
+   insertHistoryApplication(jdbc,owner,laterIdAtSameTime,timestamp);
+   insertHistoryApplication(jdbc,owner,laterTimestamp,timestamp.plusSeconds(1));
+   var last=history.list(owner,2,first.nextCursor());
+   assertThat(last.content()).extracting(com.campus.tracker.application.ApplicationDtos.ApplicationView::id)
+       .containsExactly(ids.get(2),ids.get(4));
+   assertThat(last.content().get(0).company()).isEqualTo("Edited during traversal");
+   assertThat(last.content().get(0).stages()).extracting(com.campus.tracker.application.ApplicationDtos.StageView::id)
+       .containsExactly(stage);
+   assertThat(last.nextCursor()).isNull();
+   assertThat(history.list(owner,100,null).content()).extracting(com.campus.tracker.application.ApplicationDtos.ApplicationView::id)
+       .containsExactly(ids.get(1),ids.get(2),ids.get(4),laterIdAtSameTime,laterTimestamp);
+
+   // Deleting every unread row, including the upper key, must terminate with an empty final page.
+   var beforeDeletion=history.list(owner,1,null);
+   assertThat(beforeDeletion.nextCursor()).isNotNull();
+   jdbc.update("update applications set deleted=true,version=version+1 where owner_id=? and id<>?",owner,ids.get(1));
+   var afterDeletion=history.list(owner,1,beforeDeletion.nextCursor());
+   assertThat(afterDeletion.content()).isEmpty();
+   assertThat(afterDeletion.nextCursor()).isNull();
+ }
+ private void insertHistoryApplication(org.springframework.jdbc.core.JdbcTemplate jdbc,UUID owner,UUID id,Instant timestamp) {
+   jdbc.update("insert into applications(id,owner_id,company,role,location,status,notes,created_at,updated_at) "
+       +"values (?,?,?,'Intern','','SAVED','',?,?)",id,owner,"PG history",Timestamp.from(timestamp),Timestamp.from(timestamp));
  }
  private void verifyImportConcurrencyAndExpiry(org.springframework.context.ConfigurableApplicationContext context) throws Exception {
    var jdbc=context.getBean(org.springframework.jdbc.core.JdbcTemplate.class);

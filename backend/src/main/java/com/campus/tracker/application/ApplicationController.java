@@ -17,7 +17,8 @@ import static com.campus.tracker.application.ApplicationDtos.*;
 @Validated
 public class ApplicationController {
     private final ApplicationService service;
-    public ApplicationController(ApplicationService service) { this.service = service; }
+    private final ApplicationCreateService creates;
+    public ApplicationController(ApplicationService service, ApplicationCreateService creates) { this.service = service; this.creates = creates; }
 
     // List a bounded page using validated search and pagination parameters.
     @GetMapping
@@ -40,8 +41,9 @@ public class ApplicationController {
     // Create a record for the signed-in user and return its resource URL.
     @PostMapping
     public ResponseEntity<ApplicationView> create(@AuthenticationPrincipal CampusPrincipal user,
+                                                  @RequestHeader(value = "Idempotency-Key", required = false) String key,
                                                   @Valid @RequestBody ApplicationRequest input) {
-        ApplicationView app = service.create(user.id(), input);
+        ApplicationView app = creates.create(user.id(), key, input);
         return ResponseEntity.created(URI.create("/api/applications/" + app.id())).eTag(Long.toString(app.version())).body(app);
     }
 

@@ -13,6 +13,10 @@ DO $$ BEGIN
  OR NOT has_table_privilege('campus_runtime','public.interview_stages','SELECT') OR NOT has_table_privilege('campus_runtime','public.interview_stages','INSERT') OR NOT has_table_privilege('campus_runtime','public.interview_stages','UPDATE') OR NOT has_table_privilege('campus_runtime','public.interview_stages','DELETE') THEN RAISE EXCEPTION 'Missing runtime DML privileges'; END IF;
 END $$;
 DO $$ BEGIN
+ IF NOT has_table_privilege('campus_runtime','public.application_create_receipts','SELECT') OR NOT has_table_privilege('campus_runtime','public.application_create_receipts','INSERT') THEN RAISE EXCEPTION 'Missing create receipt privileges'; END IF;
+ IF has_table_privilege('campus_runtime','public.application_create_receipts','UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') THEN RAISE EXCEPTION 'Excess create receipt privileges'; END IF;
+END $$;
+DO $$ BEGIN
  -- A comma-separated privilege argument tests ANY privilege; test each required grant separately.
  IF EXISTS (
   SELECT FROM (VALUES ('public.application_imports'),('public.application_import_quota_locks'),('public.application_import_rates')) AS tables(name)

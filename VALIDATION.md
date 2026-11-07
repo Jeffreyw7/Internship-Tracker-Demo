@@ -1,5 +1,30 @@
 # Validation record
 
+## Save recovery and history pagination - November 7, 2026
+
+Fixed duplicate ordinary creates, edit-conflict recovery, and offset-based history traversal using three implementation agents plus independent frontend/backend review. Existing uncommitted UI/design changes were preserved.
+
+- Ordinary creates now carry an owner-scoped UUID idempotency key. Application and receipt commit atomically; concurrent retries return the same record's current state, including deletion. Status reads and durable cancellation tombstones resolve uncertain requests safely across process restarts. The browser stores only owner/key/fingerprint in tab session storage, blocks unrelated writes while unresolved, and never automatically replays POST.
+- The editor retains the original base and unsaved draft after a conflict, compares against the latest record, and offers explicit adopt/reapply choices. Reapply preserves untouched remote fields; overlapping edits require acknowledgement. Missing/deleted records and failed reads preserve the draft. Late recovery reads cannot overwrite newer mutations or remove newly restored records. Recovery can retry a failed history load from the editor. Cancelling an uncertain create keeps its draft open and editable without requiring another history fetch; pending text remains readable/copyable.
+- Full-history loading now follows an owner-scoped `(createdAt,id)` cursor with a fixed upper boundary. Edits and earlier deletions do not shift unread offsets. Cursor validation, duplicate-ID/cycle rejection, microsecond timestamp ties, unsigned UUID ordering, deleted upper bounds and account isolation are covered. Legacy offset queries remain available. V5 adds durable create receipts; V6 adds the traversal index. Runtime receipt grants allow only SELECT/INSERT.
+
+| Check | Result |
+| --- | --- |
+| `npm test` | 128 passed; zero failures/skips, including 14 create/hook/App recovery tests and 12 drawer tests |
+| `npm run build` | Strict TypeScript and production Vite build passed |
+| Cached Maven 3.9.11, `-o test` from `backend/` | 159 tests passed; zero failures/errors/skips |
+| Cached Maven, `-o -Dtest=PostgresPrivilegesIT -Dpostgres.test.bin="C:/Program Files/PostgreSQL/18/bin" test` | 3 scenarios passed; zero failures/errors/skips |
+| Cached Maven, `-o -Pwith-ui -DskipTests package` | Rebuilt the bundled JAR after the frontend build; suites had already run separately |
+| `npm run test:smoke` | Passed real HTTP/assets, SMTP-capture verification, session/CSRF, keyed create/retry/cancellation, cursor traversal, CRUD/undo, CSV integration and full JVM-restart recovery |
+| Independent reviews | Backend review found no actionable defect. Frontend review findings on stale reads, blocked recovery, cancellation draft retention and accessible pending values were fixed and rechecked |
+| `git diff --check` | Passed |
+
+PostgreSQL checks use disposable clusters and the restricted runtime role for both fresh and legacy-upgrade paths. New coverage exercises create/cancel races, changed-payload rejection, rollback, deleted replay, owner isolation, timestamp/UUID cursor ties, concurrent edits/deletes, fixed upper bounds and refresh visibility. Regression tests were first observed failing for the targeted bugs before implementation; review findings received focused regressions as well.
+
+Checks used Node 25.2.0, Java 21.0.12.1 (Java 17 compilation target), cached Maven 3.9.11 and PostgreSQL 18.6. The Windows Maven wrapper remains unavailable, so cached Maven was invoked directly. Backend checks required approved execution outside the sandbox. Tests used synthetic accounts and isolated databases; no user database was migrated and nothing was deployed.
+
+Limits: JSDOM tests shim native dialog/scrolling APIs; actual browser modal behavior and screen-reader announcements were not reverified. Java 17 runtime, PostgreSQL 17, hosted proxies and external SMTP delivery were not tested here. History traversal is live, not a point-in-time snapshot: newer keys and records restored behind the cursor require refresh. The UI still loads all history into memory. Pending-create references survive reload in the same tab, but draft contents are intentionally not persisted; tab storage must be available to start a create. Create receipts/tombstones have no automatic purge.
+
 ## Component motion - October 31, 2026
 
 Added restrained interaction motion to the public landing page: a 750ms staggered folder entrance, 650ms fine-pointer paper separation on hover, button press/arrow feedback, 280ms preview changes, 220ms FAQ answer entrances, and 240ms mobile-menu entrances. No animation package, timers, or continuous loops were introduced. Preview content remounts inside the stable tab panel so keyboard focus remains on the selected tab. Updated the design guide, sidecar, and Figma motion notes.
