@@ -18,7 +18,7 @@ test('both semantic palettes have matching roles and readable text/control pairs
   }
 });
 test('component stylesheet only consumes defined semantic colors',()=>{
-  const styles=readFileSync(new URL('../src/styles.css',import.meta.url),'utf8');
+  const styles=['../src/styles.css','../src/workspace.css'].map(path=>readFileSync(new URL(path,import.meta.url),'utf8')).join('\n');
   assert.doesNotMatch(styles, /#[\da-fA-F]{3,8}\b/);
   const defined=new Set([...css.matchAll(/--([\w-]+):/g),...styles.matchAll(/--([\w-]+):/g)].map(m=>m[1]));
   for(const match of styles.matchAll(/var\(--([\w-]+)\)/g))assert.ok(defined.has(match[1]),match[1]);

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
-import { Mail, ShieldCheck } from 'lucide-react';
 import { ApiError, authApi, type User } from '../data/api';
-import { ThemeSelect } from './ThemeSelect';
+import AuthLayout from './AuthLayout';
+import PasswordField from './PasswordField';
 
 function ResendVerification({ initialEmail }: { initialEmail: string }) {
   const [email, setEmail] = useState(initialEmail);
@@ -19,29 +19,28 @@ function ResendVerification({ initialEmail }: { initialEmail: string }) {
       setError(error instanceof Error ? error.message : 'Unable to request an email. Please try again.');
     } finally { setBusy(false); }
   }
-  return <form className="application-form auth-form verification-resend" onSubmit={resend}>
+  return <form className="account-form account-resend" onSubmit={resend}>
     <label>Email for a new verification link<input type="email" required maxLength={254} autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} disabled={busy}/></label>
-    <p className="field-note">If this address has an account awaiting verification, we will send a link when eligible. Check spam too; delivery may take a few minutes.</p>
-    {error && <div className="error-box" role="alert">{error}</div>}
-    {message && <div className="verification-status" role="status">{message}</div>}
-    <button type="submit" className="button secondary" disabled={busy}>{busy ? 'Requesting…' : 'Resend verification email'}</button>
+    <p className="account-hint">If this address has an account awaiting verification, we will send a link when eligible. Check spam too; delivery may take a few minutes.</p>
+    {error && <div className="account-error" role="alert">{error}</div>}
+    {message && <div className="account-status" role="status">{message}</div>}
+    <button type="submit" className="account-submit account-secondary" disabled={busy}>{busy ? 'Requesting…' : 'Resend verification email'}</button>
   </form>;
 }
 
-export function CheckEmail({ email, onSignIn }: { email: string; onSignIn: () => void }) {
-  return <div className="auth-shell verification-shell"><div className="auth-appearance"><ThemeSelect/></div><section className="auth-card" aria-labelledby="check-email-title">
-    <Mail className="verification-icon" size={28} aria-hidden="true"/>
-    <h2 id="check-email-title">Check your email.</h2>
-    <p role="status">If your account is awaiting verification, open the link in your email and enter the password you chose at signup. Then sign in to your workspace.</p>
+export function CheckEmail({ email, onSignIn, onHome }: { email: string; onSignIn: () => void; onHome: () => void }) {
+  return <AuthLayout title="Check your email." verification onHome={onHome}>
+    <p className="account-message" role="status">If your account is awaiting verification, open the link in your email and enter the password you chose at signup. Then sign in to your workspace.</p>
     <ResendVerification initialEmail={email}/>
-    <button className="text-button auth-switch" onClick={onSignIn}>Back to sign in</button>
-  </section></div>;
+    <div className="account-verification-actions"><button className="account-link" onClick={onSignIn}>Back to sign in</button></div>
+  </AuthLayout>;
 }
 
-export default function EmailVerification({ token, user, onReturn, onSwitchAccount }: {
+export default function EmailVerification({ token, user, onReturn, onHome, onSwitchAccount }: {
   token: string | null;
   user: User | null;
   onReturn: () => void;
+  onHome: () => void;
   onSwitchAccount: () => Promise<void>;
 }) {
   const [password, setPassword] = useState('');
@@ -68,20 +67,18 @@ export default function EmailVerification({ token, user, onReturn, onSwitchAccou
     catch (error) { setError(error instanceof Error ? error.message : 'Unable to sign out. Please try again.'); }
     finally { setBusy(false); }
   }
-  return <div className="auth-shell verification-shell"><div className="auth-appearance"><ThemeSelect/></div><section className="auth-card" aria-labelledby="verification-title">
-    <ShieldCheck className="verification-icon" size={28} aria-hidden="true"/>
-    <h2 id="verification-title">{verified ? 'Email verified.' : 'Verify your email.'}</h2>
-    {verified ? <p role="status">Your email is verified. Sign in with your email and password to open your workspace.</p> : <p>Enter the password you chose when creating the account associated with this email link. Opening the link alone does not verify your account.</p>}
-    {user && <p className="verification-status">You are currently signed in as <strong>{user.email}</strong>. Verification keeps your current account signed in.</p>}
-    {error && <div className="error-box" role="alert">{error}</div>}
-    {!verified && token && <form className="application-form auth-form" onSubmit={confirm}>
-      <label>Signup password<input type="password" required maxLength={72} autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} disabled={busy}/></label>
-      <button type="submit" className="button primary" disabled={busy}>{busy ? 'Verifying…' : 'Verify email'}</button>
+  return <AuthLayout title={verified ? 'Email verified.' : 'Verify your email.'} verification onHome={onHome}>
+    {verified ? <p className="account-message" role="status">Your email is verified. Sign in with your email and password to open your workspace.</p> : <p className="account-message">Enter the password you chose when creating the account associated with this email link. Opening the link alone does not verify your account.</p>}
+    {user && <p className="account-status">You are currently signed in as <strong>{user.email}</strong>. Verification keeps your current account signed in.</p>}
+    {error && <div className="account-error" role="alert">{error}</div>}
+    {!verified && token && <form className="account-form" onSubmit={confirm}>
+      <PasswordField label="Signup password" value={password} onChange={setPassword} autoComplete="current-password" disabled={busy}/>
+      <button type="submit" className="account-submit" disabled={busy}>{busy ? 'Verifying…' : 'Verify email'}</button>
     </form>}
-    {!verified && <><p className="field-note verification-note">If you refresh this page, reopen the link from your email. If confirmation appeared to fail, try signing in before requesting another link.</p><ResendVerification initialEmail=""/></>}
-    <div className="verification-actions">
-      <button className="text-button" disabled={busy} onClick={onReturn}>{user ? 'Return to current workspace' : 'Back to sign in'}</button>
-      {user && <button className="text-button" disabled={busy} onClick={switchAccount}>Sign out to use another account</button>}
+    {!verified && <><p className="account-message">If you refresh this page, reopen the link from your email. If confirmation appeared to fail, try signing in before requesting another link.</p><ResendVerification initialEmail=""/></>}
+    <div className="account-verification-actions">
+      <button className="account-link" disabled={busy} onClick={onReturn}>{user ? 'Return to current workspace' : 'Back to sign in'}</button>
+      {user && <button className="account-link" disabled={busy} onClick={switchAccount}>Sign out to use another account</button>}
     </div>
-  </section></div>;
+  </AuthLayout>;
 }

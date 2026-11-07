@@ -1,0 +1,317 @@
+/* Campus's paper-and-ink identity, at the density of a working application. */
+.app-shell {
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font: 14px/1.6 'Campus Manrope', sans-serif;
+  font-variant-numeric: tabular-nums;
+  min-height: 100dvh;
+}
+.app-shell :is(h1, h2, h3, h4, button, input, select, textarea, .brand, .company-mark) { font-family: inherit; }
+.app-shell :is(a, button, input, select, textarea) { outline-offset: 4px; }
+.app-shell :focus-visible { outline: 2px solid var(--focus-ring); }
+.app-shell input, .app-shell textarea { caret-color: var(--text-primary); }
+.app-shell :is(a, .text-button) { text-underline-offset: 4px; }
+.app-shell .text-button:hover { text-decoration: underline; }
+.app-shell .workspace-skip { position: fixed; top: -100px; left: 24px; z-index: 110; padding: 12px 20px; border-radius: 8px; background: var(--action-bg); color: var(--action-text); }
+.app-shell .workspace-skip:focus { top: 12px; }
+.app-shell #workspace-content:focus { outline: none; }
+
+/* Navigation retains the three views and their status shortcuts. */
+.app-shell .sidebar { width: 240px; padding: 28px 20px 0; background: var(--bg-page); border-color: var(--border-subtle); }
+.app-shell .workspace-brand-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin: 0 12px 40px; }
+.app-shell .brand { flex-direction: column; align-items: flex-start; gap: 12px; padding: 0; margin: 0; min-height: 44px; font-size: 34px; font-weight: 800; letter-spacing: -.04em; line-height: 1; }
+.app-shell .brand-dot { color: var(--text-primary); }
+.app-shell .workspace-brand-caption { font-size: 8px; font-weight: 600; letter-spacing: 1.6px; line-height: 1.5; color: var(--text-secondary); }
+.app-shell .workspace-nav-close { display: none; }
+.app-shell .workspace-label { font-size: 10px; font-weight: 600; letter-spacing: 1px; padding-inline: 12px; margin-bottom: 12px; }
+.app-shell .nav-item { height: auto; min-height: 48px; border-radius: 9px; padding: 12px; gap: 12px; font-size: 13px; margin: 4px 0; }
+.app-shell .nav-item.active { background: var(--bg-selected); color: var(--text-primary); font-weight: 800; }
+.app-shell .nav-count { background: var(--bg-surface); font-size: 11px; padding: 2px 7px; border-radius: 5px; }
+.app-shell .sidebar-divider { background: var(--border-subtle); margin: 28px 12px; }
+.app-shell .pipeline-item { min-height: 44px; padding: 10px 12px; font-size: 12px; border-radius: 8px; }
+.app-shell .pipeline-item.selected { color: var(--text-primary); font-weight: 800; }
+.app-shell .pipeline-item span:last-child { font-size: 12px; }
+.app-shell .sidebar-bottom { padding-top: 40px; }
+.app-shell .little-note { padding: 20px 12px; margin: 0 0 20px; border: 0; border-radius: 0; background: none; overflow: visible; }
+.app-shell .little-note > svg { color: var(--text-secondary); margin-bottom: 12px; }
+.app-shell .little-note strong { font-size: 12px; font-weight: 800; }
+.app-shell .little-note p { font-size: 11px; line-height: 1.8; }
+.app-shell .note-line { width: 38px; height: 5px; border-radius: 2px; background: var(--brand-accent); }
+.app-shell .profile { gap: 10px; padding: 20px 0; }
+.app-shell .profile strong { font-size: 12px; max-width: 140px; }
+.app-shell .profile small { font-size: 10px; }
+.app-shell .avatar { width: 36px; height: 36px; flex-shrink: 0; background: var(--bg-subtle); font-size: 12px; font-weight: 800; }
+
+/* One compact welcome and one connected summary strip keep the data close. */
+.app-shell .main-shell { margin-left: 240px; min-width: 0; }
+.app-shell .topbar { min-height: 80px; height: auto; padding: 16px 40px; gap: 16px; background: var(--bg-page); }
+.app-shell .breadcrumbs { font-size: 12px; gap: 10px; min-width: 0; }
+.app-shell .breadcrumbs strong { font-weight: 600; }
+.app-shell .topbar-right { gap: 20px; font-size: 12px; }
+.app-shell .private-pill { background: none; border: 0; padding: 0; font-size: 11px; }
+.app-shell .topbar-date { font-size: 11px; white-space: nowrap; }
+.app-shell .theme-select { min-height: 44px; border-radius: 8px; background: var(--bg-surface); padding: 6px 10px; }
+.app-shell .theme-select select { min-height: 30px; font-size: 12px; }
+.app-shell .theme-saving { font-size: 10px; }
+.app-shell .theme-sync-error { width: min(280px, calc(100vw - 40px)); }
+.app-shell .main-shell > main { max-width: 1536px; padding: 32px 40px 24px; }
+.app-shell .welcome { padding: 32px; background: var(--bg-subtle); border-radius: 16px; gap: 32px; margin-bottom: 24px; }
+.app-shell .welcome > div { min-width: 0; }
+.app-shell .workspace-paper-mark { display: block; width: 38px; height: 6px; border-radius: 2px; background: var(--brand-accent); margin-bottom: 16px; }
+.app-shell .welcome h1 { font-size: 36px; font-weight: 800; line-height: 1.18; letter-spacing: -.035em; max-width: 24ch; text-wrap: balance; }
+.app-shell .welcome p { font-size: 13px; margin-top: 12px; line-height: 1.75; }
+.app-shell .button { min-height: 44px; padding: 10px 18px; font-size: 12px; font-weight: 600; border-radius: 100px; gap: 8px; }
+.app-shell .button.primary { box-shadow: none; }
+.app-shell .button.primary:hover { box-shadow: none; }
+.app-shell .button.secondary { color: var(--text-primary); }
+.app-shell .add-main { min-height: 48px; margin: 0; padding-inline: 22px; flex-shrink: 0; }
+.app-shell .text-button { min-height: 44px; font-size: 12px; }
+.app-shell .icon-button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 8px; }
+.app-shell .summary-grid { gap: 0; border: 1px solid var(--border-subtle); border-radius: 16px; background: var(--bg-surface); margin-bottom: 28px; }
+.app-shell .summary-card { border: 0; border-radius: 0; padding: 24px; box-shadow: none; background: transparent; }
+.app-shell .summary-card + .summary-card { border-left: 1px solid var(--border-subtle); }
+.app-shell .summary-card:first-child { border-radius: 16px 0 0 16px; }
+.app-shell .summary-card:last-child { border-radius: 0 16px 16px 0; }
+.app-shell .summary-card:hover { background: var(--bg-hover); box-shadow: none; }
+.app-shell .summary-card:focus-visible { outline-offset: -4px; }
+.app-shell .summary-label { font-size: 12px; color: var(--text-secondary); }
+.app-shell .summary-icon { background: none; color: var(--text-secondary); width: 20px; height: 20px; border-radius: 0; }
+.app-shell .summary-value { margin-top: 12px; font-size: 34px; font-weight: 800; letter-spacing: -.03em; gap: 12px; flex-wrap: wrap; }
+.app-shell .summary-detail { font-size: 10px; color: var(--text-secondary); }
+.app-shell .summary-card p { font-size: 11px; line-height: 1.6; margin-top: 8px; }
+.app-shell .offer-card { background: var(--bg-selected); }
+
+/* Tables, tabs, and filters use the same ink controls as the account pages. */
+.app-shell .workspace-panel { border: 1px solid var(--border-subtle); border-radius: 16px; box-shadow: none; overflow: visible; }
+.app-shell .panel-heading { padding: 24px 24px 16px; flex-wrap: wrap; gap: 16px 24px; }
+.app-shell .panel-title h2 { font-size: 22px; font-weight: 800; letter-spacing: -.025em; }
+.app-shell .panel-title { min-width: 0; }
+.app-shell .count-badge { font-size: 11px; padding: 3px 8px; }
+.app-shell .panel-actions { flex-wrap: wrap; gap: 8px; }
+.app-shell .sample-label { font-size: 10px; margin-right: 8px; }
+.app-shell .export-button { font-size: 11px; padding: 9px 14px; }
+.app-shell .tabs { gap: 28px; padding-inline: 24px; }
+.app-shell .tabs > button { font-size: 12px; min-height: 48px; padding: 12px 0; white-space: nowrap; }
+.app-shell .tabs > button.active { color: var(--text-primary); font-weight: 800; }
+.app-shell .tabs > button.active:after { background: var(--text-primary); }
+.app-shell .tabs > button > span { font-size: 10px; }
+.app-shell .toolbar { gap: 16px; padding: 20px 24px; flex-wrap: wrap; }
+.app-shell .search-field { min-height: 46px; height: auto; border-radius: 8px; padding-inline: 12px; flex: 1 1 240px; max-width: none; width: auto; }
+.app-shell .search-field:focus-within { outline: 2px solid var(--focus-ring); outline-offset: 2px; box-shadow: none; }
+.app-shell .search-field input { min-height: 44px; font-size: 13px; outline: none; }
+.app-shell .search-field kbd { font-size: 10px; }
+.app-shell .filters { gap: 8px; flex-wrap: wrap; }
+.app-shell .select-wrapper { height: auto; min-height: 46px; border-radius: 8px; padding-inline: 12px; font-size: 12px; }
+.app-shell .select-wrapper select { min-height: 44px; font-size: 12px; padding-right: 16px; max-width: none; }
+.app-shell .table-scroll { border-radius: 0 0 16px 16px; }
+.app-shell .table-scroll table { min-width: 760px; }
+.app-shell .table-scroll th { font-size: 11px; font-weight: 600; padding: 14px 12px; }
+.app-shell .table-scroll td { height: 80px; padding: 16px 12px; }
+.app-shell .table-scroll :is(th, td):first-child { padding-left: 24px; }
+.app-shell .table-scroll :is(th, td):last-child { padding-right: 20px; }
+.app-shell .company-button { min-height: 44px; gap: 12px; }
+.app-shell .company-button strong { font-size: 13px; font-weight: 800; }
+.app-shell .company-button small { font-size: 11px; margin-top: 4px; }
+.app-shell .company-mark { width: 36px; height: 38px; border: 0; border-radius: 7px; font-size: 16px; font-weight: 800; }
+.app-shell .company-mark.large { width: 56px; height: 58px; font-size: 26px; border-radius: 12px; }
+.app-shell .role-cell { font-size: 12px; }
+.app-shell .role-cell span { font-size: 10px; margin-top: 4px; }
+.app-shell .status { border: 0; border-radius: 100px; padding: 6px 10px; font-size: 11px; font-weight: 600; gap: 6px; }
+.app-shell .date-cell { font-size: 11px; }
+.app-shell .next-step { min-height: 44px; }
+.app-shell .next-step > span { font-size: 12px; }
+.app-shell .next-step small, .app-shell .no-step { font-size: 11px; }
+.app-shell .table-footer { padding: 16px 24px; font-size: 11px; gap: 16px; border-radius: 0 0 16px 16px; }
+.app-shell .pagination { gap: 12px; }
+.app-shell .pagination span { font-size: 12px; white-space: nowrap; }
+.app-shell .pagination .icon-button { border: 1px solid var(--border-control); width: 44px; height: 44px; }
+.app-shell .active-filter { padding: 12px 24px; font-size: 12px; flex-wrap: wrap; }
+.app-shell .empty-state { padding: 48px 24px; }
+.app-shell .empty-state h3 { font-size: 20px; font-weight: 800; }
+.app-shell .empty-state p { font-size: 13px; }
+
+/* Scheduled work stays actionable and visibly connected to its application. */
+.app-shell .activity-list { padding: 0 24px 12px; }
+.app-shell .activity-row { gap: 20px; padding-block: 24px; }
+.app-shell .activity-date { width: 52px; height: 60px; border-radius: 10px; }
+.app-shell .activity-date strong { font-size: 24px; font-weight: 800; }
+.app-shell .activity-date span { font-size: 10px; }
+.app-shell .activity-company { min-height: 44px; }
+.app-shell .activity-company strong { font-size: 14px; font-weight: 800; overflow-wrap: anywhere; }
+.app-shell .activity-company span { font-size: 12px; overflow-wrap: anywhere; }
+.app-shell .activity-due { font-size: 11px; }
+.app-shell .complete-button { font-size: 11px; }
+.app-shell .radar-section { margin-top: 32px; }
+.app-shell .radar-heading { margin-bottom: 16px; }
+.app-shell .radar-heading h2 { font-size: 17px; font-weight: 800; }
+.app-shell .radar-heading > span { font-size: 11px; }
+.app-shell .radar-grid { gap: 16px; }
+.app-shell .radar-card { border: 0; border-radius: 12px; padding: 24px; background: var(--bg-subtle); gap: 16px; }
+.app-shell .radar-card:hover { background: var(--bg-hover); }
+.app-shell .radar-icon { width: 36px; height: 36px; background: none; color: var(--text-secondary); }
+.app-shell .radar-card strong { font-size: 13px; font-weight: 800; }
+.app-shell .radar-card p { font-size: 12px; line-height: 1.6; }
+.app-shell .page-footer { font-size: 10px; margin-top: 28px; }
+.app-shell .toast { left: calc(50% + 120px); font-size: 13px; border-radius: 12px; padding: 12px 16px; max-width: min(680px, calc(100vw - 32px)); }
+.app-shell .toast > button:not(.icon-button) { min-height: 44px; padding-inline: 8px; }
+.app-shell .error-box { font-size: 13px; border-radius: 12px; line-height: 1.7; }
+
+/* Native dialogs retain their existing focus, draft, save, and recovery handling. */
+.app-shell .drawer { width: min(580px, 100vw); background: var(--bg-surface); }
+.app-shell .drawer::backdrop { backdrop-filter: none; }
+.app-shell .drawer-header { padding: 16px 28px; background: var(--bg-subtle); }
+.app-shell .drawer-header > span { font-size: 11px; letter-spacing: .8px; }
+.app-shell .drawer-body { padding: 28px; }
+.app-shell .drawer-body h2 { font-size: 30px; line-height: 1.2; letter-spacing: -.03em; font-weight: 800; }
+.app-shell .drawer-body > .muted { font-size: 13px; line-height: 1.75; }
+.app-shell .form-section { padding-top: 24px; margin-top: 28px; }
+.app-shell .form-section h3 { font-size: 14px; font-weight: 800; }
+.app-shell .application-form label { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.app-shell .application-form :is(input, select, textarea) { min-height: 48px; font-size: 14px; border-radius: 8px; padding: 12px; }
+.app-shell .application-form input::placeholder, .app-shell .application-form textarea::placeholder { color: var(--text-muted); opacity: 1; }
+.app-shell .field-note { font-size: 11px; }
+.app-shell .form-empty { font-size: 12px; border: 0; border-radius: 12px; padding: 20px; }
+.app-shell .stage-editor { border: 0; border-radius: 12px; padding: 16px 12px; gap: 8px; }
+.app-shell .stage-fields :is(input, select) { font-size: 12px; padding: 10px; }
+.app-shell .stage-fields > .form-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.app-shell .stage-number { border: 0; font-size: 11px; font-weight: 800; margin-top: 12px; }
+.app-shell .remove-stage { margin: 0; }
+.app-shell .drawer-footer { padding: 20px 28px; }
+.app-shell .detail-role { font-size: 16px; }
+.app-shell .location { font-size: 12px; }
+.app-shell .detail-dates { border: 0; border-radius: 12px; padding: 20px; gap: 12px; }
+.app-shell .detail-dates span { font-size: 11px; }
+.app-shell .detail-dates strong { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.app-shell .mini-count { font-size: 11px; }
+.app-shell .timeline-stage strong { font-size: 13px; font-weight: 600; }
+.app-shell .timeline-stage p { font-size: 12px; }
+.app-shell .detail-notes { border: 0; border-radius: 12px; padding: 20px; color: var(--text-secondary); font-size: 13px; }
+.app-shell .updated { font-size: 11px; }
+.app-shell .delete-confirm { font-size: 13px; border-radius: 12px; }
+.app-shell .delete-confirm p { font-size: 12px; }
+.app-shell .import-dialog { padding: 28px; border: 0; border-radius: 16px; }
+.app-shell .import-dialog h2 { font-size: 26px; font-weight: 800; letter-spacing: -.03em; }
+.app-shell .import-dialog h3 { font-size: 17px; font-weight: 800; }
+.app-shell .import-dialog :is(p, label, summary) { font-size: 13px; }
+.app-shell .import-dialog input:not([type=radio]):not([type=checkbox]), .app-shell .import-dialog select, .app-shell .import-dialog textarea { min-height: 46px; font-size: 14px; border-radius: 8px; }
+.app-shell .import-dialog :is(summary, .import-checkbox, .import-inline label) { min-height: 44px; }
+.app-shell .import-dialog :is(input[type=checkbox], input[type=radio]) { accent-color: var(--action-bg); }
+
+@media (max-width: 1200px) {
+  .app-shell .sidebar { width: 216px; padding-inline: 16px; }
+  .app-shell .main-shell { margin-left: 216px; }
+  .app-shell .topbar { padding-inline: 28px; }
+  .app-shell .topbar-right { gap: 16px; }
+  .app-shell .topbar-date { display: none; }
+  .app-shell .main-shell > main { padding: 28px; }
+  .app-shell .welcome { padding: 28px; gap: 24px; }
+  .app-shell .welcome h1 { font-size: 30px; }
+  .app-shell .summary-card { padding: 20px 16px; }
+  .app-shell .summary-value { font-size: 30px; }
+  .app-shell .summary-label { font-size: 11px; }
+  .app-shell .summary-detail { display: block; width: 100%; }
+  .app-shell .toast { left: calc(50% + 108px); }
+}
+@media (max-width: 1000px) {
+  .app-shell .private-pill { display: none; }
+  .app-shell .welcome { flex-wrap: wrap; }
+  .app-shell .welcome h1 { max-width: none; }
+  .app-shell .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-shell .summary-card { padding: 20px; }
+  .app-shell .summary-card:nth-child(3) { border-left: 0; }
+  .app-shell .summary-card:nth-child(n+3) { border-top: 1px solid var(--border-subtle); }
+  .app-shell .summary-card:first-child { border-radius: 16px 0 0 0; }
+  .app-shell .summary-card:nth-child(2) { border-radius: 0 16px 0 0; }
+  .app-shell .summary-card:nth-child(3) { border-radius: 0 0 0 16px; }
+  .app-shell .summary-card:last-child { border-radius: 0 0 16px 0; }
+  .app-shell .summary-detail { width: auto; }
+  .app-shell .filters { width: 100%; }
+  .app-shell .select-wrapper { flex: 1; min-width: 0; }
+  .app-shell .select-wrapper select { width: 100%; min-width: 0; }
+  .app-shell .radar-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 800px) {
+  .app-shell .sidebar { width: min(280px, calc(100vw - 40px)); background: var(--bg-surface); transform: translateX(-100%); visibility: hidden; transition: transform 200ms ease-out, visibility 200ms; }
+  .app-shell .sidebar.is-open { transform: translateX(0); visibility: visible; }
+  .app-shell .workspace-nav-close { display: inline-grid; }
+  .app-shell .workspace-brand-row { margin-inline: 8px; }
+  .app-shell .mobile-menu { display: inline-grid; }
+  .app-shell .main-shell { margin-left: 0; }
+  .app-shell .topbar { min-height: 76px; padding: 12px 24px; flex-wrap: wrap; gap: 8px 16px; }
+  .app-shell .topbar-right { margin-left: auto; }
+  .app-shell .breadcrumbs > span, .app-shell .breadcrumbs > svg { display: none; }
+  .app-shell .main-shell > main { padding: 24px; }
+  .app-shell .toast { left: 50%; }
+}
+@media (max-width: 700px) {
+  .app-shell .table-scroll table { min-width: 0; }
+  .app-shell .table-scroll tr { padding: 20px; row-gap: 12px; }
+  .app-shell .table-scroll td { height: auto; padding: 0; }
+  .app-shell .table-scroll td:first-child { padding: 0; }
+  .app-shell .table-scroll td:nth-child(2) { padding-left: 48px; padding-right: 36px; font-size: 12px; }
+  .app-shell .table-scroll td:nth-child(5) { padding-left: 48px; padding-right: 36px; }
+  .app-shell .table-scroll td:last-child { right: 12px; bottom: 12px; padding: 0; }
+  .app-shell .table-scroll .company-button strong { font-size: 13px; max-width: 160px; }
+  .app-shell .table-scroll .company-button small { font-size: 11px; }
+  .app-shell .next-step { display: block; }
+  .app-shell .next-step small { margin-top: 4px; }
+  .app-shell .activity-row { gap: 12px; }
+}
+@media (max-width: 520px) {
+  .app-shell .topbar { padding-inline: 16px; }
+  .app-shell .topbar-right { gap: 12px; }
+  .app-shell .breadcrumbs { font-size: 12px; gap: 6px; }
+  .app-shell .main-shell > main { padding: 20px 16px; }
+  .app-shell .welcome { padding: 24px; margin-bottom: 20px; }
+  .app-shell .welcome h1 { font-size: 28px; }
+  .app-shell .welcome p { font-size: 13px; max-width: none; }
+  .app-shell .add-main { margin-top: 20px; }
+  .app-shell .summary-grid { margin-bottom: 24px; }
+  .app-shell .summary-card { padding: 16px; }
+  .app-shell .summary-value { font-size: 28px; gap: 6px; }
+  .app-shell .summary-label { font-size: 11px; align-items: flex-start; }
+  .app-shell .summary-detail { font-size: 10px; }
+  .app-shell .summary-card p { font-size: 11px; min-height: 0; }
+  .app-shell .panel-heading { padding: 20px 16px 12px; }
+  .app-shell .panel-actions { width: 100%; gap: 6px; }
+  .app-shell .export-button { padding-inline: 12px; font-size: 10px; }
+  .app-shell .tabs { padding-inline: 16px; gap: 20px; overflow-x: auto; }
+  .app-shell .tabs > button { font-size: 11px; flex-shrink: 0; }
+  .app-shell .tabs > button:focus-visible { outline-offset: -3px; }
+  .app-shell .toolbar { padding: 16px; gap: 12px; }
+  .app-shell .search-field input { font-size: 16px; }
+  .app-shell .search-field kbd { display: none; }
+  .app-shell .select-wrapper { padding-inline: 8px; }
+  .app-shell .select-wrapper select { font-size: 12px; }
+  .app-shell .table-scroll tr { padding: 16px; column-gap: 8px; grid-template-columns: minmax(0, 1fr) auto; }
+  .app-shell .table-scroll .company-button strong { max-width: 100%; font-size: 12px; }
+  .app-shell .table-scroll .company-button small { max-width: 100%; font-size: 10px; }
+  .app-shell .company-button { gap: 8px; }
+  .app-shell .company-mark { width: 30px; height: 34px; font-size: 14px; }
+  .app-shell .table-scroll td:nth-child(2), .app-shell .table-scroll td:nth-child(5) { padding-left: 38px; }
+  .app-shell .status { font-size: 10px; padding-inline: 8px; }
+  .app-shell .table-footer { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
+  .app-shell .pagination { margin-left: auto; }
+  .app-shell .radar-card { padding: 20px 16px; gap: 12px; }
+  .app-shell .radar-card strong { font-size: 12px; }
+  .app-shell .radar-card p { font-size: 11px; }
+  .app-shell .activity-list { padding-inline: 16px; }
+  .app-shell .activity-date { width: 44px; height: 54px; }
+  .app-shell .activity-company strong { font-size: 13px; }
+  .app-shell .activity-company span { font-size: 11px; }
+  .app-shell .complete-button { padding-inline: 12px; }
+  .app-shell .drawer-body, .app-shell .drawer-header, .app-shell .drawer-footer { padding: 20px; }
+  .app-shell .drawer-body h2 { font-size: 26px; }
+  .app-shell .application-form :is(input, select, textarea) { font-size: 16px; }
+  .app-shell .stage-fields > .form-grid { grid-template-columns: minmax(0, 1fr); }
+  .app-shell .stage-editor { flex-wrap: wrap; }
+  .app-shell .stage-fields { flex-basis: calc(100% - 40px); }
+  .app-shell .remove-stage { margin-left: auto; }
+  .app-shell .section-heading { align-items: flex-start; flex-wrap: wrap; }
+  .app-shell .drawer-footer { flex-wrap: wrap; gap: 12px; }
+  .app-shell .import-dialog { padding: 20px; }
+  .app-shell .import-dialog input:not([type=radio]):not([type=checkbox]), .app-shell .import-dialog select, .app-shell .import-dialog textarea { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell *, .app-shell *::before, .app-shell *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

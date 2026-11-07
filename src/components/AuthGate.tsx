@@ -1,22 +1,34 @@
 // Checks the session and switches between account forms and the signed-in workspace.
 import { useEffect, useLayoutEffect, useState, useSyncExternalStore, type FormEvent } from 'react';
-import { GraduationCap, LockKeyhole, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { ApiError, authApi, subscribeSessionChanges, type User } from '../data/api';
 import App from '../App';
 import { PASSWORD_REQUIREMENTS, passwordError } from '../domain/password';
 import { useTheme } from '../theme/ThemeProvider';
-import { ThemeSelect } from './ThemeSelect';
+import AuthLayout from './AuthLayout';
+import PasswordField from './PasswordField';
 import EmailVerification, { CheckEmail } from './EmailVerification';
 import { verificationLinks } from '../domain/verificationLink';
+import LandingPage from './LandingPage';
 
 const emptySubscribe = () => () => {};
 const emptySnapshot = () => null;
+const publicScreen = () => window.location.hash === '#create-account' ? 'register' : window.location.hash === '#sign-in' ? 'login' : 'landing';
+const subscribeNavigation = (listener: () => void) => {
+  window.addEventListener('hashchange', listener);
+  return () => window.removeEventListener('hashchange', listener);
+};
+function openAuth(mode: 'login' | 'register') {
+  // Native hash navigation preserves back/forward without requiring server-side routes.
+  window.location.hash = mode === 'register' ? 'create-account' : 'sign-in';
+}
 
 export default function AuthGate() {
   // Track authentication, form input, and request state independently.
   const [user,setUser]=useState<User|null>(null);
   const [loading,setLoading]=useState(true);
-  const [mode,setMode]=useState<'login'|'register'>('login');
+  const screen=useSyncExternalStore(subscribeNavigation,publicScreen,()=> 'landing');
+  const mode=screen==='register'?'register':'login';
   const [checkEmail,setCheckEmail]=useState(false);
   const verification=useSyncExternalStore(verificationLinks?.subscribe??emptySubscribe,verificationLinks?.getSnapshot??emptySnapshot,emptySnapshot);
   const [error,setError]=useState('');
@@ -30,6 +42,7 @@ export default function AuthGate() {
   const [email,setEmail]=useState('');
   const [password,setPassword]=useState('');
   const [samples,setSamples]=useState(true);
+  useEffect(()=>{setPassword('');setCheckEmail(false);if(screen!=='landing')window.scrollTo(0,0);},[screen]);
   // Load the current profile and listen for session-expiration events from the API layer.
   useEffect(()=>{
     let alive=true,revision=0;
@@ -42,7 +55,7 @@ export default function AuthGate() {
     };
     loadProfile();
     const unsubscribe=subscribeSessionChanges(loadProfile);
-    const expired=()=>{revision++;setUser(null);setLoading(false);setError('Your session ended. Sign in to continue.');};
+    const expired=()=>{revision++;setUser(null);setLoading(false);openAuth('login');setError('Your session ended. Sign in to continue.');};
     window.addEventListener('campus:session-expired',expired);
     return()=>{alive=false;unsubscribe();window.removeEventListener('campus:session-expired',expired);};
   },[]);
@@ -62,25 +75,34 @@ export default function AuthGate() {
     }finally{setBusy(false);}
   }
   // Return to the account screen only after the server confirms logout.
-  async function logout(){await authApi.logout();setUser(null);setError('');}
-  function returnToSignIn(){verificationLinks?.dismiss();setCheckEmail(false);setMode('login');setPassword('');setError('');}
-  // Avoid showing the sign-in screen until the initial session lookup finishes.
-  if(loading)return <div className="auth-shell"><div className="auth-appearance"><ThemeSelect/></div><div className="auth-card" role="status">Opening your workspace…</div></div>;
-  if(verification)return <EmailVerification key={verification.token??'invalid'} token={verification.token} user={user} onReturn={returnToSignIn} onSwitchAccount={async()=>{await logout();returnToSignIn();}}/>;
+  async function logout(){await authApi.logout();setUser(null);setError('');openAuth('login');}
+  function returnToSignIn(){verificationLinks?.dismiss();setCheckEmail(false);openAuth('login');setPassword('');setError('');}
+  function returnHome(){verificationLinks?.dismiss();setCheckEmail(false);setPassword('');setError('');window.location.hash='top';}
+  // Avoid showing account forms until the initial session lookup finishes.
+  if(loading)return <div className="account-page account-loading" role="status">Opening your workspace.</div>;
+  if(verification)return <EmailVerification key={verification.token??'invalid'} token={verification.token} user={user} onReturn={returnToSignIn} onHome={returnHome} onSwitchAccount={async()=>{await logout();returnToSignIn();}}/>;
   if(user)return <App key={user.id} user={user} onLogout={logout}/>;
-  if(checkEmail)return <CheckEmail email={email} onSignIn={returnToSignIn}/>;
-  // Render signup-specific fields and policy guidance only in registration mode.
-  return <div className="auth-shell"><div className="auth-appearance"><ThemeSelect/></div><div className="auth-story"><div className="brand"><span className="brand-symbol"><GraduationCap size={24}/></span><span>campus.</span></div><span className="eyebrow">YOUR NEXT CHAPTER</span><h1>Make room for<br/>what comes next.</h1><p>Your applications, interviews, and next steps.<br/>One personal workspace, ready when you are.</p><span className="auth-note"><LockKeyhole size={15}/> Your applications are private to your account.</span></div><div className="auth-card"><h2>{mode==='login'?'Welcome back.':'Start your next chapter.'}</h2><p>{mode==='login'?'Sign in to your internship workspace.':'Create your account and make your first move.'}</p><form className="application-form auth-form" onSubmit={submit}>
-    {/* Collect a display name only when creating a new account. */}
-    {mode==='register'&&<label>Your name<input required maxLength={80} autoComplete="name" value={displayName} onChange={e=>setDisplayName(e.target.value)} placeholder="Jeffrey Wang"/></label>}
-    {/* Use email as the account identifier for both signup and login. */}
-    <label>Email<input type="email" required maxLength={254} autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com"/></label>
-    {/* Use the appropriate browser autofill mode and associate signup requirements with the input. */}
-    <label>Password<input type="password" required minLength={mode==='register'?12:1} maxLength={72} aria-describedby={mode==='register'?'password-requirements':undefined} autoComplete={mode==='register'?'new-password':'current-password'} value={password} onChange={e=>setPassword(e.target.value)}/></label>
-    {/* Explain the enforced password policy and let the user opt into sample records. */}
-    {mode==='register'&&<><small id="password-requirements" className="field-note">{PASSWORD_REQUIREMENTS} Maximum 72 UTF-8 bytes; some characters use more than one byte.</small><label className="sample-check"><input type="checkbox" checked={samples} onChange={e=>setSamples(e.target.checked)}/>Start with 10 illustrative sample applications</label></>}
-    {/* Announce validation and server errors to assistive technology. */}
-    {error&&<div className="error-box" role="alert">{error}</div>}
-    <button disabled={busy} className="button primary" type="submit">{busy?'Please wait…':mode==='login'?'Sign in':'Create workspace'}<ArrowRight size={16}/></button>
-  </form><button className="text-button auth-switch" disabled={busy} onClick={()=>{setMode(mode==='login'?'register':'login');setPassword('');setError('');}}>{mode==='login'?'New here? Create an account':'Already have an account? Sign in'}</button>{mode==='login'&&<button className="text-button auth-switch" disabled={busy} onClick={()=>{setCheckEmail(true);setPassword('');setError('');}}>Need a verification email?</button>}</div></div>;
+  if(checkEmail)return <CheckEmail email={email} onSignIn={returnToSignIn} onHome={returnHome}/>;
+  if(screen==='landing')return <LandingPage/>;
+  return <AuthLayout title={mode==='login'?'Welcome back.':'Start your next chapter.'}
+    description={mode==='login'?'Sign in to your internship workspace.':'Create your account and make your first move.'} onHome={returnHome}>
+    <form className="account-form" onSubmit={submit} aria-busy={busy}>
+      {mode==='register'&&<label>Your name<input name="displayName" required maxLength={80} autoComplete="name" disabled={busy} value={displayName} onChange={e=>setDisplayName(e.target.value)} placeholder="Your name"/></label>}
+      <label>Email<input name="email" type="email" required maxLength={254} autoComplete="username" disabled={busy} value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com"/></label>
+      <PasswordField key={mode} value={password} onChange={setPassword} disabled={busy}
+        minLength={mode==='register'?12:1} autoComplete={mode==='register'?'new-password':'current-password'}
+        describedBy={mode==='register'?'password-requirements':undefined}/>
+      {mode==='register'&&<>
+        <small id="password-requirements" className="account-hint">{PASSWORD_REQUIREMENTS} Maximum 72 UTF-8 bytes; some characters use more than one byte.</small>
+        <label className="account-samples"><input type="checkbox" checked={samples} disabled={busy} onChange={e=>setSamples(e.target.checked)}/><span>Start with 10 illustrative sample applications<small>Explore the workspace, then make it your own.</small></span></label>
+      </>}
+      {error&&<div className="account-error" role="alert">{error}</div>}
+      <button disabled={busy} className="account-submit" type="submit">{busy?'Please wait.':mode==='login'?'Sign in':'Create workspace'}<ArrowRight size={18} aria-hidden="true"/></button>
+    </form>
+    <p className="account-switch">{mode==='login'?'New here?':'Already have an account?'}{' '}
+      <button className="account-link" disabled={busy} onClick={()=>{openAuth(mode==='login'?'register':'login');setPassword('');setError('');}}>{mode==='login'?'Create an account':'Sign in'}</button>
+    </p>
+    {mode==='login'&&<div className="account-help"><button className="account-link" disabled={busy} onClick={()=>{setCheckEmail(true);setPassword('');setError('');}}>Need a verification email?</button></div>}
+    {mode==='register'&&<p className="account-next-step">Next, confirm your email to open your workspace.</p>}
+  </AuthLayout>;
 }

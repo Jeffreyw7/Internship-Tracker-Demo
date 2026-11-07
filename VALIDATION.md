@@ -1,5 +1,46 @@
 # Validation record
 
+## Component motion - October 31, 2026
+
+Added restrained interaction motion to the public landing page: a 750ms staggered folder entrance, 650ms fine-pointer paper separation on hover, button press/arrow feedback, 280ms preview changes, 220ms FAQ answer entrances, and 240ms mobile-menu entrances. No animation package, timers, or continuous loops were introduced. Preview content remounts inside the stable tab panel so keyboard focus remains on the selected tab. Updated the design guide, sidecar, and Figma motion notes.
+
+- `npm test`: 84 passed, no failures or skips.
+- `npm run build`: TypeScript and production Vite build passed.
+- Browser inspection: desktop and 390px mobile; no horizontal overflow. Confirmed folder hover transforms and return transitions, preview timing and repeated keyboard switching, FAQ timing, mobile menu timing, and Escape focus recovery.
+- Reduced motion: all new motion is scoped to `prefers-reduced-motion: no-preference`; the existing reduce override remains in place. Reviewed the CSS guards without changing the host accessibility preference.
+- `git diff --check`: passed.
+
+Backend tests and bundled HTTP/restart checks were not rerun because the change is limited to public presentation and animation.
+
+## Hero artwork revision - October 31, 2026
+
+Replaced the reference-inspired silver orbit with an original ascending paper-folder illustration: Saved, Applied, and Your next conversation. Updated the editable Figma component and both desktop/mobile instances, responsive CSS, finite staggered motion, and the design documentation. The illustration remains decorative and respects reduced-motion preferences.
+
+- `npm test`: 84 passed, no failures or skips.
+- `npm run build`: strict TypeScript and production Vite build passed.
+- `git diff --check`: passed.
+- Browser review: 320px, 390px, 768px, and 1280px; labels remain inside the viewport and no horizontal page overflow. Confirmed final mobile copy width.
+- Figma review: desktop and mobile hero screenshots; editable folder vectors and text, with all three main labels unobscured.
+
+Backend suites and HTTP/restart checks were not rerun because this revision changes only public presentation and design documentation.
+
+## Public landing page - October 30, 2026
+
+Added a separate public landing surface inspired by the supplied ribbon-animation reference, with responsive product previews, FAQs, and hash-based entry points to the existing authentication screens. The authenticated tracker and backend contracts are unchanged. The [editable Figma file](https://www.figma.com/design/7RYwF1BR4IiplQKBaq27zA?node-id=7-166) contains desktop and mobile compositions, native vector artwork, shared color variables, and handoff notes.
+
+| Check | Result |
+| --- | --- |
+| `npm test` | 84 passed; no failures or skips |
+| `npm run build` | Strict TypeScript and production Vite build passed |
+| Navigation regression tests | Five passed: public signup/sign-in/home, verification priority and token removal, session-expiration recovery, existing sessions, and browser navigation out of email assistance |
+| Browser inspection | Desktop 1280px and mobile 390px rendered without horizontal page overflow; inspected full-page captures |
+| Browser interactions | Mobile menu, preview tabs including arrow-key navigation, FAQ expansion, signup/sign-in entry points, and browser-back recovery from email assistance verified |
+| Figma visual and structural checks | Desktop 1440 x 3573 and mobile 390 x 4151; 158 editable text nodes, eight component instances, no rasterized UI fills |
+| Independent finish review | Five listed navigation, contrast, and visual fixes resolved in a scoped verdict pass |
+| `git diff --check` | Passed |
+
+Backend suites and the bundled HTTP/restart smoke test were not rerun: this change does not modify HTTP transport, server code, schema, or persistence. Browser account navigation was checked without submitting real credentials; the preview backend was not running, so live registration/login and email delivery were not exercised. No deployment or bundled JAR rebuild was performed. Impeccable's optional command-line detector was unavailable because its engine could not be installed; direct skill guidance and an independent visual/code review were used.
+
 ## CSV import - October 15, 2026
 
 Implemented the approved CSV import workflow: selection/mapping/correction/exclusion, complete before/after review and update acknowledgement, immutable owner-bound previews with safe supersession, atomic application changes and durable receipts, status-only automatic recovery, retention/cleanup and persisted admission quotas. Application ID/structured-stage exports and import reports share spreadsheet-risk reduction. V4 and explicit runtime grants cover the new metadata tables. See the [API contract](docs/API.md#csv-imports), [implementation adjustments](docs/superpowers/specs/2026-10-15-csv-import-design.md#9-implementation-adjustments-and-verification-boundaries), and [consolidated independent review](docs/superpowers/reviews/2026-10-15-csv-import-implementation-review.md).
@@ -298,3 +339,33 @@ See [review findings, fixes, and complete verification limits](docs/superpowers/
 - Clean `mvn -Pwith-ui clean verify` passed all 143 backend tests with no failures or skips on local Java 21. Existing authentication, CSRF, context-path throttling, work-limit and session tests passed. No `AntPathRequestMatcher` compiler warnings remained; unrelated deprecation/runtime notices remain outside this change.
 - The bundled HTTP/SMTP/native multipart/Vite proxy/restart smoke test passed. Frontend sources did not change. Java 17, PostgreSQL 17 and container builds are verified separately by this branch's hosted CI.
 - The same independent read-only reviewer found no actionable findings or concrete bypass on firewall-accepted paths. Native encoded-path browser probes were not performed locally.
+
+## 2026-10-31 public account page redesign
+
+- Login, signup, email assistance, and email verification now share the landing page's Manrope typography, paper/ink/yellow palette, wordmark, and folder artwork. Styles and additional field/error tokens are scoped to `.account-page`; the authenticated workspace theme and transport remain unchanged.
+- `npm test`: **89 passed**, no failures or skips. Account-flow coverage includes public navigation, verification priority/token removal, expired sessions, existing signed-in sessions, password visibility reset, destination-heading focus, signup field/sample submission, verification return-home behavior, and skip-link route preservation.
+- `npm run build`: TypeScript and Vite production build passed. `git diff --check` passed; Git reports only expected LF-to-CRLF normalization notices.
+- A regression test first reproduced the new skip link routing to the landing page. The fixed link preserves the current auth hash and focuses its heading. An independent static reviewer scored that fix and the Campus home link's 44px target fix resolved.
+- Calculated contrast: placeholders on white 5.02:1; secondary text on paper 6.07:1; field border on white 3.01:1; error text on error background 7.54:1. These are palette calculations, not browser-computed or full accessibility certification.
+- Limits: the in-app browser could not reach the sandboxed Vite server, and browser URL policy rejected local-file render snapshots. This revision has **no completed browser visual review** or native-browser interaction verification. JSDOM checks do not establish rendered layout, zoom behavior, or live-backend behavior. No backend files changed, so Maven, bundled HTTP/SMTP, and restart-persistence suites were not rerun.
+- Figma was **not updated**: the existing Jademat file was identified, but the Starter-plan MCP limit blocked subsequent design reads and edits. The prior landing design remains the available Figma handoff.
+- Impeccable's engine was unavailable and could not install within permitted network/write access; its automated detector did not run. Existing product/design guidance and a bounded independent static review were used.
+- A preexisting pending-signup edge remains: returning home before the request completes can reopen email assistance when its response arrives. This UI redesign does not change the underlying auth request lifecycle.
+
+## 2026-10-31 home page alignment with the account preview
+
+- Reworked the public home page with a normal-flow paper-panel hero, stronger Manrope headings, grouped copy/actions, inset setup and closing sections, and restrained yellow markers. The existing folder artwork, product copy, preview tabs, FAQ disclosures, and account hash destinations remain.
+- Responsive styles stack the hero at 800px and below, let primary/secondary actions wrap, and preserve the shared account-page container widths. Landing home links and the compact registration action have a 44px minimum target height.
+- `npm test`: **89 passed**, no failures or skips. `npm run build`: TypeScript and Vite production build passed. `git diff --check` passed with the existing LF-to-CRLF notices.
+- No current desktop/mobile screenshots were captured: the selected in-app browser was unavailable. Rendered appearance, zoom, and native-browser interactions remain unverified; the passing JSDOM navigation checks do not establish visual fidelity. The Impeccable engine/detector remains unavailable as recorded above.
+- No backend code or HTTP behavior changed; backend, bundled HTTP/SMTP, and restart-persistence suites were not rerun. The existing Figma design was not updated in this local refinement.
+- Independent finish review: **ship at source-review scope**, with no material implementation regression found in grid flow, breakpoint rules, shared account styles, account destinations, keyboard preview switching, native FAQs, or reduced motion. The reviewer requested design-record synchronization; this verdict is not browser or visual approval.
+
+## 2026-10-31 workspace alignment
+
+- Extended the established Manrope, paper, charcoal, pale-yellow, and pill-control identity to the signed-in sidebar, welcome panel, connected summaries, application table/cards, activity views, editor drawer, and CSV dialog. Styles are scoped to `.app-shell`; public palettes remain separate. Light/dark/system settings still use the existing account-aware theme controller and semantic color roles.
+- `npm test`: **95 passed**, no failures or skips. Six added workspace flow tests cover navigation, actionable interviews/follow-ups, combined filters/search/sorting, editor cancellation and draft reset, CSV dismissal, appearance persistence, skip-link route preservation, and mobile keyboard behavior. Existing mutation, import recovery, session, version, undo, and theme checks passed.
+- `npm run build`: TypeScript and Vite production build passed. Palette tests verify readable text/control pairs and defined semantic colors in the workspace stylesheet. Calculated minimum ordinary-text contrast is 5.02:1 in light mode and 5.52:1 in dark mode; control boundaries are 3.49:1 and 4.32:1. These calculations do not establish rendered accessibility.
+- Independent source review found a mobile focus-entry issue. The fix focuses the selected view, confines Tab/Shift+Tab, makes the background inert, suppresses background search focus, supports Escape/close, and releases the menu when returning to desktop. A JSDOM `matchMedia` stub fixed the resulting test-fixture failure; targeted and complete suites passed afterward. Final review found no other material source or flow regression; its condition to fix the fixture and pass checks is satisfied.
+- Limits: current in-app browser tabs show local connection errors, so desktop/mobile layout, zoom, native dialog behavior, and live-backend interactions have no completed browser verification. No backend or transport code changed; Maven, bundled HTTP/SMTP, and restart-persistence suites were not rerun. Figma was not updated, and the Impeccable engine/detector remains unavailable as recorded above.
+- Updated the workspace brief, `DESIGN.md`, `PRODUCT.md`, and design sidecar. A separate documentation agent was unavailable, so the parent performed the bounded documentation sync inline. No new raster assets were introduced.

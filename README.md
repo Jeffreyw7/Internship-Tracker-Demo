@@ -28,7 +28,7 @@ On **macOS/Linux**:
 ./mvnw -Pwith-ui spring-boot:run
 ```
 
-Open **http://localhost:8080**. Choose **Create an account**, enter your own name, email and password, and leave sample applications checked to explore immediately. New accounts must confirm their email before signing in. For local development, verification messages are sent to an SMTP capture server; start one on `127.0.0.1:1025`, or use the Docker Compose setup below. There are no preconfigured accounts or shared passwords. Each account receives its own optional sample dataset.
+Open **http://localhost:8080**. The public landing page introduces the workspace with an illustrative product preview. Choose **Get started**, enter your own name, email and password, and leave sample applications checked to explore immediately. Existing users can choose **Sign in**; an active session opens the workspace directly. New accounts must confirm their email before signing in. For local development, verification messages are sent to an SMTP capture server; start one on `127.0.0.1:1025`, or use the Docker Compose setup below. There are no preconfigured accounts or shared passwords. Each account receives its own optional sample dataset.
 
 The default H2 database is saved in `backend/data/` when you run from `backend/`. Stop with Ctrl+C. Your accounts and applications remain after restarting. Browser reloads do not reset data. Sessions end on a backend restart; sign in again.
 
@@ -75,6 +75,7 @@ New accounts require a password with at least 12 characters, including an upperc
 
 ## What works
 
+- Responsive public landing page with keyboard-operable feature previews, expandable FAQs, and entry points to registration and sign-in. See [the landing-page design notes](docs/landing-page-design.md) and [editable desktop/mobile Figma layouts](https://www.figma.com/design/7RYwF1BR4IiplQKBaq27zA?node-id=7-166).
 - Account registration, email verification, sign-in and sign-out using Spring Security sessions. Accounts created before the verification migration remain eligible to sign in.
 - Per-account applications with company, role, location, status, application date, deadline, follow-up date and notes.
 - Add, edit, soft-delete, and undo deletion; interview stage scheduling, completion, reordering through submitted stage order, and removal.

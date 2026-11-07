@@ -3,5 +3,8 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import AuthGate from './components/AuthGate';
 import './styles.css';
+import './landing.css';
+import './auth.css';
+import './workspace.css';
 import { ThemeProvider } from './theme/ThemeProvider';
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><ThemeProvider><AuthGate/></ThemeProvider></React.StrictMode>);

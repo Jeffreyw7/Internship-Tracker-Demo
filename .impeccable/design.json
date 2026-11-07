@@ -1,0 +1,743 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-31T19:16:09.399Z",
+  "title": "Design System: Campus",
+  "extensions": {
+    "colorMeta": {
+      "landing-surface": {
+        "role": "neutral",
+        "displayName": "Page Paper",
+        "tonalRamp": [
+          "oklch(15.00% 0.00132 106.42)",
+          "oklch(26.43% 0.00132 106.42)",
+          "oklch(37.86% 0.00132 106.42)",
+          "oklch(49.29% 0.00132 106.42)",
+          "oklch(60.71% 0.00132 106.42)",
+          "oklch(72.14% 0.00132 106.42)",
+          "oklch(83.57% 0.00132 106.42)",
+          "oklch(95.00% 0.00132 106.42)"
+        ]
+      },
+      "landing-panel": {
+        "role": "neutral",
+        "displayName": "Preview White",
+        "tonalRamp": [
+          "oklch(15.00% 0.00000 0.00)",
+          "oklch(26.43% 0.00000 0.00)",
+          "oklch(37.86% 0.00000 0.00)",
+          "oklch(49.29% 0.00000 0.00)",
+          "oklch(60.71% 0.00000 0.00)",
+          "oklch(72.14% 0.00000 0.00)",
+          "oklch(83.57% 0.00000 0.00)",
+          "oklch(95.00% 0.00000 0.00)"
+        ]
+      },
+      "landing-panel-alt": {
+        "role": "neutral",
+        "displayName": "Quiet Panel",
+        "tonalRamp": [
+          "oklch(15.00% 0.00399 106.47)",
+          "oklch(26.43% 0.00399 106.47)",
+          "oklch(37.86% 0.00399 106.47)",
+          "oklch(49.29% 0.00399 106.47)",
+          "oklch(60.71% 0.00399 106.47)",
+          "oklch(72.14% 0.00399 106.47)",
+          "oklch(83.57% 0.00399 106.47)",
+          "oklch(95.00% 0.00399 106.47)"
+        ]
+      },
+      "landing-ink": {
+        "role": "primary",
+        "displayName": "Campus Ink",
+        "tonalRamp": [
+          "oklch(15.00% 0.00248 145.49)",
+          "oklch(26.43% 0.00248 145.49)",
+          "oklch(37.86% 0.00248 145.49)",
+          "oklch(49.29% 0.00248 145.49)",
+          "oklch(60.71% 0.00248 145.49)",
+          "oklch(72.14% 0.00248 145.49)",
+          "oklch(83.57% 0.00248 145.49)",
+          "oklch(95.00% 0.00248 145.49)"
+        ]
+      },
+      "landing-on-ink": {
+        "role": "neutral",
+        "displayName": "On Ink",
+        "tonalRamp": [
+          "oklch(15.00% 0.00000 0.00)",
+          "oklch(26.43% 0.00000 0.00)",
+          "oklch(37.86% 0.00000 0.00)",
+          "oklch(49.29% 0.00000 0.00)",
+          "oklch(60.71% 0.00000 0.00)",
+          "oklch(72.14% 0.00000 0.00)",
+          "oklch(83.57% 0.00000 0.00)",
+          "oklch(95.00% 0.00000 0.00)"
+        ]
+      },
+      "landing-secondary": {
+        "role": "neutral",
+        "displayName": "Secondary Text",
+        "tonalRamp": [
+          "oklch(15.00% 0.00402 145.51)",
+          "oklch(26.43% 0.00402 145.51)",
+          "oklch(37.86% 0.00402 145.51)",
+          "oklch(49.29% 0.00402 145.51)",
+          "oklch(60.71% 0.00402 145.51)",
+          "oklch(72.14% 0.00402 145.51)",
+          "oklch(83.57% 0.00402 145.51)",
+          "oklch(95.00% 0.00402 145.51)"
+        ]
+      },
+      "landing-muted": {
+        "role": "neutral",
+        "displayName": "Muted Text",
+        "tonalRamp": [
+          "oklch(15.00% 0.00846 132.48)",
+          "oklch(26.43% 0.00846 132.48)",
+          "oklch(37.86% 0.00846 132.48)",
+          "oklch(49.29% 0.00846 132.48)",
+          "oklch(60.71% 0.00846 132.48)",
+          "oklch(72.14% 0.00846 132.48)",
+          "oklch(83.57% 0.00846 132.48)",
+          "oklch(95.00% 0.00846 132.48)"
+        ]
+      },
+      "landing-line": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "tonalRamp": [
+          "oklch(15.00% 0.00835 121.64)",
+          "oklch(26.43% 0.00835 121.64)",
+          "oklch(37.86% 0.00835 121.64)",
+          "oklch(49.29% 0.00835 121.64)",
+          "oklch(60.71% 0.00835 121.64)",
+          "oklch(72.14% 0.00835 121.64)",
+          "oklch(83.57% 0.00835 121.64)",
+          "oklch(95.00% 0.00835 121.64)"
+        ]
+      },
+      "landing-accent": {
+        "role": "secondary",
+        "displayName": "Next-Step Yellow",
+        "tonalRamp": [
+          "oklch(15.00% 0.12362 111.56)",
+          "oklch(26.43% 0.12362 111.56)",
+          "oklch(37.86% 0.12362 111.56)",
+          "oklch(49.29% 0.12362 111.56)",
+          "oklch(60.71% 0.12362 111.56)",
+          "oklch(72.14% 0.12362 111.56)",
+          "oklch(83.57% 0.12362 111.56)",
+          "oklch(95.00% 0.12362 111.56)"
+        ]
+      },
+      "landing-accent-pale": {
+        "role": "secondary",
+        "displayName": "Pale Yellow",
+        "tonalRamp": [
+          "oklch(15.00% 0.06075 109.49)",
+          "oklch(26.43% 0.06075 109.49)",
+          "oklch(37.86% 0.06075 109.49)",
+          "oklch(49.29% 0.06075 109.49)",
+          "oklch(60.71% 0.06075 109.49)",
+          "oklch(72.14% 0.06075 109.49)",
+          "oklch(83.57% 0.06075 109.49)",
+          "oklch(95.00% 0.06075 109.49)"
+        ]
+      },
+      "landing-action-hover": {
+        "role": "primary",
+        "displayName": "Action Hover",
+        "tonalRamp": [
+          "oklch(15.00% 0.01161 135.00)",
+          "oklch(26.43% 0.01161 135.00)",
+          "oklch(37.86% 0.01161 135.00)",
+          "oklch(49.29% 0.01161 135.00)",
+          "oklch(60.71% 0.01161 135.00)",
+          "oklch(72.14% 0.01161 135.00)",
+          "oklch(83.57% 0.01161 135.00)",
+          "oklch(95.00% 0.01161 135.00)"
+        ]
+      },
+      "landing-on-dark-muted": {
+        "role": "neutral",
+        "displayName": "On-Dark Muted",
+        "tonalRamp": [
+          "oklch(15.00% 0.01490 128.67)",
+          "oklch(26.43% 0.01490 128.67)",
+          "oklch(37.86% 0.01490 128.67)",
+          "oklch(49.29% 0.01490 128.67)",
+          "oklch(60.71% 0.01490 128.67)",
+          "oklch(72.14% 0.01490 128.67)",
+          "oklch(83.57% 0.01490 128.67)",
+          "oklch(95.00% 0.01490 128.67)"
+        ]
+      },
+      "landing-lilac": {
+        "role": "secondary",
+        "displayName": "Preview Lilac",
+        "tonalRamp": [
+          "oklch(15.00% 0.01763 296.63)",
+          "oklch(26.43% 0.01763 296.63)",
+          "oklch(37.86% 0.01763 296.63)",
+          "oklch(49.29% 0.01763 296.63)",
+          "oklch(60.71% 0.01763 296.63)",
+          "oklch(72.14% 0.01763 296.63)",
+          "oklch(83.57% 0.01763 296.63)",
+          "oklch(95.00% 0.01763 296.63)"
+        ]
+      },
+      "landing-purple": {
+        "role": "secondary",
+        "displayName": "Preview Purple",
+        "tonalRamp": [
+          "oklch(15.00% 0.06906 301.28)",
+          "oklch(26.43% 0.06906 301.28)",
+          "oklch(37.86% 0.06906 301.28)",
+          "oklch(49.29% 0.06906 301.28)",
+          "oklch(60.71% 0.06906 301.28)",
+          "oklch(72.14% 0.06906 301.28)",
+          "oklch(83.57% 0.06906 301.28)",
+          "oklch(95.00% 0.06906 301.28)"
+        ]
+      },
+      "landing-peach": {
+        "role": "secondary",
+        "displayName": "Preview Peach",
+        "tonalRamp": [
+          "oklch(15.00% 0.02543 59.91)",
+          "oklch(26.43% 0.02543 59.91)",
+          "oklch(37.86% 0.02543 59.91)",
+          "oklch(49.29% 0.02543 59.91)",
+          "oklch(60.71% 0.02543 59.91)",
+          "oklch(72.14% 0.02543 59.91)",
+          "oklch(83.57% 0.02543 59.91)",
+          "oklch(95.00% 0.02543 59.91)"
+        ]
+      },
+      "landing-brown": {
+        "role": "secondary",
+        "displayName": "Preview Brown",
+        "tonalRamp": [
+          "oklch(15.00% 0.07995 55.14)",
+          "oklch(26.43% 0.07995 55.14)",
+          "oklch(37.86% 0.07995 55.14)",
+          "oklch(49.29% 0.07995 55.14)",
+          "oklch(60.71% 0.07995 55.14)",
+          "oklch(72.14% 0.07995 55.14)",
+          "oklch(83.57% 0.07995 55.14)",
+          "oklch(95.00% 0.07995 55.14)"
+        ]
+      },
+      "landing-blue-pale": {
+        "role": "secondary",
+        "displayName": "Preview Pale Blue",
+        "tonalRamp": [
+          "oklch(15.00% 0.01372 258.35)",
+          "oklch(26.43% 0.01372 258.35)",
+          "oklch(37.86% 0.01372 258.35)",
+          "oklch(49.29% 0.01372 258.35)",
+          "oklch(60.71% 0.01372 258.35)",
+          "oklch(72.14% 0.01372 258.35)",
+          "oklch(83.57% 0.01372 258.35)",
+          "oklch(95.00% 0.01372 258.35)"
+        ]
+      },
+      "landing-blue": {
+        "role": "secondary",
+        "displayName": "Preview Blue",
+        "tonalRamp": [
+          "oklch(15.00% 0.06672 250.78)",
+          "oklch(26.43% 0.06672 250.78)",
+          "oklch(37.86% 0.06672 250.78)",
+          "oklch(49.29% 0.06672 250.78)",
+          "oklch(60.71% 0.06672 250.78)",
+          "oklch(72.14% 0.06672 250.78)",
+          "oklch(83.57% 0.06672 250.78)",
+          "oklch(95.00% 0.06672 250.78)"
+        ]
+      },
+      "workspace-action-light": {
+        "role": "primary",
+        "displayName": "Workspace Ink Action - Light",
+        "tonalRamp": [
+          "oklch(15.00% 0.00248 145.49)",
+          "oklch(26.43% 0.00248 145.49)",
+          "oklch(37.86% 0.00248 145.49)",
+          "oklch(49.29% 0.00248 145.49)",
+          "oklch(60.71% 0.00248 145.49)",
+          "oklch(72.14% 0.00248 145.49)",
+          "oklch(83.57% 0.00248 145.49)",
+          "oklch(95.00% 0.00248 145.49)"
+        ]
+      },
+      "workspace-action-dark": {
+        "role": "primary",
+        "displayName": "Workspace Cream Action - Dark",
+        "tonalRamp": [
+          "oklch(15.00% 0.01062 106.60)",
+          "oklch(26.43% 0.01062 106.60)",
+          "oklch(37.86% 0.01062 106.60)",
+          "oklch(49.29% 0.01062 106.60)",
+          "oklch(60.71% 0.01062 106.60)",
+          "oklch(72.14% 0.01062 106.60)",
+          "oklch(83.57% 0.01062 106.60)",
+          "oklch(95.00% 0.01062 106.60)"
+        ]
+      },
+      "workspace-surface-light": {
+        "role": "neutral",
+        "displayName": "Workspace Surface - Light",
+        "tonalRamp": [
+          "oklch(15.00% 0.00000 0.00)",
+          "oklch(26.43% 0.00000 0.00)",
+          "oklch(37.86% 0.00000 0.00)",
+          "oklch(49.29% 0.00000 0.00)",
+          "oklch(60.71% 0.00000 0.00)",
+          "oklch(72.14% 0.00000 0.00)",
+          "oklch(83.57% 0.00000 0.00)",
+          "oklch(95.00% 0.00000 0.00)"
+        ]
+      },
+      "workspace-surface-dark": {
+        "role": "neutral",
+        "displayName": "Workspace Surface - Dark",
+        "tonalRamp": [
+          "oklch(15.00% 0.00749 118.35)",
+          "oklch(26.43% 0.00749 118.35)",
+          "oklch(37.86% 0.00749 118.35)",
+          "oklch(49.29% 0.00749 118.35)",
+          "oklch(60.71% 0.00749 118.35)",
+          "oklch(72.14% 0.00749 118.35)",
+          "oklch(83.57% 0.00749 118.35)",
+          "oklch(95.00% 0.00749 118.35)"
+        ]
+      },
+      "workspace-text-light": {
+        "role": "neutral",
+        "displayName": "Workspace Text - Light",
+        "tonalRamp": [
+          "oklch(15.00% 0.00248 145.49)",
+          "oklch(26.43% 0.00248 145.49)",
+          "oklch(37.86% 0.00248 145.49)",
+          "oklch(49.29% 0.00248 145.49)",
+          "oklch(60.71% 0.00248 145.49)",
+          "oklch(72.14% 0.00248 145.49)",
+          "oklch(83.57% 0.00248 145.49)",
+          "oklch(95.00% 0.00248 145.49)"
+        ]
+      },
+      "workspace-text-dark": {
+        "role": "neutral",
+        "displayName": "Workspace Text - Dark",
+        "tonalRamp": [
+          "oklch(15.00% 0.01058 106.60)",
+          "oklch(26.43% 0.01058 106.60)",
+          "oklch(37.86% 0.01058 106.60)",
+          "oklch(49.29% 0.01058 106.60)",
+          "oklch(60.71% 0.01058 106.60)",
+          "oklch(72.14% 0.01058 106.60)",
+          "oklch(83.57% 0.01058 106.60)",
+          "oklch(95.00% 0.01058 106.60)"
+        ]
+      },
+      "account-field-border": {
+        "role": "neutral",
+        "displayName": "Account Field Border",
+        "tonalRamp": [
+          "oklch(15.00% 0.01382 126.47)",
+          "oklch(26.43% 0.01382 126.47)",
+          "oklch(37.86% 0.01382 126.47)",
+          "oklch(49.29% 0.01382 126.47)",
+          "oklch(60.71% 0.01382 126.47)",
+          "oklch(72.14% 0.01382 126.47)",
+          "oklch(83.57% 0.01382 126.47)",
+          "oklch(95.00% 0.01382 126.47)"
+        ]
+      },
+      "account-error-bg": {
+        "role": "secondary",
+        "displayName": "Account Error Surface",
+        "tonalRamp": [
+          "oklch(15.00% 0.01507 37.88)",
+          "oklch(26.43% 0.01507 37.88)",
+          "oklch(37.86% 0.01507 37.88)",
+          "oklch(49.29% 0.01507 37.88)",
+          "oklch(60.71% 0.01507 37.88)",
+          "oklch(72.14% 0.01507 37.88)",
+          "oklch(83.57% 0.01507 37.88)",
+          "oklch(95.00% 0.01507 37.88)"
+        ]
+      },
+      "account-error-text": {
+        "role": "secondary",
+        "displayName": "Account Error Text",
+        "tonalRamp": [
+          "oklch(15.00% 0.12647 30.34)",
+          "oklch(26.43% 0.12647 30.34)",
+          "oklch(37.86% 0.12647 30.34)",
+          "oklch(49.29% 0.12647 30.34)",
+          "oklch(60.71% 0.12647 30.34)",
+          "oklch(72.14% 0.12647 30.34)",
+          "oklch(83.57% 0.12647 30.34)",
+          "oklch(95.00% 0.12647 30.34)"
+        ]
+      },
+      "account-error-border": {
+        "role": "secondary",
+        "displayName": "Account Error Border",
+        "tonalRamp": [
+          "oklch(15.00% 0.07305 30.74)",
+          "oklch(26.43% 0.07305 30.74)",
+          "oklch(37.86% 0.07305 30.74)",
+          "oklch(49.29% 0.07305 30.74)",
+          "oklch(60.71% 0.07305 30.74)",
+          "oklch(72.14% 0.07305 30.74)",
+          "oklch(83.57% 0.07305 30.74)",
+          "oklch(95.00% 0.07305 30.74)"
+        ]
+      },
+      "workspace-paper-light": {
+        "role": "neutral",
+        "displayName": "Workspace Paper - Light",
+        "tonalRamp": [
+          "oklch(15.00% 0.00399 106.47)",
+          "oklch(26.43% 0.00399 106.47)",
+          "oklch(37.86% 0.00399 106.47)",
+          "oklch(49.29% 0.00399 106.47)",
+          "oklch(60.71% 0.00399 106.47)",
+          "oklch(72.14% 0.00399 106.47)",
+          "oklch(83.57% 0.00399 106.47)",
+          "oklch(95.00% 0.00399 106.47)"
+        ]
+      },
+      "workspace-paper-dark": {
+        "role": "neutral",
+        "displayName": "Workspace Paper - Dark",
+        "tonalRamp": [
+          "oklch(15.00% 0.01072 114.75)",
+          "oklch(26.43% 0.01072 114.75)",
+          "oklch(37.86% 0.01072 114.75)",
+          "oklch(49.29% 0.01072 114.75)",
+          "oklch(60.71% 0.01072 114.75)",
+          "oklch(72.14% 0.01072 114.75)",
+          "oklch(83.57% 0.01072 114.75)",
+          "oklch(95.00% 0.01072 114.75)"
+        ]
+      },
+      "workspace-accent-light": {
+        "role": "secondary",
+        "displayName": "Workspace Yellow - Light",
+        "tonalRamp": [
+          "oklch(15.00% 0.12362 111.56)",
+          "oklch(26.43% 0.12362 111.56)",
+          "oklch(37.86% 0.12362 111.56)",
+          "oklch(49.29% 0.12362 111.56)",
+          "oklch(60.71% 0.12362 111.56)",
+          "oklch(72.14% 0.12362 111.56)",
+          "oklch(83.57% 0.12362 111.56)",
+          "oklch(95.00% 0.12362 111.56)"
+        ]
+      },
+      "workspace-accent-dark": {
+        "role": "secondary",
+        "displayName": "Workspace Yellow - Dark",
+        "tonalRamp": [
+          "oklch(15.00% 0.08773 111.08)",
+          "oklch(26.43% 0.08773 111.08)",
+          "oklch(37.86% 0.08773 111.08)",
+          "oklch(49.29% 0.08773 111.08)",
+          "oklch(60.71% 0.08773 111.08)",
+          "oklch(72.14% 0.08773 111.08)",
+          "oklch(83.57% 0.08773 111.08)",
+          "oklch(95.00% 0.08773 111.08)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Landing display",
+        "purpose": "Extra-bold main landing headline; responsive sizes remain in landing.css. Account headings retain their medium weight."
+      },
+      "headline": {
+        "displayName": "Landing headline",
+        "purpose": "Extra-bold desktop landing section-heading baseline, with component and breakpoint overrides."
+      },
+      "title": {
+        "displayName": "Preview explanation title",
+        "purpose": "Extra-bold supporting title beside the illustrative preview."
+      },
+      "body": {
+        "displayName": "Introductory body",
+        "purpose": "Public explanatory copy at short reading measures."
+      },
+      "label": {
+        "displayName": "Public action label",
+        "purpose": "Primary actions and text links."
+      },
+      "brand": {
+        "displayName": "Campus wordmark",
+        "purpose": "Compact public wordmark; not a general display role."
+      },
+      "workspace-heading": {
+        "displayName": "Workspace welcome heading",
+        "purpose": "Compact 36px extra-bold heading; reduces to 30px at 1200px and 28px at 520px."
+      },
+      "workspace-body": {
+        "displayName": "Workspace body",
+        "purpose": "Manrope operational base; component labels, controls, and table text use compact overrides."
+      }
+    },
+    "shadows": [
+      {
+        "name": "preview-ambient",
+        "value": "0 20px 65px -30px var(--landing-shadow)",
+        "purpose": "Soft lift beneath the white illustrative preview. Color source: --landing-shadow = #25282c35."
+      },
+      {
+        "name": "mobile-menu",
+        "value": "0 18px 32px var(--landing-shadow)",
+        "purpose": "Separates the expanded public mobile menu from the page."
+      },
+      {
+        "name": "folder-material",
+        "value": "feDropShadow dx=10 dy=20 stdDeviation=17 flood-color=#434b62 flood-opacity=.15",
+        "purpose": "Diffuse depth beneath the native SVG folder silhouettes."
+      }
+    ],
+    "motion": [
+      {
+        "name": "landing-link-state",
+        "value": "background .2s, color .2s",
+        "purpose": "Color transition for public links and actions."
+      },
+      {
+        "name": "folder-arrival",
+        "value": "landing-folder-arrive .75s cubic-bezier(.16,1,.3,1) both; stagger 100ms",
+        "purpose": "One finite arrival from translate(-12px,22px), opacity 0 to the resting position, opacity 1."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "animation:none!important; transition:none!important; scroll-behavior:auto!important",
+        "purpose": "Applied to landing, account, and workspace subtrees when prefers-reduced-motion is reduce."
+      },
+      {
+        "name": "paper-separation",
+        "value": "650ms cubic-bezier(.16,1,.3,1); Saved -3px; Applied (3px,-6px); Next (6px,-10px) rotate(.6deg)",
+        "purpose": "Fine-pointer hover separates the folders, preserving their shared stack. Returns to rest on pointer exit."
+      },
+      {
+        "name": "control-feedback",
+        "value": "180ms button press; 240ms icon movement",
+        "purpose": "Acknowledge actionable links; focused actions retain visible focus."
+      },
+      {
+        "name": "preview-change",
+        "value": "280ms cubic-bezier(.16,1,.3,1); opacity .35 to 1; translateY 4px to 0",
+        "purpose": "Explain tab content changes while keeping focus on the selected tab."
+      },
+      {
+        "name": "disclosures",
+        "value": "FAQ 220ms; mobile menu 240ms; no loops",
+        "purpose": "Acknowledge opening a disclosure or the mobile navigation."
+      },
+      {
+        "name": "account-control-feedback",
+        "value": "180ms ease-out background/press; 220ms cubic-bezier(.16,1,.3,1) arrow movement",
+        "purpose": "Account actions use the public motion language; disabled actions suppress hover and press feedback."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "landing-intermediate",
+        "value": "max-width: 1150px"
+      },
+      {
+        "name": "landing-tablet",
+        "value": "max-width: 900px"
+      },
+      {
+        "name": "landing-stacked",
+        "value": "max-width: 800px"
+      },
+      {
+        "name": "landing-phone",
+        "value": "max-width: 600px"
+      },
+      {
+        "name": "account-wide-story",
+        "value": "min-width: 1440px"
+      },
+      {
+        "name": "account-intermediate",
+        "value": "max-width: 1150px"
+      },
+      {
+        "name": "account-story-hidden",
+        "value": "max-width: 900px"
+      },
+      {
+        "name": "account-phone",
+        "value": "max-width: 600px"
+      },
+      {
+        "name": "workspace-intermediate",
+        "value": "max-width: 1200px"
+      },
+      {
+        "name": "workspace-summary-wrap",
+        "value": "max-width: 1000px"
+      },
+      {
+        "name": "workspace-mobile-navigation",
+        "value": "max-width: 800px"
+      },
+      {
+        "name": "workspace-stacked-records",
+        "value": "max-width: 700px"
+      },
+      {
+        "name": "workspace-phone",
+        "value": "max-width: 520px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Landing primary action",
+      "kind": "button",
+      "refersTo": "landing-button-primary",
+      "description": "Public navigation action, with its black pill and destination arrow.",
+      "html": "<a class=\"ds-primary\" href=\"#create-account\">Start your workspace<svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M7 7h10v10M7 17 17 7\"/></svg></a>",
+      "css": ".ds-primary{display:inline-flex;justify-content:center;align-items:center;gap:26px;min-height:52px;padding:14px 24px;border-radius:100px;border:0;font-family:'Campus Manrope',sans-serif;font-weight:600;font-size:13px;line-height:1.65;white-space:nowrap;text-decoration:none;transition:background .2s,color .2s;background:var(--landing-ink,#171817);color:var(--landing-on-ink,#ffffff)}.ds-primary:hover{background:var(--landing-action-hover,#363a34)}.ds-primary:focus-visible{outline:2px solid var(--landing-ink,#171817);outline-offset:5px}@media(prefers-reduced-motion:reduce){.ds-primary{transition:none}}@media(prefers-reduced-motion:no-preference){.ds-primary{transition:background .2s,color .2s,transform .18s cubic-bezier(.16,1,.3,1)}.ds-primary svg{transition:transform .24s cubic-bezier(.16,1,.3,1)}.ds-primary:active{transform:scale(.98)}.ds-primary:focus-visible svg{transform:translate(2px,-2px)}@media(hover:hover) and (pointer:fine){.ds-primary:hover{transform:translateY(-2px)}.ds-primary:hover svg{transform:translate(2px,-2px)}.ds-primary:active{transform:scale(.98)}}}"
+    },
+    {
+      "name": "Landing closing action",
+      "kind": "button",
+      "refersTo": "landing-button-primary",
+      "description": "Black primary action on the light gray paper closing invitation; yellow is reserved for its small decorative mark.",
+      "html": "<div class=\"ds-closing-paper\"><span class=\"ds-closing-mark\" aria-hidden=\"true\"></span><a class=\"ds-closing-action\" href=\"#create-account\">Start your workspace<svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M7 7h10v10M7 17 17 7\"/></svg></a></div>",
+      "css": ".ds-closing-paper{background:var(--landing-panel-alt,#f0f0ed);color:var(--landing-ink,#171817);border-radius:16px;padding:56px}.ds-closing-mark{display:block;width:38px;height:6px;border-radius:2px;background:var(--landing-accent,#e9ef8b);margin-bottom:24px}.ds-closing-action{display:inline-flex;justify-content:center;align-items:center;gap:26px;min-height:52px;padding:14px 24px;border-radius:100px;border:0;font-family:'Campus Manrope',sans-serif;font-weight:600;font-size:13px;line-height:1.65;white-space:nowrap;text-decoration:none;transition:background .2s,color .2s;background:var(--landing-ink,#171817);color:var(--landing-on-ink,#ffffff)}.ds-closing-action:hover{background:var(--landing-action-hover,#363a34)}.ds-closing-action:focus-visible{outline:2px solid var(--landing-ink,#171817);outline-offset:5px}@media(prefers-reduced-motion:reduce){.ds-closing-action{transition:none}}@media(prefers-reduced-motion:no-preference){.ds-closing-action{transition:background .2s,color .2s,transform .18s cubic-bezier(.16,1,.3,1)}.ds-closing-action svg{transition:transform .24s cubic-bezier(.16,1,.3,1)}.ds-closing-action:active{transform:scale(.98)}.ds-closing-action:focus-visible svg{transform:translate(2px,-2px)}@media(hover:hover) and (pointer:fine){.ds-closing-action:hover{transform:translateY(-2px)}.ds-closing-action:hover svg{transform:translate(2px,-2px)}.ds-closing-action:active{transform:scale(.98)}}}@media(max-width:1150px){.ds-closing-paper{padding:40px}}@media(max-width:600px){.ds-closing-paper{padding:32px 24px}.ds-closing-action{font-size:12px;gap:16px;padding-inline:20px}.ds-closing-mark{margin-bottom:20px}}"
+    },
+    {
+      "name": "Landing text action",
+      "kind": "button",
+      "refersTo": "landing-text-link",
+      "description": "Lightweight link with a directional inline SVG.",
+      "html": "<a class=\"ds-link\" href=\"#workspace\">Take a look<svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 5v14m-7-7 7 7 7-7\"/></svg></a>",
+      "css": ".ds-link{display:inline-flex;align-items:center;gap:14px;min-height:44px;font-family:'Campus Manrope',sans-serif;font-size:13px;font-weight:600;line-height:1.65;color:var(--landing-ink,#171817);text-decoration:none;text-underline-offset:5px;transition:color .2s}.ds-link:hover{text-decoration:underline}.ds-link:focus-visible{outline:2px solid var(--landing-ink,#171817);outline-offset:5px}@media(prefers-reduced-motion:reduce){.ds-link{transition:none}}"
+    },
+    {
+      "name": "Public navigation",
+      "kind": "nav",
+      "refersTo": "landing-navigation",
+      "description": "Compact public links; full responsive menu behavior remains in LandingPage.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Main navigation\"><a class=\"ds-nav-link\" href=\"#workspace\">The workspace</a><a class=\"ds-nav-link\" href=\"#how-it-works\">How it works</a><a class=\"ds-nav-link\" href=\"#questions\">Questions</a></nav>",
+      "css": ".ds-nav{display:flex;flex-wrap:wrap;gap:30px;background:var(--landing-surface,#fafaf9);font-family:'Campus Manrope',sans-serif;font-size:12px;font-weight:500;line-height:1.65;color:var(--landing-ink,#171817)}.ds-nav-link{display:flex;align-items:center;min-height:44px;color:inherit;text-decoration:none;text-underline-offset:5px}.ds-nav-link:hover{text-decoration:underline}.ds-nav-link:focus-visible{outline:2px solid var(--landing-ink,#171817);outline-offset:5px}"
+    },
+    {
+      "name": "Illustrative status label",
+      "kind": "chip",
+      "refersTo": "landing-status",
+      "description": "Static preview label, not an interactive filter or a new status contract.",
+      "html": "<span class=\"ds-chip\">Interviewing</span>",
+      "css": ".ds-chip{display:inline-block;width:fit-content;font-family:'Campus Manrope',sans-serif;font-size:8px;line-height:1.65;padding:4px 9px;border-radius:20px;background:var(--landing-lilac,#eeebf8);color:var(--landing-purple,#61517b);white-space:nowrap}"
+    },
+    {
+      "name": "Illustrative preview container",
+      "kind": "card",
+      "refersTo": "landing-preview",
+      "description": "White panel with 16px corners, a soft shadow, divided header, and honest example label.",
+      "html": "<section class=\"ds-preview\" tabindex=\"0\" aria-label=\"Illustrative application preview\"><header class=\"ds-preview-head\"><span class=\"ds-wordmark\">campus.</span><span class=\"ds-example\">Illustrative preview</span></header><div class=\"ds-preview-body\"><h3 class=\"ds-preview-title\">Applications</h3><div class=\"ds-preview-row\"><strong class=\"ds-company\">Northstar</strong><span class=\"ds-role\">Software Engineering Intern</span></div><p class=\"ds-preview-foot\">3 sample applications</p></div></section>",
+      "css": ".ds-preview{font-family:'Campus Manrope',sans-serif;background:var(--landing-panel,#ffffff);color:var(--landing-ink,#171817);border-radius:16px;overflow:hidden;box-shadow:0 20px 65px -30px var(--landing-shadow,#25282c35);font-variant-numeric:tabular-nums;line-height:1.65}.ds-preview:focus-visible{outline:2px solid var(--landing-ink,#171817);outline-offset:5px}.ds-preview-head{padding:19px 27px;display:flex;align-items:center;gap:18px;border-bottom:1px solid var(--landing-line,#dddfd9)}.ds-wordmark{font-size:19px;font-weight:800;letter-spacing:-.7px}.ds-example{margin-left:auto;font-size:9px;color:var(--landing-secondary,#5e605e)}.ds-preview-body{padding:24px 27px 0}.ds-preview-title{font-size:23px;letter-spacing:-.7px;font-weight:600;margin:0 0 24px}.ds-preview-row{padding:21px 0;border-bottom:1px solid var(--landing-line,#dddfd9)}.ds-company{display:block;font-size:12px;font-weight:600;margin-bottom:4px}.ds-role{display:block;font-size:8px;color:var(--landing-secondary,#5e605e)}.ds-preview-foot{padding:17px 0;margin:0;font-size:8px;color:var(--landing-secondary,#5e605e)}"
+    },
+    {
+      "name": "FAQ disclosure",
+      "kind": "custom",
+      "refersTo": "landing-disclosure",
+      "description": "Native disclosure with a visible question and inline SVG state icon.",
+      "html": "<details class=\"ds-faq\"><summary class=\"ds-question\">Can I bring my existing spreadsheet?<svg class=\"ds-plus\" width=\"19\" height=\"19\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"M12 5v14M5 12h14\"/></svg><svg class=\"ds-minus\" width=\"19\" height=\"19\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"m6 9 6 6 6-6\"/></svg></summary><p class=\"ds-answer\">Yes. Import a CSV, map its columns, and review the proposed changes before committing them. You can also export your applications as a CSV.</p></details>",
+      "css": ".ds-faq{font-family:'Campus Manrope',sans-serif;color:var(--landing-ink,#171817);border-top:1px solid var(--landing-line,#dddfd9);border-bottom:1px solid var(--landing-line,#dddfd9)}.ds-question{cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:74px;font-size:13px;font-weight:600;line-height:1.65;list-style:none;padding-block:20px}.ds-question::-webkit-details-marker{display:none}.ds-question:focus-visible{outline:2px solid var(--landing-ink,#171817);outline-offset:5px}.ds-answer{font-size:12px;color:var(--landing-secondary,#5e605e);line-height:1.9;padding:0 35px 24px 0;max-width:65ch;margin:0}.ds-minus,.ds-faq[open] .ds-plus{display:none}.ds-faq[open] .ds-minus{display:block}"
+    },
+    {
+      "name": "Next-step paper staircase",
+      "kind": "custom",
+      "refersTo": "landing-folder",
+      "description": "Shared decorative application folders, ascending from Saved to Applied to the next conversation. The home hero uses semibold folder titles and hides the separate artwork caption; the account story retains medium titles.",
+      "html": "<div class=\"landing-art\"><svg xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" class=\"landing-journey\" viewBox=\"0 0 780 670\" fill=\"none\">\n      <defs>\n        <linearGradient id=\"journey-paper\" x1=\"31\" y1=\"27\" x2=\"272\" y2=\"224\" gradientUnits=\"userSpaceOnUse\"><stop stop-color=\"#ffffff\"/><stop offset=\".53\" stop-color=\"#f1f1f3\"/><stop offset=\"1\" stop-color=\"#d9dbe2\"/></linearGradient>\n        <linearGradient id=\"journey-silver\" x1=\"39\" y1=\"20\" x2=\"255\" y2=\"226\" gradientUnits=\"userSpaceOnUse\"><stop stop-color=\"#f5f5f8\"/><stop offset=\".42\" stop-color=\"#e0e2e9\"/><stop offset=\"1\" stop-color=\"#b9becb\"/></linearGradient>\n        <linearGradient id=\"journey-yellow\" x1=\"0\" y1=\"30\" x2=\"290\" y2=\"220\" gradientUnits=\"userSpaceOnUse\"><stop stop-color=\"#f8facb\"/><stop offset=\"1\" stop-color=\"#e3eb83\"/></linearGradient>\n        <filter id=\"journey-shadow\" x=\"-30%\" y=\"-30%\" width=\"170%\" height=\"190%\"><feDropShadow dx=\"10\" dy=\"20\" stdDeviation=\"17\" flood-color=\"#434b62\" flood-opacity=\".15\"/></filter>\n      </defs>\n      <g class=\"journey-folder journey-folder-saved\">\n        <g class=\"journey-folder-surface\">\n        <g transform=\"translate(66 434) rotate(-13)\">\n          <path d=\"M0 14Q0 0 14 0H93Q102 0 108 8L124 26H292Q306 26 306 40V194Q306 208 292 208H14Q0 208 0 194Z\" fill=\"#d9dce4\" filter=\"url(#journey-shadow)\"/>\n          <rect x=\"119\" y=\"20\" width=\"176\" height=\"150\" rx=\"7\" fill=\"#ffffff\" transform=\"rotate(2 119 20)\"/>\n          <path d=\"M0 53Q0 39 14 39H292Q306 39 306 53V194Q306 208 292 208H14Q0 208 0 194Z\" fill=\"url(#journey-paper)\" stroke=\"#ffffff\"/>\n          <text x=\"17\" y=\"19\" class=\"journey-folder-tab\">01 / THE POSSIBILITY</text>\n          <text x=\"24\" y=\"111\" class=\"journey-folder-title\">Saved.</text>\n          <text x=\"25\" y=\"139\" class=\"journey-folder-detail\">It starts with a possibility.</text>\n          <path d=\"M25 174H281M25 182H218\" stroke=\"#c6cbd4\"/>\n        </g>\n        </g>\n      </g>\n      <g class=\"journey-folder journey-folder-applied\">\n        <g class=\"journey-folder-surface\">\n        <g transform=\"translate(206 270) rotate(-13)\">\n          <path d=\"M0 14Q0 0 14 0H93Q102 0 108 8L124 26H292Q306 26 306 40V194Q306 208 292 208H14Q0 208 0 194Z\" fill=\"#b7bcc9\" filter=\"url(#journey-shadow)\"/>\n          <rect x=\"119\" y=\"20\" width=\"176\" height=\"150\" rx=\"7\" fill=\"#fcfcff\" transform=\"rotate(2 119 20)\"/>\n          <path d=\"M0 53Q0 39 14 39H292Q306 39 306 53V194Q306 208 292 208H14Q0 208 0 194Z\" fill=\"url(#journey-silver)\" stroke=\"#f8f9fd\"/>\n          <text x=\"17\" y=\"19\" class=\"journey-folder-tab\">02 / IN MOTION</text>\n          <text x=\"24\" y=\"111\" class=\"journey-folder-title\">Applied.</text>\n          <text x=\"25\" y=\"139\" class=\"journey-folder-detail\">A move, made.</text>\n          <path d=\"M25 174H281M25 182H218\" stroke=\"#a1a8b7\" stroke-opacity=\".5\"/>\n        </g>\n        </g>\n      </g>\n      <g class=\"journey-folder journey-folder-next\">\n        <g class=\"journey-folder-surface\">\n        <g transform=\"translate(346 106) rotate(-13)\">\n          <path d=\"M0 14Q0 0 14 0H93Q102 0 108 8L124 26H292Q306 26 306 40V194Q306 208 292 208H14Q0 208 0 194Z\" fill=\"#d4dd7b\" filter=\"url(#journey-shadow)\"/>\n          <rect x=\"119\" y=\"20\" width=\"176\" height=\"150\" rx=\"7\" fill=\"#fffef3\" transform=\"rotate(2 119 20)\"/>\n          <path d=\"M0 53Q0 39 14 39H292Q306 39 306 53V194Q306 208 292 208H14Q0 208 0 194Z\" fill=\"url(#journey-yellow)\" stroke=\"#faffdf\"/>\n          <text x=\"17\" y=\"19\" class=\"journey-folder-tab\">UP NEXT</text>\n          <text x=\"25\" y=\"87\" class=\"journey-folder-eyebrow\">ONE SMALL STEP.</text>\n          <text x=\"24\" y=\"128\" class=\"journey-folder-title\">Your next</text>\n          <text x=\"24\" y=\"165\" class=\"journey-folder-title\">conversation.</text>\n          <path d=\"M249 84L275 58M251 58H275V82\" stroke=\"#313923\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n          <path d=\"M25 187H281\" stroke=\"#adba55\" stroke-opacity=\".4\"/>\n        </g>\n        </g>\n      </g>\n      <text x=\"426\" y=\"562\" class=\"journey-art-caption\">SMALL STEPS.</text>\n      <text x=\"426\" y=\"579\" class=\"journey-art-caption\">NEW POSSIBILITIES.</text>\n    </svg></div>",
+      "css": ".landing-journey{display:block;width:min(100%,780px);height:auto;overflow:visible;font-family:Campus Manrope,sans-serif}.journey-folder{animation:landing-folder-arrive .75s cubic-bezier(.16,1,.3,1) both}.journey-folder-applied{animation-delay:.1s}.journey-folder-next{animation-delay:.2s}.journey-folder-tab{font-size:8px;font-weight:600;letter-spacing:.7px;fill:#465066}.journey-folder-title{font-size:35px;font-weight:500;letter-spacing:-1.5px;fill:var(--landing-ink)}.journey-folder-detail{font-size:11px;fill:#596272}.journey-folder-eyebrow{font-size:8px;letter-spacing:1.4px;fill:#56602b}.journey-folder-next .journey-folder-tab{fill:#4e5725}.journey-art-caption{font-size:9px;letter-spacing:1.5px;fill:var(--landing-secondary)}@keyframes landing-folder-arrive{from{transform:translate(-12px,22px);opacity:0}to{transform:translate(0,0);opacity:1}}@media(prefers-reduced-motion:reduce){.journey-folder{animation:none}}/* Motion follows the paper stack and acknowledges user actions. */\n@media(prefers-reduced-motion:no-preference){\n  .journey-folder-surface{transform-box:fill-box;transform-origin:center;transition:transform .65s cubic-bezier(.16,1,.3,1)}\n  .landing-page .landing-button{transition:background .2s,color .2s,transform .18s cubic-bezier(.16,1,.3,1)}\n  .landing-button svg,.landing-text-link svg,.landing-baseline>a svg{transition:transform .24s cubic-bezier(.16,1,.3,1)}\n  .landing-button:active{transform:scale(.98)}\n  .landing-button:focus-visible svg{transform:translate(2px,-2px)}\n  .landing-preview-tabs button{transition:color .18s ease}\n  .landing-preview-tabs button svg{transform:translate(-4px,4px);transition:opacity .18s ease,transform .24s cubic-bezier(.16,1,.3,1)}\n  .landing-preview-tabs button[aria-selected=true] svg{transform:translate(0,0)}\n  .landing-preview-copy,.landing-preview-body{animation:landing-content-change .28s cubic-bezier(.16,1,.3,1) both}\n  .landing-questions details[open]>p{animation:landing-answer-open .22s cubic-bezier(.16,1,.3,1) both}\n  .landing-mobile-nav{transform-origin:top;animation:landing-menu-open .24s cubic-bezier(.16,1,.3,1) both}\n  @media(hover:hover) and (pointer:fine){\n    .landing-art{pointer-events:auto}\n    .landing-art:hover .journey-folder-saved .journey-folder-surface{transform:translateY(-3px)}\n    .landing-art:hover .journey-folder-applied .journey-folder-surface{transform:translate(3px,-6px)}\n    .landing-art:hover .journey-folder-next .journey-folder-surface{transform:translate(6px,-10px) rotate(.6deg)}\n    .landing-button:hover{transform:translateY(-2px)}\n    .landing-button:hover svg{transform:translate(2px,-2px)}\n    .landing-button:active{transform:translateY(0) scale(.98)}\n    .landing-text-link:hover svg{transform:translateX(3px)}\n    .landing-hero .landing-text-link:hover svg,.landing-baseline>a:hover svg{transform:translateY(3px)}\n  }\n}\n@keyframes landing-content-change{from{opacity:.35;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}\n@keyframes landing-answer-open{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}\n@keyframes landing-menu-open{from{opacity:0;transform:translateY(-6px) scaleY(.98)}to{opacity:1;transform:translateY(0) scaleY(1)}}\n\n"
+    },
+    {
+      "name": "Workspace primary action",
+      "kind": "button",
+      "refersTo": "workspace-button-light",
+      "description": "Manrope pill action, bound to the active semantic light or dark theme.",
+      "html": "<button class=\"ds-workspace-button\" type=\"button\">Save changes</button>",
+      "css": ".ds-workspace-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 18px;border-radius:100px;line-height:18px;font-family:'Campus Manrope',sans-serif;font-size:12px;font-weight:600;white-space:nowrap;border:1px solid var(--action-bg,#171817);background:var(--action-bg,#171817);color:var(--action-text,#ffffff);box-shadow:none;cursor:pointer;transition:background .16s,border-color .16s,transform .16s}.ds-workspace-button:hover{background:var(--action-hover,#363a34)}.ds-workspace-button:active:not(:disabled){transform:translateY(1px)}.ds-workspace-button:focus-visible{outline:2px solid var(--focus-ring,#171817);outline-offset:4px}.ds-workspace-button:disabled{cursor:default;opacity:.4}@media(prefers-reduced-motion:reduce){.ds-workspace-button{transition:none}}"
+    },
+    {
+      "name": "Workspace application field",
+      "kind": "input",
+      "refersTo": "workspace-field-light",
+      "description": "Application editor field with semantic colors, a 48px minimum height, and a visible focus ring.",
+      "html": "<label class=\"ds-field-label\" for=\"ds-company-field\">Company<input class=\"ds-field\" id=\"ds-company-field\" name=\"company\" placeholder=\"Company name\"></label>",
+      "css": ".ds-field-label{display:block;font-family:'Campus Manrope',sans-serif;font-size:12px;font-weight:600;color:var(--text-primary,#171817);margin-bottom:15px}.ds-field{box-sizing:border-box;display:block;width:100%;min-height:48px;padding:12px;border:1px solid var(--border-control,#85877f);border-radius:8px;background:var(--bg-surface,#ffffff);color:var(--text-primary,#171817);font:inherit;font-size:14px;margin-top:7px;line-height:1.5;min-width:0}.ds-field::placeholder{color:var(--text-muted,#60625d);font-weight:400}.ds-field:focus{outline:2px solid var(--focus-ring,#171817);outline-offset:1px}@media(max-width:520px){.ds-field{font-size:16px}}"
+    },
+    {
+      "name": "Account primary action",
+      "kind": "button",
+      "refersTo": "account-button-primary",
+      "description": "Public account form action with a black pill, trailing arrow, and disabled feedback.",
+      "html": "<button class=\"ds-account-submit\" type=\"button\">Sign in<svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12h14m-7-7 7 7-7 7\"/></svg></button>",
+      "css": ".ds-account-submit{display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:52px;padding:14px 23px;border:0;border-radius:100px;background:var(--landing-ink,#171817);color:var(--landing-on-ink,#ffffff);font:600 13px/1.65 'Campus Manrope',sans-serif;cursor:pointer;transition:background 180ms ease-out,transform 180ms ease-out}.ds-account-submit:hover:not(:disabled){background:var(--landing-action-hover,#363a34)}.ds-account-submit svg{transition:transform 220ms cubic-bezier(.16,1,.3,1)}.ds-account-submit:hover:not(:disabled) svg{transform:translateX(4px)}.ds-account-submit:active:not(:disabled){transform:scale(.985)}.ds-account-submit:focus-visible{outline:2px solid var(--landing-ink,#171817);outline-offset:4px}.ds-account-submit:disabled{cursor:wait;opacity:.6}@media(prefers-reduced-motion:reduce){.ds-account-submit,.ds-account-submit svg{transition:none}}"
+    },
+    {
+      "name": "Account email field",
+      "kind": "input",
+      "refersTo": "account-field",
+      "description": "Public account field using shared paper and ink colors, a stronger border, and visible focus.",
+      "html": "<label class=\"ds-account-label\" for=\"ds-account-email\">Email<input class=\"ds-account-input\" id=\"ds-account-email\" name=\"email\" type=\"email\" required maxlength=\"254\" autocomplete=\"username\" placeholder=\"you@example.com\"></label>",
+      "css": ".ds-account-label{display:block;color:var(--landing-ink,#171817);font:600 12px/1.65 'Campus Manrope',sans-serif}.ds-account-input{display:block;width:100%;min-width:0;height:50px;margin-top:8px;padding:12px 14px;border:1px solid var(--account-field-border,#92968d);border-radius:7px;background:var(--landing-panel,#ffffff);color:var(--landing-ink,#171817);caret-color:var(--landing-ink,#171817);font:400 15px/1.5 'Campus Manrope',sans-serif;transition:border-color 180ms ease-out,background 180ms ease-out}.ds-account-input::placeholder{color:var(--landing-muted,#6d706b);opacity:1}.ds-account-input:hover{border-color:var(--landing-ink,#171817)}.ds-account-input:focus-visible{border-color:var(--landing-ink,#171817);outline:2px solid var(--landing-ink,#171817);outline-offset:4px}.ds-account-input:disabled{cursor:wait;opacity:.6}@media(max-width:600px){.ds-account-input{font-size:16px}}@media(prefers-reduced-motion:reduce){.ds-account-input{transition:none}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Small steps, new possibilities",
+    "overview": "The public landing identity gives a student's next action room to stand out. Bold, left-aligned Manrope headings and softly rounded gray paper panels surround a rising stack of application folders with a warm yellow next-step folder. Its character is spacious, direct, and optimistic; the sculptural artwork supports the language of progress.\n\nThe paper, ink, Manrope, and restrained yellow identity now extends through sign-in, registration, email verification, and the signed-in workspace. Public pages remain light regardless of the workspace preference. The workspace uses warm paper and charcoal in light mode and warm charcoal surfaces with cream actions in dark mode, preserving account-backed light/dark/system appearance. Its denser controls and operational structure serve daily tracking. Surface-specific compositions belong to the [landing](docs/landing-page-design.md), [authentication](docs/authentication-design.md), and [workspace](docs/workspace-design.md) briefs.\n\nThe token snapshot comes from [semantic colors](src/theme/tokens.css), [landing styles](src/landing.css), [landing components](src/components/LandingPage.tsx), [account styles](src/auth.css), [account layout](src/components/AuthLayout.tsx), [base workspace styles](src/styles.css), and the [workspace refinement](src/workspace.css). Update the code and documentation together when intentionally changing a reusable value. The existing [Campus Figma handoff](https://www.figma.com/design/7RYwF1BR4IiplQKBaq27zA) predates these home, authentication, and workspace refinements; those updates have not been added to it.",
+    "keyCharacteristics": [
+      "Spacious black-on-light typography with a compact Campus wordmark.",
+      "An original paper staircase of saved roles, sent applications, and a yellow next-step folder.",
+      "Black pill actions, quiet dividing lines, and softly curved paper and preview surfaces.",
+      "An explicitly illustrative product preview with native, keyboard-accessible controls.",
+      "One Campus identity with separate public and theme-aware workspace color roles."
+    ],
+    "rules": [
+      {
+        "name": "The Surface Boundary Rule",
+        "body": "Share the landing color tokens across public landing and account surfaces. Keep signed-in workspace components bound to their existing semantic tokens and account-aware theme controller.",
+        "section": "colors"
+      },
+      {
+        "name": "The Local Type Rule",
+        "body": "Use self-hosted Campus Manrope throughout, with compact fixed typography in the workspace and larger display typography on public pages.",
+        "section": "typography"
+      },
+      {
+        "name": "The Material Depth Rule",
+        "body": "Use the implemented paper layers, gradients, and soft shadows to describe the folders; keep ordinary page structure flat and legible.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** preserve the public/workspace token boundary and existing account appearance behavior.",
+      "**Do** use the self-hosted Manrope faces and established public type hierarchy.",
+      "**Do** keep the paper staircase editable and decorative, with its meaning available in ordinary text.",
+      "**Do** preserve visible focus, native disclosure behavior, preview keyboard navigation, and reduced-motion support.",
+      "**Do** label sample content as illustrative and keep functional claims aligned with the product."
+    ],
+    "donts": [
+      "**Don't** hard-code public light colors into workspace components; preserve semantic status colors and account-backed light/dark/system behavior.",
+      "**Don't** promote this landing's page composition or Persuade mode into a product-wide layout rule.",
+      "**Don't** turn decorative preview symbols into controls without implementing the corresponding behavior.",
+      "**Don't** turn the folder illustration into a generic card grid or obscure its labels with overlaps."
+    ]
+  }
+}

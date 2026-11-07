@@ -1,6 +1,6 @@
 // Coordinates the signed-in workspace: views, filters, editor actions, CSV export, and undo notifications.
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowDownToLine, ArrowRight, ArrowUpRight, Bell, BriefcaseBusiness, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, CircleDot, Clock3, GraduationCap, LayoutGrid, LockKeyhole, Menu, Plus, Search, SlidersHorizontal, Sparkles, Target, Trophy, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { ArrowDown, ArrowDownToLine, ArrowRight, ArrowUpRight, Bell, BriefcaseBusiness, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, CircleDot, Clock3, FolderOpen, LayoutGrid, LockKeyhole, Menu, Plus, Search, SlidersHorizontal, Target, Trophy, X } from 'lucide-react';
 import { activities, dayDistance, formatDate, isClosed, relativeDate, STATUSES, today, type Activity, type Application, type ApplicationDraft, type Status } from './domain/application';
 import { useApplications } from './hooks/useApplications';
 import { ApplicationDrawer } from './components/ApplicationDrawer';
@@ -25,10 +25,30 @@ export default function App({user,onLogout}:{user:User;onLogout:()=>Promise<void
   const [sort,setSort]=useState('recent');const [dueOnly,setDueOnly]=useState(false);const [page,setPage]=useState(1);
   const [drawer,setDrawer]=useState<{id:string|null}|null>(null);const [mobileNav,setMobileNav]=useState(false);
   const [toast,setToast]=useState<Toast|null>(null);const searchRef=useRef<HTMLInputElement>(null);
+  const mainRef=useRef<HTMLElement>(null);const navToggleRef=useRef<HTMLButtonElement>(null);
+  const sidebarRef=useRef<HTMLElement>(null);
   // Expire notifications, reset pagination on filter changes, and register the search shortcut.
   useEffect(()=>{if(!toast)return;const t=setTimeout(()=>setToast(null),toast.undo?12000:4500);return ()=>clearTimeout(t);},[toast]);
   useEffect(()=>{setPage(1);},[query,tab,status,sort,dueOnly,view]);
-  useEffect(()=>{function shortcut(e:KeyboardEvent){if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();searchRef.current?.focus();}}window.addEventListener('keydown',shortcut);return()=>window.removeEventListener('keydown',shortcut);},[]);
+  useEffect(()=>{function shortcut(e:globalThis.KeyboardEvent){if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();if(!mobileNav)searchRef.current?.focus();}}window.addEventListener('keydown',shortcut);return()=>window.removeEventListener('keydown',shortcut);},[mobileNav]);
+  // Keep the temporary navigation inside keyboard reach and release it on desktop.
+  useEffect(()=>{
+    if(!mobileNav)return;
+    sidebarRef.current?.querySelector<HTMLButtonElement>('.nav-item.active')?.focus();
+    const desktop=window.matchMedia('(min-width: 801px)');
+    const closeOnDesktop=(event:MediaQueryListEvent)=>{if(event.matches)setMobileNav(false);};
+    desktop.addEventListener('change',closeOnDesktop);
+    return()=>{desktop.removeEventListener('change',closeOnDesktop);(desktop.matches?mainRef.current:navToggleRef.current)?.focus();};
+  },[mobileNav]);
+  function navigationKeys(event:KeyboardEvent<HTMLElement>){
+    if(!mobileNav)return;
+    if(event.key==='Escape'){event.preventDefault();setMobileNav(false);return;}
+    if(event.key!=='Tab')return;
+    const controls=sidebarRef.current?.querySelectorAll<HTMLElement>('a[href], button:not(:disabled)');
+    const first=controls?.[0],last=controls?.[controls.length-1];
+    if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}
+    else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
+  }
   // Derive summaries and upcoming items from the loaded account history.
   const allActivity=useMemo(()=>activities(apps),[apps]);
   const counts={total:apps.length,active:apps.filter(a=>['Applied','Interviewing'].includes(a.status)).length,interviews:apps.filter(a=>a.status==='Interviewing').length,offers:apps.filter(a=>a.status==='Offer').length};
@@ -61,24 +81,25 @@ export default function App({user,onLogout}:{user:User;onLogout:()=>Promise<void
   const heading=view==='applications'?'Your next chapter starts here.':view==='interviews'?'Turn conversations into opportunities.':'A little follow-up goes a long way.';
   // Render navigation, summaries, the current table or activity list, and modal feedback.
   return <div className="app-shell">
+    <a className="workspace-skip" href="#workspace-content" onClick={event=>{event.preventDefault();mainRef.current?.focus();}}>Skip to workspace</a>
     {mobileNav&&<button className="nav-backdrop" aria-label="Close navigation" onClick={()=>setMobileNav(false)}/>}
     {/* Render workspace navigation, status shortcuts, and the signed-in profile. */}
-    <aside className={'sidebar '+(mobileNav?'is-open':'')}><a className="brand" href="#" onClick={e=>{e.preventDefault();navigate('applications');setTab('All applications');setStatus('All statuses');}}><span className="brand-symbol"><GraduationCap size={23}/></span><span>campus<span className="brand-dot">.</span></span></a>
+    <aside ref={sidebarRef} id="workspace-navigation" className={'sidebar '+(mobileNav?'is-open':'')} onKeyDown={navigationKeys}><div className="workspace-brand-row"><a className="brand" href="#" aria-label="Campus applications" onClick={e=>{e.preventDefault();navigate('applications');setTab('All applications');setStatus('All statuses');}}><span>campus<span className="brand-dot">.</span></span><span className="workspace-brand-caption">INTERNSHIP TRACKER</span></a><button className="icon-button workspace-nav-close" aria-label="Close navigation" onClick={()=>{setMobileNav(false);navToggleRef.current?.focus();}}><X size={20}/></button></div>
       <div className="workspace-label">YOUR WORKSPACE</div><nav aria-label="Workspace"><button className={view==='applications'?'nav-item active':'nav-item'} onClick={()=>navigate('applications')}><LayoutGrid size={18}/><span>Applications</span><span className="nav-count">{apps.length}</span></button><button className={view==='interviews'?'nav-item active':'nav-item'} onClick={()=>navigate('interviews')}><CalendarDays size={18}/><span>Interviews</span>{counts.interviews>0&&<i className="nav-dot"/>}</button><button className={view==='followups'?'nav-item active':'nav-item'} onClick={()=>navigate('followups')}><Bell size={18}/><span>Follow-ups</span>{due>0&&<span className="due-count">{due}</span>}</button></nav>
       <div className="sidebar-divider"/><div className="workspace-label pipeline-label">YOUR PIPELINE</div><nav aria-label="Application statuses">{STATUSES.map(s=><button key={s} className={'pipeline-item '+(view==='applications'&&status===s?'selected':'')} onClick={()=>filterStatus(s)}><i className={'pipeline-dot '+s.toLowerCase()}/><span>{s}</span><span>{apps.filter(a=>a.status===s).length}</span></button>)}</nav>
-      <div className="sidebar-bottom"><div className="little-note"><Sparkles size={18}/><strong>Big things start small.</strong><p>One application. One conversation.<br/>One step closer.</p><span className="note-line"/></div><div className="profile"><span className="avatar">{user.displayName.split(/\s+/).slice(0,2).map(n=>n[0]).join('').toUpperCase()}</span><div><strong>{user.displayName}</strong><small>Personal workspace</small></div><LockKeyhole size={14}/></div></div>
+      <div className="sidebar-bottom"><div className="little-note"><FolderOpen size={22}/><strong>Big things start small.</strong><p>One application. One conversation.<br/>One step closer.</p><span className="note-line"/></div><div className="profile"><span className="avatar">{user.displayName.split(/\s+/).slice(0,2).map(n=>n[0]).join('').toUpperCase()}</span><div><strong>{user.displayName}</strong><small>Personal workspace</small></div><LockKeyhole size={14}/></div></div>
     </aside>
     {/* Show the current view title and account controls above the workspace. */}
-    <div className="main-shell"><header className="topbar"><div className="breadcrumbs"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={()=>setMobileNav(true)}><Menu size={20}/></button><span>Workspace</span><ChevronRight size={13}/><strong>{view==='applications'?'Applications':view==='interviews'?'Interviews':'Follow-ups'}</strong></div><div className="topbar-right"><ThemeSelect/><span className="private-pill"><LockKeyhole size={12}/> Private workspace</span><button className="text-button" disabled={requestBusy} onClick={signOut}>Sign out</button><span className="topbar-date">{new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span></div></header>
-      <main><section className="welcome"><div><div className="eyebrow"><span/> THE NEXT STEP IS YOURS</div><h1>{heading}</h1><p>Keep your opportunities organized. Focus on what comes next.</p></div><button className="button primary add-main" disabled={!ready||busy} onClick={()=>setDrawer({id:null})}><Plus size={17}/> Add application</button></section>
+    <div className="main-shell" inert={mobileNav}><header className="topbar"><div className="breadcrumbs"><button ref={navToggleRef} className="icon-button mobile-menu" aria-label="Open navigation" aria-expanded={mobileNav} aria-controls="workspace-navigation" onClick={()=>setMobileNav(true)}><Menu size={20}/></button><span>Workspace</span><ChevronRight size={13}/><strong>{view==='applications'?'Applications':view==='interviews'?'Interviews':'Follow-ups'}</strong></div><div className="topbar-right"><ThemeSelect/><span className="private-pill"><LockKeyhole size={12}/> Private workspace</span><button className="text-button" disabled={requestBusy} onClick={signOut}>Sign out</button><span className="topbar-date">{new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span></div></header>
+      <main id="workspace-content" ref={mainRef} tabIndex={-1}><section className="welcome"><div><span className="workspace-paper-mark" aria-hidden="true"/><h1>{heading}</h1><p>Keep your opportunities organized. Focus on what comes next.</p></div><button className="button primary add-main" disabled={!ready||busy} onClick={()=>setDrawer({id:null})}><Plus size={17}/> Add application</button></section>
         {error&&<div className="error-box" role="alert">{error} <button className="text-button" disabled={requestBusy} onClick={()=>void refresh()}>Retry connection</button></div>}
         {pendingImport&&<div className="error-box" role="status">Import completion is not yet confirmed. Other changes are locked. <button className="text-button" onClick={()=>setImportOpen(true)}>Check import {pendingImport.previewId}</button></div>}
         {/* Use summary cards as shortcuts into the corresponding application filters. */}
         <section className="summary-grid" aria-label="Application summary">
-          <button className="summary-card" onClick={()=>{filterStatus('All statuses');setTab('All applications');}}><div className="summary-label">Total applications<span className="summary-icon"><BriefcaseBusiness size={17}/></span></div><div className="summary-value">{counts.total}<span className="summary-trend"><ArrowUpRight size={14}/> Your opportunities</span></div><p>A little momentum, every day</p></button>
-          <button className="summary-card" onClick={()=>{filterStatus('All statuses');setTab('In progress');}}><div className="summary-label">In progress<span className="summary-icon blue-icon"><Clock3 size={17}/></span></div><div className="summary-value">{counts.active}<span className="mini-bars">{Array.from({length:10},(_,i)=><i key={i} className={i<Math.round(counts.active/Math.max(counts.total,1)*10)?'filled':''}/>)}</span></div><p>Applied and moving through interviews</p></button>
+          <button className="summary-card" onClick={()=>{filterStatus('All statuses');setTab('All applications');}}><div className="summary-label">Total applications<span className="summary-icon"><BriefcaseBusiness size={17}/></span></div><div className="summary-value">{counts.total}</div><p>A little momentum, every day</p></button>
+          <button className="summary-card" onClick={()=>{filterStatus('All statuses');setTab('In progress');}}><div className="summary-label">In progress<span className="summary-icon"><Clock3 size={17}/></span></div><div className="summary-value">{counts.active}</div><p>Applied and moving through interviews</p></button>
           <button className="summary-card" onClick={()=>filterStatus('Interviewing')}><div className="summary-label">Interviewing<span className="summary-icon plum-icon"><CalendarDays size={17}/></span></div><div className="summary-value">{counts.interviews}<span className="summary-detail">{allActivity.filter(a=>a.kind==='Interview').length} upcoming rounds</span></div><p>Your chance to make an impression</p></button>
-          <button className="summary-card offer-card" onClick={()=>filterStatus('Offer')}><div className="summary-label">Offers received<span className="summary-icon"><Trophy size={17}/></span></div><div className="summary-value">{counts.offers}<span className="offer-star"><Sparkles size={24}/></span></div><p>{counts.offers?'Something worth celebrating':'The next chapter is ahead'}</p></button>
+          <button className="summary-card offer-card" onClick={()=>filterStatus('Offer')}><div className="summary-label">Offers received<span className="summary-icon"><Trophy size={17}/></span></div><div className="summary-value">{counts.offers}</div><p>{counts.offers?'Something worth celebrating':'The next chapter is ahead'}</p></button>
         </section>
         {/* Group search, filters, export, paging, and the selected table or activity view. */}
         <section className="workspace-panel" aria-labelledby="workspace-title"><div className="panel-heading"><div className="panel-title"><h2 id="workspace-title">{view==='applications'?'Applications':view==='interviews'?'Interview schedule':'Follow-up list'}</h2><span className="count-badge">{view==='applications'?apps.length:focusedActivities.length}</span></div><div className="panel-actions"><span className="sample-label">{apps.some(a=>a.sample)?'Includes sample data':'Your applications'}</span><button className="button secondary export-button" disabled={requestBusy} onClick={()=>void refresh()}>Refresh</button><button className="button secondary export-button" onClick={()=>setImportOpen(true)} disabled={requestBusy||(!ready&&!pendingImport)}>Import CSV</button><button className="button secondary export-button" onClick={exportCSV} disabled={!ready||busy}><ArrowDownToLine size={14}/> Export CSV</button></div></div>
