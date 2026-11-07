@@ -1,6 +1,6 @@
 # Application issue review and fixes - 2026-10-29
 
-Reviewed the existing Campus Internship Tracker checkout at main `94b062c`. It initially had no tracked changes; the unrelated `salvage-crew-gui-design-prompt.txt` was preserved. One GPT-6.1 Sol High reviewer was reused for the initial review and both follow-up passes. The reviewer was read-only and did not post externally.
+Reviewed the existing Campus Internship Tracker checkout at main `94b062c`. One GPT-6.1 Sol High reviewer was reused for the initial review and both follow-up passes. The reviewer was read-only and did not post externally.
 
 ## Findings and disposition
 
