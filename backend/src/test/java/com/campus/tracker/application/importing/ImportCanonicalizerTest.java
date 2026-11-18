@@ -32,4 +32,14 @@ class ImportCanonicalizerTest {
         assertThat(canonical.read("{\"reviewDigest\":\"a\",\"acknowledgement\":{}}",CommitRequest.class).acknowledgement().existingApplicationsToUpdate()).isNull();
         assertThatThrownBy(()->canonical.read("{\"schemaVersion\":1,\"mapping\":{},\"dateFormat\":\"ISO\",\"rows\":[{\"rowNumber\":1,\"values\":{\"notes\":42}}]}",Options.class)).isInstanceOf(ApiException.class);
     }
+    @Test void rowCorrectionDoesNotRequireLegacyAcknowledgement() {
+        var options = canonical.read("""
+                {"schemaVersion":1,"mapping":{"0":"role"},"dateFormat":"ISO",
+                 "rows":[{"rowNumber":1,"values":{"role":"CSV intern"}}]}
+                """, Options.class);
+        assertThat(options.rows()).singleElement().satisfies(row -> {
+            assertThat(row.values()).containsEntry("role", "CSV intern");
+            assertThat(row.acknowledgeLegacy()).isFalse();
+        });
+    }
 }
