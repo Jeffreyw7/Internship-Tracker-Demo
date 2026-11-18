@@ -14,7 +14,10 @@ public final class ImportDtos {
         @Override public String toString() { return "ImportOptions[redacted]"; }
     }
     public record RowOverride(int rowNumber, String action, UUID targetId, Map<String,String> values,
-                              List<String> clears, String stageMode, boolean acknowledgeLegacy) {
+                              List<String> clears, String stageMode, Boolean acknowledgeLegacy) {
+        public RowOverride {
+            acknowledgeLegacy = Boolean.TRUE.equals(acknowledgeLegacy);
+        }
         @Override public String toString() { return "ImportRowOverride[redacted]"; }
     }
     public record Issue(String code, String field, String message) {}
