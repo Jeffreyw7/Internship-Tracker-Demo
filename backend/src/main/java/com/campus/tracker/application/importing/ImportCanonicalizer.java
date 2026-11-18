@@ -3,6 +3,9 @@ package com.campus.tracker.application.importing;
 import com.campus.tracker.common.ApiException;
 import com.fasterxml.jackson.core.*;
 import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.cfg.CoercionAction;
+import com.fasterxml.jackson.databind.cfg.CoercionInputShape;
+import com.fasterxml.jackson.databind.type.LogicalType;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import java.io.*;
@@ -24,6 +27,10 @@ public class ImportCanonicalizer {
                 .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
                 .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
                 .enable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES);
+        json.coercionConfigFor(LogicalType.Textual)
+                .setCoercion(CoercionInputShape.Integer,CoercionAction.Fail)
+                .setCoercion(CoercionInputShape.Float,CoercionAction.Fail)
+                .setCoercion(CoercionInputShape.Boolean,CoercionAction.Fail);
         json.getFactory().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
         json.getFactory().setStreamReadConstraints(StreamReadConstraints.builder().maxNestingDepth(8).maxStringLength(8*1024*1024).build());
     }
