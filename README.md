@@ -2,6 +2,8 @@
 
 The complete Java edition of the Campus workspace: a **Java 17 / Spring Boot 3.5.16 REST backend**, a **React + TypeScript frontend**, and a relational database. Application data is stored in the Java database; there is no localStorage fallback.
 
+Follow the [local demo walkthrough](docs/DEMO.md) for a rehearsal with synthetic data.
+
 ## Quick start in VS Code
 
 For the free local app **with password reset and a local email inbox**, run `powershell -ExecutionPolicy Bypass -File .\start-local.ps1` after building the bundled JAR. See [the local Password Reset guide](docs/LOCAL-PASSWORD-RESET.md). It needs no Docker or cloud account and keeps demo data separate from the default database.
