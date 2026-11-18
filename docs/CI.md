@@ -64,7 +64,7 @@ python3 .github/scripts/check_ci.py reports backend
 npm run test:smoke 2>&1 | tee smoke.log
 ```
 
-The `with-ui` profile copies an existing `dist`; it does not build the frontend. Keep the build order above and retain the same checkout until smoke completes. The report guard above matches the workflow and rejects absent or unsuccessful required reports. A normal `mvnw test` without `postgres-it` does not run the required PostgreSQL integration suite.
+The `with-ui` profile copies an existing `dist`; it does not build the frontend. Keep the build order above and retain the same checkout until smoke completes. The report guard above matches the workflow and rejects absent or unsuccessful required reports. From `backend/`, `sh ./mvnw test` runs the backend test suite. To run the PostgreSQL integration suite and check its results, use the `postgres-it` profile with the `verify` phase as shown above.
 
 On Windows PowerShell use `npm.cmd` and, if it works in the local environment, `.\mvnw.cmd` from `backend/`. If the wrapper fails before Maven launches, use Maven 3.9.11 directly with the same profiles and goals. Windows `postgres.test.bin` can select disposable locally installed PostgreSQL binaries, as recorded in historical validation, but that is separate evidence from CI's Docker/PostgreSQL 17 path. See [VALIDATION.md](../VALIDATION.md) for actual commands, runtime versions and limits of earlier runs.
 
@@ -77,6 +77,7 @@ set -euo pipefail
 export DATABASE_ADMIN_PASSWORD='ci-admin-only-synthetic-password'
 export MIGRATION_DATABASE_PASSWORD='ci-migrator-only-synthetic-password'
 export DATABASE_PASSWORD='ci-runtime-only-synthetic-password'
+export RETENTION_DATABASE_PASSWORD='ci-retention-only-synthetic-password'
 export DOCKER_BUILDKIT=1
 
 docker info
