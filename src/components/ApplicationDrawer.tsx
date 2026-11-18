@@ -1,5 +1,5 @@
 // Displays application details and a separate editable draft inside a native modal dialog.
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowUpRight, BriefcaseBusiness, CalendarDays, Check, Circle, MapPin, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { blankDraft, formatDate, STATUSES, today, type Application, type ApplicationDraft, type InterviewStage } from '../domain/application';
 import { CompanyMark, StatusBadge } from './Shared';
@@ -17,8 +17,16 @@ export function ApplicationDrawer({application,isNew,onClose,onSave,onDelete}:Pr
   const originalVersion=useRef(application?.version);
   const deleteConfirmation=useRef<HTMLDivElement>(null);
   const saveError=useRef<HTMLDivElement>(null);
-  // Use native dialog focus handling and close it when the component unmounts.
-  useEffect(()=>{dialog.current?.showModal(); return ()=>dialog.current?.close();},[]);
+  useLayoutEffect(() => {
+    const modal = dialog.current;
+    if (!modal) return;
+    const opener = document.activeElement;
+    modal.showModal();
+    return () => {
+      modal.close();
+      if (opener instanceof HTMLElement) opener.focus();
+    };
+  }, []);
   // Move keyboard focus to confirmation and error messages when they appear.
   useEffect(()=>{if(confirmDelete){deleteConfirmation.current?.scrollIntoView({block:'nearest'});deleteConfirmation.current?.focus();}},[confirmDelete]);
   useEffect(()=>{if(error){saveError.current?.scrollIntoView({block:'nearest'});saveError.current?.focus();}},[error]);

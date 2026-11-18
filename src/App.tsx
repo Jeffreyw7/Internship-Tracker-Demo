@@ -23,12 +23,28 @@ export default function App({user,onLogout}:{user:User;onLogout:()=>Promise<void
   const [view,setView]=useState<View>('applications'); const [query,setQuery]=useState('');
   const [tab,setTab]=useState<Tab>('All applications');const [status,setStatus]=useState('All statuses');
   const [sort,setSort]=useState('recent');const [dueOnly,setDueOnly]=useState(false);const [page,setPage]=useState(1);
-  const [drawer,setDrawer]=useState<{id:string|null}|null>(null);const [mobileNav,setMobileNav]=useState(false);
+  const [drawer,setDrawer]=useState<{id:string|null}|null>(null);
+  const mobileNavigation=useRef<HTMLDialogElement>(null);
+  const mobileMenu=useRef<HTMLButtonElement>(null);
   const [toast,setToast]=useState<Toast|null>(null);const searchRef=useRef<HTMLInputElement>(null);
+  const deleteUndo=useRef<HTMLButtonElement>(null);
   // Expire notifications, reset pagination on filter changes, and register the search shortcut.
   useEffect(()=>{if(!toast)return;const t=setTimeout(()=>setToast(null),toast.undo?12000:4500);return ()=>clearTimeout(t);},[toast]);
+  useEffect(() => {
+    if (toast?.undo?.kind === 'delete') deleteUndo.current?.focus();
+  }, [toast]);
   useEffect(()=>{setPage(1);},[query,tab,status,sort,dueOnly,view]);
   useEffect(()=>{function shortcut(e:KeyboardEvent){if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();searchRef.current?.focus();}}window.addEventListener('keydown',shortcut);return()=>window.removeEventListener('keydown',shortcut);},[]);
+  useEffect(() => {
+    function closeOnDesktop() {
+      if (mobileNavigation.current?.open && mobileMenu.current?.getClientRects().length === 0) {
+        mobileNavigation.current.close();
+        searchRef.current?.focus();
+      }
+    }
+    window.addEventListener('resize', closeOnDesktop);
+    return () => window.removeEventListener('resize', closeOnDesktop);
+  }, []);
   // Derive summaries and upcoming items from the loaded account history.
   const allActivity=useMemo(()=>activities(apps),[apps]);
   const counts={total:apps.length,active:apps.filter(a=>['Applied','Interviewing'].includes(a.status)).length,interviews:apps.filter(a=>a.status==='Interviewing').length,offers:apps.filter(a=>a.status==='Offer').length};
@@ -39,7 +55,7 @@ export default function App({user,onLogout}:{user:User;onLogout:()=>Promise<void
   const pages=Math.max(1,Math.ceil(filtered.length/8));const currentPage=Math.min(page,pages);const visible=filtered.slice((currentPage-1)*8,currentPage*8);
   const focusedActivities=allActivity.filter(a=>a.kind===(view==='interviews'?'Interview':'Follow-up')&&queryMatches(a.application));
   // Reset view-specific controls when moving between workspace sections.
-  function navigate(next:View){setView(next);setQuery('');setDueOnly(false);setMobileNav(false);}
+  function navigate(next:View){setView(next);setQuery('');setDueOnly(false);mobileNavigation.current?.close();}
   // Return to the application table with a selected pipeline status.
   function filterStatus(s:string){navigate('applications');setTab('All applications');setStatus(s);}
   // Select the application whose detail drawer should open.
@@ -59,17 +75,27 @@ export default function App({user,onLogout}:{user:User;onLogout:()=>Promise<void
   // Resolve the drawer selection against current records so the detail view stays up to date.
   const selected=drawer?.id?apps.find(a=>a.id===drawer.id):null;
   const heading=view==='applications'?'Your next chapter starts here.':view==='interviews'?'Turn conversations into opportunities.':'A little follow-up goes a long way.';
-  // Render navigation, summaries, the current table or activity list, and modal feedback.
-  return <div className="app-shell">
-    {mobileNav&&<button className="nav-backdrop" aria-label="Close navigation" onClick={()=>setMobileNav(false)}/>}
-    {/* Render workspace navigation, status shortcuts, and the signed-in profile. */}
-    <aside className={'sidebar '+(mobileNav?'is-open':'')}><a className="brand" href="#" onClick={e=>{e.preventDefault();navigate('applications');setTab('All applications');setStatus('All statuses');}}><span className="brand-symbol"><GraduationCap size={23}/></span><span>campus<span className="brand-dot">.</span></span></a>
+  const sidebar = <>
+    <a className="brand" href="#" onClick={e=>{e.preventDefault();navigate('applications');setTab('All applications');setStatus('All statuses');}}><span className="brand-symbol"><GraduationCap size={23}/></span><span>campus<span className="brand-dot">.</span></span></a>
       <div className="workspace-label">YOUR WORKSPACE</div><nav aria-label="Workspace"><button className={view==='applications'?'nav-item active':'nav-item'} onClick={()=>navigate('applications')}><LayoutGrid size={18}/><span>Applications</span><span className="nav-count">{apps.length}</span></button><button className={view==='interviews'?'nav-item active':'nav-item'} onClick={()=>navigate('interviews')}><CalendarDays size={18}/><span>Interviews</span>{counts.interviews>0&&<i className="nav-dot"/>}</button><button className={view==='followups'?'nav-item active':'nav-item'} onClick={()=>navigate('followups')}><Bell size={18}/><span>Follow-ups</span>{due>0&&<span className="due-count">{due}</span>}</button></nav>
       <div className="sidebar-divider"/><div className="workspace-label pipeline-label">YOUR PIPELINE</div><nav aria-label="Application statuses">{STATUSES.map(s=><button key={s} className={'pipeline-item '+(view==='applications'&&status===s?'selected':'')} onClick={()=>filterStatus(s)}><i className={'pipeline-dot '+s.toLowerCase()}/><span>{s}</span><span>{apps.filter(a=>a.status===s).length}</span></button>)}</nav>
       <div className="sidebar-bottom"><div className="little-note"><Sparkles size={18}/><strong>Big things start small.</strong><p>One application. One conversation.<br/>One step closer.</p><span className="note-line"/></div><div className="profile"><span className="avatar">{user.displayName.split(/\s+/).slice(0,2).map(n=>n[0]).join('').toUpperCase()}</span><div><strong>{user.displayName}</strong><small>Personal workspace</small></div><LockKeyhole size={14}/></div></div>
-    </aside>
+  </>;
+  return <div className="app-shell">
+    <aside className="sidebar desktop-sidebar">{sidebar}</aside>
+    <dialog id="mobile-navigation" ref={mobileNavigation} className="sidebar mobile-navigation" aria-label="Workspace navigation" onClick={event=>{
+      if (event.target === event.currentTarget) {
+        const bounds = event.currentTarget.getBoundingClientRect();
+        if (event.clientX < bounds.left || event.clientX >= bounds.right || event.clientY < bounds.top || event.clientY >= bounds.bottom) {
+          event.currentTarget.close();
+        }
+      }
+    }}>
+      <button className="icon-button close-navigation" aria-label="Close navigation" onClick={()=>mobileNavigation.current?.close()}><X size={20}/></button>
+      {sidebar}
+    </dialog>
     {/* Show the current view title and account controls above the workspace. */}
-    <div className="main-shell"><header className="topbar"><div className="breadcrumbs"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={()=>setMobileNav(true)}><Menu size={20}/></button><span>Workspace</span><ChevronRight size={13}/><strong>{view==='applications'?'Applications':view==='interviews'?'Interviews':'Follow-ups'}</strong></div><div className="topbar-right"><ThemeSelect/><span className="private-pill"><LockKeyhole size={12}/> Private workspace</span><button className="text-button" disabled={requestBusy} onClick={signOut}>Sign out</button><span className="topbar-date">{new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span></div></header>
+    <div className="main-shell"><header className="topbar"><div className="breadcrumbs"><button ref={mobileMenu} className="icon-button mobile-menu" aria-label="Open navigation" aria-haspopup="dialog" aria-controls="mobile-navigation" onClick={()=>mobileNavigation.current?.showModal()}><Menu size={20}/></button><span>Workspace</span><ChevronRight size={13}/><strong>{view==='applications'?'Applications':view==='interviews'?'Interviews':'Follow-ups'}</strong></div><div className="topbar-right"><ThemeSelect/><span className="private-pill"><LockKeyhole size={12}/> Private workspace</span><button className="text-button" disabled={requestBusy} onClick={signOut}>Sign out</button><span className="topbar-date">{new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span></div></header>
       <main><section className="welcome"><div><div className="eyebrow"><span/> THE NEXT STEP IS YOURS</div><h1>{heading}</h1><p>Keep your opportunities organized. Focus on what comes next.</p></div><button className="button primary add-main" disabled={!ready||busy} onClick={()=>setDrawer({id:null})}><Plus size={17}/> Add application</button></section>
         {error&&<div className="error-box" role="alert">{error} <button className="text-button" disabled={requestBusy} onClick={()=>void refresh()}>Retry connection</button></div>}
         {pendingImport&&<div className="error-box" role="status">Import completion is not yet confirmed. Other changes are locked. <button className="text-button" onClick={()=>setImportOpen(true)}>Check import {pendingImport.previewId}</button></div>}
@@ -82,7 +108,7 @@ export default function App({user,onLogout}:{user:User;onLogout:()=>Promise<void
         </section>
         {/* Group search, filters, export, paging, and the selected table or activity view. */}
         <section className="workspace-panel" aria-labelledby="workspace-title"><div className="panel-heading"><div className="panel-title"><h2 id="workspace-title">{view==='applications'?'Applications':view==='interviews'?'Interview schedule':'Follow-up list'}</h2><span className="count-badge">{view==='applications'?apps.length:focusedActivities.length}</span></div><div className="panel-actions"><span className="sample-label">{apps.some(a=>a.sample)?'Includes sample data':'Your applications'}</span><button className="button secondary export-button" disabled={requestBusy} onClick={()=>void refresh()}>Refresh</button><button className="button secondary export-button" onClick={()=>setImportOpen(true)} disabled={requestBusy||(!ready&&!pendingImport)}>Import CSV</button><button className="button secondary export-button" onClick={exportCSV} disabled={!ready||busy}><ArrowDownToLine size={14}/> Export CSV</button></div></div>
-          {view==='applications'&&<div className="tabs" role="tablist" aria-label="Application groups">{(['All applications','In progress','Saved','Closed'] as Tab[]).map(t=><button role="tab" aria-selected={tab===t} key={t} className={tab===t?'active':''} onClick={()=>{setTab(t);setStatus('All statuses');setDueOnly(false);}}>{t}{t==='All applications'&&<span>{apps.length}</span>}</button>)}</div>}
+          {view==='applications'&&<div className="tabs" role="group" aria-label="Application groups">{(['All applications','In progress','Saved','Closed'] satisfies Tab[]).map(t=><button aria-pressed={tab===t} key={t} className={tab===t?'active':''} onClick={()=>{setTab(t);setStatus('All statuses');setDueOnly(false);}}>{t}{t==='All applications'&&<span>{apps.length}</span>}</button>)}</div>}
           <div className="toolbar"><div className="search-field"><Search size={17}/><input ref={searchRef} aria-label="Search applications" placeholder="Search company, role, or notes…" value={query} onChange={e=>setQuery(e.target.value)}/>{query?<button className="icon-button" aria-label="Clear search" onClick={()=>setQuery('')}><X size={14}/></button>:<kbd>Ctrl K</kbd>}</div>{view==='applications'&&<div className="filters"><label className="select-wrapper"><SlidersHorizontal size={14}/><select aria-label="Filter status" value={status} onChange={e=>setStatus(e.target.value)}><option>All statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select><ChevronDown size={12}/></label><label className="select-wrapper sort-wrapper"><ArrowDown size={14}/><select aria-label="Sort applications" value={sort} onChange={e=>setSort(e.target.value)}><option value="recent">Last updated</option><option value="applied">Date applied</option><option value="deadline">Deadline</option><option value="company">Company A–Z</option></select><ChevronDown size={12}/></label></div>}</div>
           {dueOnly&&<div className="active-filter"><span>Follow-ups due today or overdue</span><button className="text-button" onClick={()=>setDueOnly(false)}>Clear <X size={13}/></button></div>}
           {/* Render application rows with paging, or actionable interviews and follow-ups. */}
@@ -98,6 +124,6 @@ export default function App({user,onLogout}:{user:User;onLogout:()=>Promise<void
     {/* Mount a fresh editor for the selected record or a blank new application. */}
     {drawer&&(!drawer.id||selected)&&<ApplicationDrawer key={drawer.id??'new'} application={selected??null} isNew={!drawer.id} onClose={()=>setDrawer(null)} onSave={saveApplication} onDelete={deleteApplication}/>}
     {/* Announce action results and expose the version-aware undo operation. */}
-    {toast&&<div className="toast" role="status"><CircleCheck size={18}/><span>{toast.message}</span>{toast.undo&&<button disabled={busy} onClick={undoChange}>Undo</button>}<button className="icon-button" aria-label="Dismiss notification" onClick={()=>setToast(null)}><X size={15}/></button></div>}
+    {toast&&<div className="toast" role="status"><CircleCheck size={18}/><span>{toast.message}</span>{toast.undo&&<button ref={toast.undo.kind==='delete'?deleteUndo:undefined} disabled={busy} onClick={undoChange}>Undo</button>}<button className="icon-button" aria-label="Dismiss notification" onClick={()=>setToast(null)}><X size={15}/></button></div>}
   </div>;
 }
