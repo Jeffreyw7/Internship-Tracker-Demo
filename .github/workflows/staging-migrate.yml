@@ -1,0 +1,123 @@
+name: Migrate the Neon staging database
+
+on:
+  push:
+    branches: [codex/jef-15-staging-rollout]
+    paths: [.github/workflows/staging-migrate.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: campus-staging-migration
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    if: github.repository == 'Jeffreyw7/Internship-Tracker-Demo'
+    environment: campus-staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the published images' source revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fd4e78a25477dd4a6ee921433c25f4e67c42671a
+          persist-credentials: false
+
+      - name: Initialize the staging login passwords if requested
+        env:
+          STAGING_NEON_HOST: ${{ vars.STAGING_NEON_HOST }}
+          OWNER_URI: ${{ secrets.STAGING_BOOTSTRAP_OWNER_URI }}
+          RUNTIME_PASSWORD: ${{ secrets.STAGING_BOOTSTRAP_RUNTIME_PASSWORD }}
+          MIGRATOR_PASSWORD: ${{ secrets.MIGRATION_DATABASE_PASSWORD }}
+        run: |
+          node --input-type=module <<'JS'
+          import { spawnSync } from 'node:child_process';
+          import { createHash, createHmac, pbkdf2Sync, randomBytes } from 'node:crypto';
+
+          const { OWNER_URI, STAGING_NEON_HOST, MIGRATOR_PASSWORD, RUNTIME_PASSWORD, PATH } = process.env;
+          if (!OWNER_URI && !RUNTIME_PASSWORD) process.exit(0);
+          let owner;
+          try {
+            owner = new URL(OWNER_URI);
+          } catch {
+            console.error('The staging owner connection string is missing or malformed.');
+            process.exit(1);
+          }
+          if (owner.protocol !== 'postgresql:' || owner.hostname !== STAGING_NEON_HOST ||
+              owner.hostname !== 'ep-super-feather-bezywdkd.c-9.us-east-2.aws.neon.tech' ||
+              owner.username !== 'campus_owner' || owner.pathname !== '/campus' ||
+              (owner.port && owner.port !== '5432') || !owner.password ||
+              !/^Aa9![A-Za-z0-9_-]{32,}$/.test(MIGRATOR_PASSWORD ?? '') ||
+              !/^Aa9![A-Za-z0-9_-]{32,}$/.test(RUNTIME_PASSWORD ?? '')) {
+            console.error('The staging bootstrap connection or role credentials do not match the expected target.');
+            process.exit(1);
+          }
+          const sql = String.raw`
+          \getenv migrator MIGRATOR_VERIFIER
+          \getenv runtime RUNTIME_VERIFIER
+          BEGIN;
+          DO $$ BEGIN
+            IF current_database() <> 'campus' OR current_user <> 'campus_owner' OR
+               (SELECT nspowner::regrole::text FROM pg_namespace WHERE nspname = 'public')
+                 IS DISTINCT FROM 'campus_migrator' OR
+               EXISTS (SELECT FROM pg_class JOIN pg_namespace ON relnamespace = pg_namespace.oid
+                       WHERE nspname = 'public' AND relkind IN ('r','p','S','v','m','f')) THEN
+              RAISE EXCEPTION 'Expected the empty, provisioned staging database';
+            END IF;
+          END $$;
+          ALTER ROLE campus_migrator PASSWORD :'migrator';
+          ALTER ROLE campus_runtime PASSWORD :'runtime';
+          COMMIT;
+          `;
+          function scramVerifier(password) {
+            const iterations = 4096;
+            const salt = randomBytes(16);
+            const key = pbkdf2Sync(password, salt, iterations, 32, 'sha256');
+            const clientKey = createHmac('sha256', key).update('Client Key').digest();
+            const storedKey = createHash('sha256').update(clientKey).digest('base64');
+            const serverKey = createHmac('sha256', key).update('Server Key').digest('base64');
+            return `SCRAM-SHA-256$${iterations}:${salt.toString('base64')}$${storedKey}:${serverKey}`;
+          }
+
+          try {
+            const result = spawnSync('psql', ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '-d', 'campus', '-f', '-'], {
+              input: sql,
+              env: { PATH, PGHOST: owner.hostname, PGUSER: owner.username,
+                PGPASSWORD: decodeURIComponent(owner.password), PGSSLMODE: 'verify-full',
+                PGSSLROOTCERT: 'system', PGCONNECT_TIMEOUT: '15',
+                MIGRATOR_VERIFIER: scramVerifier(MIGRATOR_PASSWORD),
+                RUNTIME_VERIFIER: scramVerifier(RUNTIME_PASSWORD) },
+            });
+            if (result.status !== 0) throw new Error('psql failed');
+          } catch {
+            console.error('Staging login initialization failed. No connection details were logged.');
+            process.exit(1);
+          }
+          console.log('The two restricted staging login passwords were initialized.');
+          JS
+
+      - name: Migrate the staging database and verify the runtime grants
+        env:
+          STAGING_NEON_HOST: ${{ vars.STAGING_NEON_HOST }}
+          MIGRATION_DATABASE_PASSWORD: ${{ secrets.MIGRATION_DATABASE_PASSWORD }}
+        run: |
+          if [[ ! "$STAGING_NEON_HOST" =~ ^ep-[a-z0-9-]+\.(c-[0-9]+\.)?us-east-2\.aws\.neon\.tech$ || "${STAGING_NEON_HOST%%.*}" == *-pooler || -z "$MIGRATION_DATABASE_PASSWORD" ]]; then
+            echo 'The protected environment needs a direct Ohio Neon endpoint and its migration password.' >&2
+            exit 1
+          fi
+          export MIGRATION_DATABASE_USERNAME=campus_migrator
+          export MIGRATION_DATABASE_URL="jdbc:postgresql://$STAGING_NEON_HOST/campus?sslmode=verify-full&sslfactory=org.postgresql.ssl.DefaultJavaSSLFactory"
+
+          docker run --rm \
+            --env MIGRATION_DATABASE_URL --env MIGRATION_DATABASE_USERNAME --env MIGRATION_DATABASE_PASSWORD \
+            ghcr.io/jeffreyw7/internship-tracker-demo@sha256:ea72e2ed9bbaee6bb82aa857c9db72d69927353661bd7812c4a2c24ca32bd56d
+
+          PGHOST="$STAGING_NEON_HOST" PGUSER="$MIGRATION_DATABASE_USERNAME" PGPASSWORD="$MIGRATION_DATABASE_PASSWORD" \
+            PGSSLMODE=verify-full PGSSLROOTCERT=system PGCONNECT_TIMEOUT=15 \
+            psql -X -v ON_ERROR_STOP=1 -d campus -f deploy/postgres/verify-runtime.sql
+          printf '%s\n' 'Pinned Flyway migration and restricted runtime grant verification passed against the Neon staging database.' >> "$GITHUB_STEP_SUMMARY"
