@@ -37,7 +37,6 @@ jobs:
         run: |
           node --input-type=module <<'JS'
           import { spawnSync } from 'node:child_process';
-          import { createHash, createHmac, pbkdf2Sync, randomBytes } from 'node:crypto';
 
           const { OWNER_URI, STAGING_NEON_HOST, MIGRATOR_PASSWORD, RUNTIME_PASSWORD, PATH } = process.env;
           if (!OWNER_URI && !RUNTIME_PASSWORD) process.exit(0);
@@ -58,8 +57,8 @@ jobs:
             process.exit(1);
           }
           const sql = String.raw`
-          \getenv migrator MIGRATOR_VERIFIER
-          \getenv runtime RUNTIME_VERIFIER
+          \getenv migrator MIGRATOR_PASSWORD
+          \getenv runtime RUNTIME_PASSWORD
           BEGIN;
           DO $$ BEGIN
             IF current_database() <> 'campus' OR current_user <> 'campus_owner' OR
@@ -69,20 +68,30 @@ jobs:
                        WHERE nspname = 'public' AND relkind IN ('r','p','S','v','m','f')) THEN
               RAISE EXCEPTION 'Expected the empty, provisioned staging database';
             END IF;
+            IF current_setting('log_statement') <> 'none' OR
+               current_setting('log_min_duration_statement') <> '-1' OR
+               current_setting('log_min_duration_sample') <> '-1' OR
+               current_setting('log_transaction_sample_rate')::numeric <> 0 OR
+               current_setting('log_parameter_max_length_on_error') <> '0' OR
+               current_setting('log_min_error_statement') <> 'panic' OR
+               current_setting('log_error_verbosity') <> 'terse' OR
+               current_setting('pg_stat_statements.track', true) = 'all' OR
+               COALESCE(NULLIF(current_setting('pgaudit.log', true), ''), 'none') <> 'none' THEN
+              RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'Unexpected staging database logging settings';
+            END IF;
           END $$;
-          ALTER ROLE campus_migrator PASSWORD :'migrator';
-          ALTER ROLE campus_runtime PASSWORD :'runtime';
+          SELECT set_config('campus.bootstrap_migrator', $1, true) IS NOT NULL,
+                 set_config('campus.bootstrap_runtime', $2, true) IS NOT NULL
+          \bind :migrator :runtime
+          \g
+          DO $$ BEGIN
+            EXECUTE format('ALTER ROLE campus_migrator PASSWORD %L', current_setting('campus.bootstrap_migrator'));
+            EXECUTE format('ALTER ROLE campus_runtime PASSWORD %L', current_setting('campus.bootstrap_runtime'));
+          EXCEPTION WHEN OTHERS THEN
+            RAISE EXCEPTION USING ERRCODE = SQLSTATE, MESSAGE = 'Could not initialize the staging roles';
+          END $$;
           COMMIT;
           `;
-          function scramVerifier(password) {
-            const iterations = 4096;
-            const salt = randomBytes(16);
-            const key = pbkdf2Sync(password, salt, iterations, 32, 'sha256');
-            const clientKey = createHmac('sha256', key).update('Client Key').digest();
-            const storedKey = createHash('sha256').update(clientKey).digest('base64');
-            const serverKey = createHmac('sha256', key).update('Server Key').digest('base64');
-            return `SCRAM-SHA-256$${iterations}:${salt.toString('base64')}$${storedKey}:${serverKey}`;
-          }
 
           let result;
           try {
@@ -95,9 +104,7 @@ jobs:
               env: { PATH, PGHOST: owner.hostname, PGUSER: owner.username,
                 PGPASSWORD: decodeURIComponent(owner.password), PGSSLMODE: 'verify-full',
                 PGSSLROOTCERT: '/etc/ssl/certs/ca-certificates.crt', PGCHANNELBINDING: 'require',
-                PGCONNECT_TIMEOUT: '15',
-                MIGRATOR_VERIFIER: scramVerifier(MIGRATOR_PASSWORD),
-                RUNTIME_VERIFIER: scramVerifier(RUNTIME_PASSWORD) },
+                PGCONNECT_TIMEOUT: '15', MIGRATOR_PASSWORD, RUNTIME_PASSWORD },
             });
           } catch {
             console.error('Unable to start the staging PostgreSQL client.');
