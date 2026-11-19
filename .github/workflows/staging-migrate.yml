@@ -51,7 +51,7 @@ jobs:
           if (owner.protocol !== 'postgresql:' || owner.hostname !== STAGING_NEON_HOST ||
               owner.hostname !== 'ep-super-feather-bezywdkd.c-9.us-east-2.aws.neon.tech' ||
               owner.username !== 'campus_owner' || owner.pathname !== '/campus' ||
-              (owner.port && owner.port !== '5432') || !owner.password ||
+              (owner.port && owner.port !== '5432') || !owner.password || /^\*+$/.test(owner.password) ||
               !/^Aa9![A-Za-z0-9_-]{32,}$/.test(MIGRATOR_PASSWORD ?? '') ||
               !/^Aa9![A-Za-z0-9_-]{32,}$/.test(RUNTIME_PASSWORD ?? '')) {
             console.error('The staging bootstrap connection or role credentials do not match the expected target.');
@@ -84,18 +84,41 @@ jobs:
             return `SCRAM-SHA-256$${iterations}:${salt.toString('base64')}$${storedKey}:${serverKey}`;
           }
 
+          let result;
           try {
-            const result = spawnSync('psql', ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '-d', 'campus', '-f', '-'], {
+            result = spawnSync('psql', [
+              '-X', '-w', '-q', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=sqlstate', '-d', 'campus', '-f', '-',
+            ], {
               input: sql,
+              encoding: 'utf8',
+              timeout: 30000,
               env: { PATH, PGHOST: owner.hostname, PGUSER: owner.username,
                 PGPASSWORD: decodeURIComponent(owner.password), PGSSLMODE: 'verify-full',
-                PGSSLROOTCERT: 'system', PGCONNECT_TIMEOUT: '15',
+                PGSSLROOTCERT: '/etc/ssl/certs/ca-certificates.crt', PGCHANNELBINDING: 'require',
+                PGCONNECT_TIMEOUT: '15',
                 MIGRATOR_VERIFIER: scramVerifier(MIGRATOR_PASSWORD),
                 RUNTIME_VERIFIER: scramVerifier(RUNTIME_PASSWORD) },
             });
-            if (result.status !== 0) throw new Error('psql failed');
           } catch {
-            console.error('Staging login initialization failed. No connection details were logged.');
+            console.error('Unable to start the staging PostgreSQL client.');
+            process.exit(1);
+          }
+          if (result.error || result.status === null) {
+            console.error('The staging PostgreSQL client failed to start or timed out.');
+            process.exit(1);
+          }
+          if (result.status !== 0) {
+            const stderr = result.stderr ?? '';
+            if (/password authentication failed/i.test(stderr)) {
+              console.error('Neon rejected the staging owner login.');
+            } else if (/channel binding|certificate|SSL error/i.test(stderr)) {
+              console.error('The verified TLS connection to Neon failed.');
+            } else if (result.status === 2) {
+              console.error('The staging PostgreSQL client could not establish a connection.');
+            } else {
+              const sqlState = stderr.match(/ERROR:\s+([0-9A-Z]{5})(?:\s|$)/)?.[1] ?? 'unavailable';
+              console.error(`Staging login initialization failed with PostgreSQL SQLSTATE ${sqlState}.`);
+            }
             process.exit(1);
           }
           console.log('The two restricted staging login passwords were initialized.');
