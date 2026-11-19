@@ -1,0 +1,87 @@
+name: Check staging containers
+
+on:
+  push:
+    branches: [codex/jef-15-staging-rollout]
+    paths: [.github/workflows/staging-container-check.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compose:
+    if: github.repository == 'Jeffreyw7/Internship-Tracker-Demo'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the published images' source revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fd4e78a25477dd4a6ee921433c25f4e67c42671a
+          persist-credentials: false
+
+      - name: Verify isolated startup gating and persistent PostgreSQL data
+        run: |
+          export DATABASE_ADMIN_PASSWORD="$(openssl rand -hex 24)"
+          export MIGRATION_DATABASE_PASSWORD="$(openssl rand -hex 24)"
+          export DATABASE_PASSWORD="$(openssl rand -hex 24)"
+          export RETENTION_DATABASE_PASSWORD="$(openssl rand -hex 24)"
+
+          cat > "$RUNNER_TEMP/images.yaml" <<'YAML'
+          services:
+            app:
+              image: ghcr.io/jeffreyw7/internship-tracker-demo@sha256:b7a337516cc5a69ffda937397eb6f0b3a4b80f6cc4d24aafea75b67c3bc2c39f
+            migrate:
+              image: ghcr.io/jeffreyw7/internship-tracker-demo@sha256:ea72e2ed9bbaee6bb82aa857c9db72d69927353661bd7812c4a2c24ca32bd56d
+          YAML
+          cat > "$RUNNER_TEMP/fail-migration.yaml" <<'YAML'
+          services:
+            migrate:
+              environment:
+                MIGRATION_DATABASE_PASSWORD: deliberately-invalid-fixture
+          YAML
+
+          compose=(docker compose -p "campus-check-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" -f compose.yaml -f "$RUNNER_TEMP/images.yaml")
+          trap '"${compose[@]}" down --volumes' EXIT
+          "${compose[@]}" pull
+
+          if "${compose[@]}" -f "$RUNNER_TEMP/fail-migration.yaml" up --no-build -d app; then
+            echo 'App startup succeeded unexpectedly with an invalid migration password.' >&2
+            exit 1
+          fi
+          migration=$("${compose[@]}" ps -aq migrate)
+          [[ -n "$migration" && "$(docker inspect --format '{{.State.ExitCode}}' "$migration")" == 1 ]]
+          app=$("${compose[@]}" ps -aq app)
+          [[ -z "$app" || "$(docker inspect --format '{{.State.Status}}' "$app")" == created ]]
+
+          "${compose[@]}" up --no-build -d app
+          wait_for_health() {
+            curl --fail --silent --show-error --retry 45 --retry-all-errors --retry-delay 2 --retry-max-time 100 --max-time 5 \
+              http://127.0.0.1:8080/api/health | jq -e '.status == "UP"' > /dev/null
+          }
+          wait_for_health
+          [[ "$("${compose[@]}" exec -T app id -u)" == 10001 ]]
+          "${compose[@]}" exec -T database psql -X -v ON_ERROR_STOP=1 -U campus_admin -d campus -f /opt/campus/postgres/verify-runtime.sql
+
+          runtime_sql() {
+            "${compose[@]}" exec -T database sh -ec 'PGPASSWORD="$RUNTIME_DATABASE_PASSWORD" psql -X -v ON_ERROR_STOP=1 -h 127.0.0.1 -U campus_runtime -d campus "$@"' sh "$@"
+          }
+          runtime_sql <<'SQL'
+          BEGIN;
+          INSERT INTO campus_users (id, email, display_name, password_hash, created_at)
+          VALUES ('00000000-0000-0000-0000-000000000001', 'compose-fixture@example.test', 'Compose Fixture', 'unusable-test-value', now());
+          INSERT INTO applications (id, owner_id, company, role, location, status, notes, created_at, updated_at)
+          VALUES ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'Compose Fixture Co', 'Demo Intern', 'Remote', 'SAVED', '', now(), now());
+          COMMIT;
+          SQL
+
+          "${compose[@]}" down
+          "${compose[@]}" up --no-build -d app
+          wait_for_health
+          record=$(runtime_sql -Atc "SELECT company FROM applications WHERE id = '00000000-0000-0000-0000-000000000002'")
+          [[ "$record" == 'Compose Fixture Co' ]]
+          printf '%s\n' 'Verified failed-migration startup gating, fresh health, UID 10001, restricted database grants, and a synthetic application surviving full Compose recreation.' >> "$GITHUB_STEP_SUMMARY"
