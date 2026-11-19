@@ -1,0 +1,60 @@
+name: Publish staging images
+
+on:
+  push:
+    branches: [codex/jef-15-staging-rollout]
+    paths: [.github/workflows/staging-images.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-images-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.repository == 'Jeffreyw7/Internship-Tracker-Demo' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/jef-15-staging-rollout')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the staging revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Build the application and migration images
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          for target in app migrate; do
+            docker build --platform linux/amd64 --target "$target" \
+              --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+              --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+              --tag "$image:$target-$GITHUB_SHA" .
+          done
+
+      - name: Publish the commit-tagged images and record their digests
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          trap 'docker logout ghcr.io >/dev/null' EXIT
+
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          printf 'Source revision `%s`\n\n' "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          for target in app migrate; do
+            reference="$image:$target-$GITHUB_SHA"
+            docker push "$reference"
+            digest=$(docker buildx imagetools inspect "$reference" --format '{{.Manifest.Digest}}')
+            [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+            printf -- '- %s image `%s@%s`\n' "$target" "$image" "$digest" >> "$GITHUB_STEP_SUMMARY"
+          done
