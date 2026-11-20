@@ -1,5 +1,4 @@
 // Anonymous, opt-in transport checks. Never sends an email, password, or complete reset body.
-// Run: node deploy/probe-edge.mjs --origin https://staging.example --deadline-ms 6000
 // Run only against a deployment you operate. This does not certify proxy trust or readiness.
 import http from 'node:http';
 import https from 'node:https';
@@ -25,8 +24,6 @@ function get(origin, path, timeoutMs) {
   });
 }
 
-// A late byte followed by a stall distinguishes an elapsed deadline from inactivity alone.
-// At most two requests run sequentially, each below the server's 4 KiB limit.
 export function slowBody(origin, csrf, cookie, deadlineMs, lateByte = false) {
   return new Promise(resolve => {
     let done = false;
@@ -119,7 +116,7 @@ export async function probe(origin, { deadlineMs = 6000 } = {}) {
   if (csrf && cookie) {
     for (const lateByte of [false, true]) {
       const result = await slowBody(origin, csrf, cookie, deadlineMs, lateByte);
-      add(lateByte ? 'total body deadline after late byte' : 'stalled body deadline', result.ok, result.detail);
+      add(lateByte ? 'observed cutoff after late byte' : 'stalled body deadline', result.ok, result.detail);
     }
   } else add('body deadline checks', false, 'requires a valid anonymous CSRF session');
   return results;
@@ -147,7 +144,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     else {
       const results = await probe(options.origin, options);
       for (const result of results) console.log(`${result.ok ? 'PASS' : 'BLOCKED'} ${result.name}: ${result.detail}`);
-      console.log('BLOCKED remaining release gates: proxy trust/direct-access isolation, load/admission, database/worker readiness, mail delivery, browser behavior, restore/failover (not measured by this probe)');
+      console.log('NOT CHECKED: first-hop deadline enforcement, proxy trust/direct-access isolation, load/admission, database/worker readiness, mail delivery, browser behavior, restore/failover');
       process.exitCode = results.some(result => !result.ok) ? 1 : 0;
     }
   } catch {

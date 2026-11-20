@@ -56,7 +56,7 @@ test('probe records local HTTP limitation and exercises both incomplete bodies w
   const results = await probe(origin, { deadlineMs: 1000 });
   assert.equal(attempts, 2);
   assert.deepEqual(bodies, ['{', '{ ']);
-  assert.match(results.find(result => result.name === 'total body deadline after late byte').detail, /late byte written/);
+  assert.match(results.find(result => result.name === 'observed cutoff after late byte').detail, /late byte written/);
   assert.deepEqual(results.filter(result => !result.ok).map(result => result.name), ['HTTPS transport']);
   assert.ok(!JSON.stringify(results).includes('synthetic-csrf'));
   assert.ok(!JSON.stringify(results).includes('synthetic-session'));
