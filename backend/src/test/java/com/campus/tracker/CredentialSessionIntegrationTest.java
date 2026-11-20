@@ -24,7 +24,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest
+@SpringBootTest(properties = "campus.ingress.https-only=true")
 @ActiveProfiles("test")
 @AutoConfigureMockMvc
 class CredentialSessionIntegrationTest {
@@ -97,11 +97,13 @@ class CredentialSessionIntegrationTest {
     }
     @Test void authenticationShellAndApiHaveRecoverySecurityHeaders() throws Exception {
         mvc.perform(get("/")).andExpect(header().string("Referrer-Policy","no-referrer"))
+                .andExpect(header().string("Strict-Transport-Security", "max-age=31536000 ; includeSubDomains"))
                 .andExpect(header().string("Content-Security-Policy",org.hamcrest.Matchers.allOf(
                         org.hamcrest.Matchers.containsString("frame-ancestors 'none'"),
                         org.hamcrest.Matchers.containsString("form-action 'self'"))))
                 .andExpect(header().string("Cache-Control",org.hamcrest.Matchers.containsString("no-store")));
         mvc.perform(get("/api/auth/csrf")).andExpect(header().string("Referrer-Policy","no-referrer"))
+                .andExpect(header().string("Strict-Transport-Security", "max-age=31536000 ; includeSubDomains"))
                 .andExpect(header().string("Cache-Control",org.hamcrest.Matchers.containsString("no-store")));
     }
     @Test void versionChecksPrecedeAbuseCsrfAndResetBodyParsing() {

@@ -41,6 +41,7 @@ Verification also uses persistent fixed-window counters in `auth_rate_limits`. E
 - Cleanup work is rate-limited to avoid repeated full scans under a random-identity flood.
 - Rejection totals are logged without passwords, tokens, or raw account identities. A production metrics dashboard and work-utilization gauge are not included.
 - Forwarded-header interpretation is disabled by default. Limits use the actual peer address, not caller-supplied X-Forwarded-For.
+- In the production profile on Render, `RENDER=true` enables HSTS on responses forwarded over internal HTTP. On another deployment, enable `campus.ingress.https-only` only when public HTTP redirects to HTTPS at the ingress. Direct TLS connections use Spring Security's default HSTS policy.
 - Configure trusted proxies and block direct backend access before deploying behind a proxy. Otherwise all clients may share the proxy's bucket.
 - Counters reset at restart and are not shared across replicas. Add shared atomic storage before horizontal scaling.
 - Tune IP budgets for legitimate users behind shared NAT. Short account cooldowns can still inconvenience a targeted user; these controls do not prevent a large distributed denial-of-service attack.

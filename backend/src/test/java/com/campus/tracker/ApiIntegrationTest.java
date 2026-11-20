@@ -37,6 +37,13 @@ class ApiIntegrationTest {
     private static final String PASSWORD = "Campus-test-123!";
     record Account(String email, MockHttpSession session) {}
 
+    @Test void hstsRequiresDirectTlsByDefault() throws Exception {
+        mvc.perform(get("/api/health").header("X-Forwarded-Proto", "https"))
+                .andExpect(status().isOk()).andExpect(header().doesNotExist("Strict-Transport-Security"));
+        mvc.perform(get("/api/health").secure(true))
+                .andExpect(status().isOk()).andExpect(header().exists("Strict-Transport-Security"));
+    }
+
     @Test void sharedTestProfileDoesNotRegisterBackgroundDatabaseTasks() {
         assertThat(schedulers.stream().flatMap(processor -> processor.getScheduledTasks().stream()).toList())
                 .as("Cached test contexts must not leave scheduled jobs running against shared databases")

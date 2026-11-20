@@ -11,6 +11,7 @@ import org.springframework.security.web.header.HeaderWriterFilter;
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -71,13 +72,15 @@ public class SecurityConfig {
     @Bean SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper json, AuthRateLimiter limiter,
             AuthWorkLimiter work, AuthAbuseProperties policies, AuthenticationProvider authenticationProvider,
             JdbcTemplate jdbc, PlatformTransactionManager transactions, RecoveryCapacity capacity,
-            ImportAdmissionService importAdmission, ImportWorkLimiter importWork, ImportInputLimits importLimits) throws Exception {
+            ImportAdmissionService importAdmission, ImportWorkLimiter importWork, ImportInputLimits importLimits,
+            @Value("${campus.ingress.https-only:false}") boolean httpsOnlyIngress) throws Exception {
         var versions = new CredentialVersionFilter(jdbc, transactions, json);
         var sessions = new HttpSessionSecurityContextRepository();
         return http
                 .authenticationProvider(authenticationProvider)
                 .securityContext(context -> context.requireExplicitSave(true))
                 .headers(headers -> headers
+                        .httpStrictTransportSecurity(hsts -> hsts.requestMatcher(request -> httpsOnlyIngress || request.isSecure()))
                         .referrerPolicy(referrer -> referrer.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER))
                         .contentSecurityPolicy(csp -> csp.policyDirectives("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")))
                 // Store CSRF tokens in the session so writes require both the token and session cookie.
