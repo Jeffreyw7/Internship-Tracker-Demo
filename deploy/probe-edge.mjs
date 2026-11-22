@@ -2,6 +2,8 @@ import http from 'node:http';
 import https from 'node:https';
 import { pathToFileURL } from 'node:url';
 
+const GET_TIMEOUT_MS = 90_000;
+
 function transport(origin) { return origin.protocol === 'https:' ? https : http; }
 
 function get(origin, path, timeoutMs) {
@@ -32,7 +34,7 @@ function isLiveSessionCookie(value) {
   return Number.isNaN(expiresAt) || expiresAt > Date.now();
 }
 
-export async function probe(origin, { deadlineMs = 6000 } = {}) {
+export async function probe(origin, { deadlineMs = GET_TIMEOUT_MS } = {}) {
   const results = [];
   const add = (name, ok, detail) => results.push({ name, ok, detail });
   const secure = origin.protocol === 'https:';
@@ -82,7 +84,7 @@ export async function probe(origin, { deadlineMs = 6000 } = {}) {
 export function parseArguments(args) {
   if (args.length === 1 && args[0] === '--help') return null;
   let origin;
-  let deadlineMs = 6000;
+  let deadlineMs = GET_TIMEOUT_MS;
   for (let index = 0; index < args.length; index += 2) {
     if (args[index] === '--origin') origin = new URL(args[index + 1]);
     else if (args[index] === '--deadline-ms') deadlineMs = Number(args[index + 1]);
@@ -90,14 +92,14 @@ export function parseArguments(args) {
   }
   if (!origin || origin.username || origin.password || origin.search || origin.hash || origin.pathname !== '/') throw new Error('provide a bare origin');
   if (origin.protocol !== 'https:' && !(origin.protocol === 'http:' && ['127.0.0.1', '[::1]', 'localhost'].includes(origin.hostname))) throw new Error('HTTPS required except loopback');
-  if (!Number.isInteger(deadlineMs) || deadlineMs < 1000 || deadlineMs > 15000) throw new Error('deadline must be 1000..15000 ms');
+  if (!Number.isInteger(deadlineMs) || deadlineMs < 1000 || deadlineMs > GET_TIMEOUT_MS) throw new Error(`client timeout must be 1000..${GET_TIMEOUT_MS} ms`);
   return { origin, deadlineMs };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const options = parseArguments(process.argv.slice(2));
-    if (!options) console.log('Usage: node deploy/probe-edge.mjs --origin https://staging.example [--deadline-ms 6000]\nChecks anonymous GET responses on /, /api/auth/csrf and /api/auth/me. The deadline is the client timeout for each GET.\nLoopback HTTP reports HTTPS as BLOCKED. Exit 1 means a check is blocked.');
+    if (!options) console.log(`Usage: node deploy/probe-edge.mjs --origin https://staging.example [--deadline-ms ${GET_TIMEOUT_MS}]\nChecks anonymous GET responses on /, /api/auth/csrf and /api/auth/me. The deadline is the client timeout for each GET.\nLoopback HTTP reports HTTPS as BLOCKED. Exit 1 means a check is blocked.`);
     else {
       const results = await probe(options.origin, options);
       for (const result of results) console.log(`${result.ok ? 'PASS' : 'BLOCKED'} ${result.name}: ${result.detail}`);

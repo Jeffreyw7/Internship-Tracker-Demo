@@ -10,6 +10,8 @@ On November 22, 2026, the project owner waived the six-second public password-re
 
 The November 22 anonymous GET check negotiated TLS 1.3 and observed HSTS on the same 200, 200 and 401 responses. Both API responses carried `Cache-Control: no-store` and `CF-Cache-Status: DYNAMIC`, with no `Age` header. The CSRF session cookie carried `Secure`, `HttpOnly` and `SameSite=Lax`. [Hosted evidence](https://linear.app/jeffreywang/document/jef-16-staging-ingress-evidence-2570b21f0837)
 
+A health GET took 62.18 seconds before returning 200. The probe allows up to 90 seconds per GET to accommodate a Free service starting after idle. Operators can set a shorter client timeout with `--deadline-ms`. [Render Free service spin-up](https://render.com/docs/free#spinning-down-on-idle)
+
 ## Executed checks
 
 The local checks below were recorded on October 29, 2026.

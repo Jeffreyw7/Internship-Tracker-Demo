@@ -34,11 +34,12 @@ test('arguments reject credentials, remote cleartext, non-origins and unbounded 
   for (const args of [[], ['--origin', 'https://user:secret@example.test'],
     ['--origin', 'http://example.test'], ['--origin', 'https://example.test/path'],
     ['--origin', 'https://example.test?secret=x'], ['--origin', 'https://example.test', '--deadline-ms', '0'],
-    ['--origin', 'https://example.test', '--deadline-ms', '16000'], ['--origin']]) {
+    ['--origin', 'https://example.test', '--deadline-ms', '90001'], ['--origin']]) {
     assert.throws(() => parseArguments(args));
   }
   assert.equal(parseArguments(['--help']), null);
-  assert.equal(parseArguments(['--origin', 'https://example.test']).deadlineMs, 6000);
+  assert.equal(parseArguments(['--origin', 'https://example.test']).deadlineMs, 90_000);
+  assert.equal(parseArguments(['--origin', 'https://example.test', '--deadline-ms', '6000']).deadlineMs, 6000);
   assert.equal(parseArguments(['--origin', 'http://127.0.0.1:8080']).origin.port, '8080');
 });
 
