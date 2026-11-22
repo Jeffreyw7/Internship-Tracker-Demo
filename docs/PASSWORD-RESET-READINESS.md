@@ -2,6 +2,8 @@
 
 Release status: **not approved for public activation**. The isolated checks below close several earlier verification gaps. Hosted checks still require a staging deployment, production-equivalent infrastructure and operator evidence. No staging origin or provider configuration was available in this checkout; the request for a staging target remains open.
 
+The project owner approved a project-controlled public URL on the Workers Free plan with the existing Render backend. Deploy the [staging Worker](../deploy/staging-ingress/wrangler.jsonc) with Wrangler and set its `ORIGIN_KEY` secret. Set the same randomly generated 32-byte key, encoded as hex, in Render's `STAGING_ORIGIN_KEY`. Use the Worker HTTPS URL for Render's `PUBLIC_ORIGIN`, keep public registration disabled, and retain `/api/health` as the Render health check. With the key configured, only the health GET and HEAD are public at the Render origin. The [hosted evidence](https://linear.app/jeffreywang/document/jef-16-staging-ingress-evidence-2570b21f0837) records which deployment and public entry point have passed verification.
+
 ## Executed checks
 
 | Check | Evidence and scope |
