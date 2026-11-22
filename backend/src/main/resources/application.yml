@@ -43,6 +43,9 @@ spring:
     scheduling:
       pool:
         size: 4
+logging:
+  level:
+    campus.ingress.imports: "OFF"
 # Bind locally by default and configure the server-side session and cookie policy.
 server:
   forward-headers-strategy: NONE
