@@ -1,8 +1,16 @@
-# Password Reset release evidence — October 29, 2026
+# Password Reset release evidence
 
-Release status: **not approved for public activation**. The isolated checks below close several earlier verification gaps. Hosted checks still require a staging deployment, production-equivalent infrastructure and operator evidence. No staging origin or provider configuration was available in this checkout; the request for a staging target remains open.
+**Public activation remains on hold.** JEF-14 selected a Render Free service for staging. Public registration and password recovery are disabled there.
+
+## Staging ingress review
+
+On November 21, 2026, staging revision `b607664f507fb094abd0f041b42ca1aa6d55c2aa` passed the HTTPS redirect, TLS 1.3, one-year HSTS, session cookie and API cache checks. HSTS was present on `/` and `/api/auth/csrf` (200) and anonymous `/api/auth/me` (401). The deployment identified Tomcat on port 10000. Render's routing policy excludes direct public access to that listener. [Image build](https://github.com/Jeffreyw7/Internship-Tracker-Demo/actions/runs/44983048409) · [Render port routing](https://render.com/docs/web-services#port-binding)
+
+**The six-second public reset-body deadline is open.** In the recorded hosted check, the client finished sending at 7.21 seconds and received application validation (HTTP 400) at 7.26 seconds. The reset filter starts its five-second clock when Java reads the body. Each blocking read also has a five-second Tomcat timeout shared with imports. JEF-16 requires a cutoff measured from the start of the public upload. The Render Free service settings and published Blueprint expose no such control. [Reset filter](../backend/src/main/java/com/campus/tracker/auth/reset/ResetInputFilter.java) · [Connector settings](../backend/src/main/java/com/campus/tracker/config/RequestReadLimits.java) · [Render Blueprint](https://render.com/docs/blueprint-spec)
 
 ## Executed checks
+
+The local checks below were recorded on October 29, 2026.
 
 | Check | Evidence and scope |
 | --- | --- |
@@ -32,7 +40,7 @@ PostgreSQL binaries came from [EDB's official distribution](https://www.enterpri
 | Gate | Missing evidence needed before activation |
 | --- | --- |
 | Docker/Compose rollout | Execute image build, startup, migration-failure gating, runtime identity and persistent-volume restart on a Docker host. Docker is absent from this environment. Existing Compose is explicitly local development configuration. |
-| HTTPS and trusted edge | Staging origin and ingress configuration: TLS, HSTS, Secure cookie, CDN API bypass, trusted forwarded-header overwrite, blocked direct backend access and an elapsed request/body deadline. Backend inactivity limits alone permit the measured nine-second late-byte case. |
+| HTTPS and trusted edge | The staging review records the HTTPS and listener results. The final proxy hop's handling of client-supplied forwarding headers and a six-second public reset-body cutoff still need evidence. [Staging ingress review](#staging-ingress-review) |
 | SMTP/provider | Authorized test mailbox and configured provider/sender domain: SPF/DKIM/DMARC, link tracking disabled, actual inbox delivery, bounce handling, supported clients/scanners and recovery/support destinations. Loopback acceptance proves no external delivery. |
 | Sustained SLO/load | Section 12 of the design requires at least 30 minutes with managed PostgreSQL, representative workspace/login traffic, distributed legitimate IP/address budgets, boundary bursts and production-equivalent resources. Run the separate campus/shared-NAT and daily mail-ceiling cases. |
 | Monitoring and audit export | Connect private report/logs and application/edge latency, 5xx, permits and timeout telemetry to dashboards/on-call alerts; test alert delivery and recovery. Supply a durable audit sink/checkpoint and prove late-commit-safe export, deduplication and retention. The SQL report is not an exporter. |
