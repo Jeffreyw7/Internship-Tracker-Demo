@@ -1,26 +1,25 @@
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
+import http, { createServer } from 'node:http';
+import https from 'node:https';
 import { once } from 'node:events';
 import { test } from 'node:test';
-import { parseArguments, probe, slowBody } from './probe-edge.mjs';
+import { parseArguments, probe } from './probe-edge.mjs';
 
-async function serverFor(t, onReset) {
+async function serverFor(t, adjust = () => {}) {
+  const requests = [];
   const server = createServer((request, response) => {
+    requests.push([request.method, request.url, request.headers.cookie]);
     response.setHeader('Cache-Control', 'no-store');
     response.setHeader('Referrer-Policy', 'no-referrer');
-    if (request.url === '/api/auth/csrf') {
+    let body = '';
+    if (request.url === '/') body = '<html></html>';
+    else if (request.url === '/api/auth/csrf') {
       response.setHeader('Set-Cookie', 'JSESSIONID=synthetic-session; HttpOnly; SameSite=Lax');
-      response.end(JSON.stringify({ token: 'synthetic-csrf', headerName: 'X-CSRF-TOKEN' }));
-    } else if (request.url === '/') response.end('<html></html>');
-    else {
-      assert.equal(request.headers['x-csrf-token'], 'synthetic-csrf');
-      assert.equal(request.headers.cookie, 'JSESSIONID=synthetic-session');
-      assert.equal(request.headers['content-length'], '4096');
-      let body = '';
-      request.on('data', chunk => { body += chunk; });
-      request.on('close', () => assert.ok(!body.includes('email') && !body.includes('password')));
-      onReset(request, response);
-    }
+      body = JSON.stringify({ token: 'synthetic-csrf', headerName: 'X-CSRF-TOKEN' });
+    } else if (request.url === '/api/auth/me') response.statusCode = 401;
+    else response.statusCode = 404;
+    adjust(request, response);
+    response.end(body);
   });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -28,10 +27,10 @@ async function serverFor(t, onReset) {
     server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));
   });
-  return new URL(`http://127.0.0.1:${server.address().port}`);
+  return { requests, origin: new URL(`http://127.0.0.1:${server.address().port}`) };
 }
 
-test('arguments reject credentials, remote cleartext, non-origins and unbounded deadlines', () => {
+test('arguments reject credentials, remote cleartext, non-origins and unbounded client timeouts', () => {
   for (const args of [[], ['--origin', 'https://user:secret@example.test'],
     ['--origin', 'http://example.test'], ['--origin', 'https://example.test/path'],
     ['--origin', 'https://example.test?secret=x'], ['--origin', 'https://example.test', '--deadline-ms', '0'],
@@ -43,47 +42,67 @@ test('arguments reject credentials, remote cleartext, non-origins and unbounded 
   assert.equal(parseArguments(['--origin', 'http://127.0.0.1:8080']).origin.port, '8080');
 });
 
-test('probe records local HTTP limitation and exercises both incomplete bodies without printing credentials', async t => {
-  let attempts = 0;
-  const bodies = [];
-  const origin = await serverFor(t, (request, response) => {
-    attempts++;
-    let body = '';
-    request.on('data', chunk => { body += chunk; });
-    const timer = setTimeout(() => { bodies.push(body); response.writeHead(408); response.end(); }, 850);
-    response.on('close', () => clearTimeout(timer));
+test('checks three anonymous GETs and keeps session values out of the report', async t => {
+  const { origin, requests } = await serverFor(t, (request, response) => {
+    response.setHeader('Rndr-Id', request.url === '/' ? '1234abcd-0001-0002' : 'synthetic-session');
   });
-  const results = await probe(origin, { deadlineMs: 1000 });
-  assert.equal(attempts, 2);
-  assert.deepEqual(bodies, ['{', '{ ']);
-  assert.match(results.find(result => result.name === 'observed cutoff after late byte').detail, /late byte written/);
+  const results = await probe(origin);
+  assert.deepEqual(requests, [
+    ['GET', '/', undefined],
+    ['GET', '/api/auth/csrf', undefined],
+    ['GET', '/api/auth/me', undefined],
+  ]);
   assert.deepEqual(results.filter(result => !result.ok).map(result => result.name), ['HTTPS transport']);
-  assert.ok(!JSON.stringify(results).includes('synthetic-csrf'));
-  assert.ok(!JSON.stringify(results).includes('synthetic-session'));
+  assert.match(results.find(result => result.name === '/ status').detail, /1234abcd-0001-0002/);
+  assert.doesNotMatch(JSON.stringify(results), /synthetic-csrf|synthetic-session/);
 });
 
-test('capacity rejection does not establish a body deadline', async t => {
-  const origin = await serverFor(t, (_request, response) => { response.writeHead(503); response.end(); });
-  const result = await slowBody(origin, { token: 'synthetic-csrf', headerName: 'X-CSRF-TOKEN' }, 'JSESSIONID=synthetic-session', 500);
-  assert.equal(result.ok, false);
-  assert.match(result.detail, /HTTP 503/);
-});
-
-test('client watchdog failure cannot be mistaken for a server deadline', async t => {
-  const origin = await serverFor(t, () => {});
-  const began = performance.now();
-  const result = await slowBody(origin, { token: 'synthetic-csrf', headerName: 'X-CSRF-TOKEN' }, 'JSESSIONID=synthetic-session', 500, true);
-  assert.equal(result.ok, false);
-  assert.match(result.detail, /no server cutoff/);
-  assert.ok(performance.now() - began < 1500);
-});
-
-test('cutoff before the late byte is inconclusive for total-deadline evidence', async t => {
-  const origin = await serverFor(t, (_request, response) => {
-    response.writeHead(408);
-    response.end();
+test('reports incorrect status and caching on the anonymous account response', async t => {
+  const { origin } = await serverFor(t, (request, response) => {
+    if (request.url === '/api/auth/me') {
+      response.statusCode = 200;
+      response.setHeader('Cache-Control', 'public');
+      response.setHeader('CF-Cache-Status', 'HIT');
+    }
   });
-  const result = await slowBody(origin, { token: 'synthetic-csrf', headerName: 'X-CSRF-TOKEN' }, 'JSESSIONID=synthetic-session', 500, true);
-  assert.equal(result.ok, false);
-  assert.match(result.detail, /late byte not written; total-deadline check inconclusive/);
+  const results = await probe(origin);
+  assert.deepEqual(results.filter(result => !result.ok).map(result => result.name), [
+    'HTTPS transport', '/api/auth/me status', '/api/auth/me private caching', '/api/auth/me edge cache bypass',
+  ]);
+});
+
+test('checks Cloudflare bypass and Age independently of origin Cache-Control', async t => {
+  const { origin } = await serverFor(t, (request, response) => {
+    if (request.url === '/api/auth/csrf') response.setHeader('CF-Cache-Status', 'DYNAMIC');
+    if (request.url === '/api/auth/me') response.setHeader('Age', '12');
+  });
+  const results = await probe(origin);
+  assert.equal(results.find(result => result.name === '/api/auth/csrf edge cache bypass').ok, true);
+  assert.equal(results.find(result => result.name === '/api/auth/me edge cache bypass').ok, false);
+});
+
+test('a Render check needs verified TLS and explicit cache-bypass evidence', async t => {
+  const { origin } = await serverFor(t);
+  const verifyPeer = [];
+  t.mock.method(https, 'get', (url, options, callback) => {
+    verifyPeer.push(options.rejectUnauthorized);
+    return http.get(new URL(url.pathname, origin), options, callback);
+  });
+  const results = await probe(new URL('https://fixture.onrender.com'));
+  assert.deepEqual(verifyPeer, [true, true, true]);
+  assert.equal(results.find(result => result.name === 'HTTPS transport').ok, false);
+  for (const path of ['/api/auth/csrf', '/api/auth/me']) {
+    assert.equal(results.find(result => result.name === `${path} edge cache bypass`).ok, false);
+  }
+});
+
+test('empty and expired cookies do not establish an anonymous session', async t => {
+  for (const cookie of ['JSESSIONID=', 'JSESSIONID=""', 'JSESSIONID=old; Max-Age=0',
+    'JSESSIONID=old; Expires=Thu, 01 Jan 1970 00:00:00 GMT']) {
+    const { origin } = await serverFor(t, (request, response) => {
+      if (request.url === '/api/auth/csrf') response.setHeader('Set-Cookie', cookie + '; HttpOnly; SameSite=Lax');
+    });
+    const results = await probe(origin);
+    assert.equal(results.find(result => result.name === 'anonymous CSRF session').ok, false);
+  }
 });

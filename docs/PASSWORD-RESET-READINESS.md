@@ -6,7 +6,9 @@
 
 On November 21, 2026, staging revision `b607664f507fb094abd0f041b42ca1aa6d55c2aa` passed the HTTPS redirect, TLS 1.3, one-year HSTS, session cookie and API cache checks. HSTS was present on `/` and `/api/auth/csrf` (200) and anonymous `/api/auth/me` (401). The deployment identified Tomcat on port 10000. Render's routing policy excludes direct public access to that listener. [Image build](https://github.com/Jeffreyw7/Internship-Tracker-Demo/actions/runs/44983048409) · [Render port routing](https://render.com/docs/web-services#port-binding)
 
-**The six-second public reset-body deadline is open.** In the recorded hosted check, the client finished sending at 7.21 seconds and received application validation (HTTP 400) at 7.26 seconds. The reset filter starts its five-second clock when Java reads the body. Each blocking read also has a five-second Tomcat timeout shared with imports. JEF-16 requires a cutoff measured from the start of the public upload. The Render Free service settings and published Blueprint expose no such control. [Reset filter](../backend/src/main/java/com/campus/tracker/auth/reset/ResetInputFilter.java) · [Connector settings](../backend/src/main/java/com/campus/tracker/config/RequestReadLimits.java) · [Render Blueprint](https://render.com/docs/blueprint-spec)
+On November 22, 2026, the project owner waived the six-second public password-reset cutoff for JEF-16. In the earlier hosted check, the client finished sending at 7.21 seconds and received HTTP 400 from application validation at 7.26 seconds. The reset filter still limits body size and read time. CSV preview and confirmation retain their 30-second absolute upload deadline, five-second blocked-read allowance and proxy byte limits. [Reset filter](../backend/src/main/java/com/campus/tracker/auth/reset/ResetInputFilter.java) · [Import contract](API.md#csv-imports)
+
+The November 22 anonymous GET check negotiated TLS 1.3 and observed HSTS on the same 200, 200 and 401 responses. Both API responses carried `Cache-Control: no-store` and `CF-Cache-Status: DYNAMIC`, with no `Age` header. The CSRF session cookie carried `Secure`, `HttpOnly` and `SameSite=Lax`. [Hosted evidence](https://linear.app/jeffreywang/document/jef-16-staging-ingress-evidence-2570b21f0837)
 
 ## Executed checks
 
@@ -16,7 +18,7 @@ The local checks below were recorded on October 29, 2026.
 | --- | --- |
 | Frontend | 64 Node/API/mounted-DOM tests pass; TypeScript and Vite production build pass. Three new regressions cover the reset-view reload hint, dismissal/completion cleanup and verification-link precedence. |
 | Backend | Final complete unit/H2 suite: 129 passed, no failures/errors/skips. All five PostgreSQL 17 scenarios pass across the migration/monitoring run and corrected restore rerun. |
-| Deployment probe | Five fake-server regressions pass, including deadline failures, capacity rejection and a cutoff before the late byte. Arguments reject remote cleartext origins and embedded credentials. |
+| Deployment probe | The October probe passed five fake-server checks, including deadline failures, capacity rejection and a cutoff before the late byte. Its arguments rejected remote cleartext origins and embedded credentials. |
 | PostgreSQL 17 | Fresh, legacy and V3 upgrade scenarios pass on portable PostgreSQL 17.11, including restricted roles, HTTP recovery and primary-clock expiry after row-lock waits. |
 | Private monitoring | Actual report executes on PostgreSQL 17 under a role restricted to metadata-column SELECT. Seeded backlog/notice alerts, consumed-link exclusion, missing/known/future export checkpoints and denied secret reads/control writes pass. |
 | Restore and restart | A pre-reset logical backup is restored into a separate isolated database. The drill demonstrates resurrected old credentials and an active spent link offline, rejects incorrect reconciliation arguments, reconciles, rejects old credentials/links, then completes fresh mailbox recovery. A clean database restart preserves the completed reset, audit and notice. |
@@ -33,14 +35,14 @@ PostgreSQL binaries came from [EDB's official distribution](https://www.enterpri
 - A token-free boolean in history state preserves reopen-email guidance after refreshing a scrubbed reset link. Tokens/passwords remain in memory only. Dismissal and completion clear the hint; a new verification link takes precedence.
 - PostgreSQL 17 treated `\quit 3` as a successful exit. Reconciliation guards now raise SQL exceptions under `ON_ERROR_STOP`, so missing or incorrect target/confirmation returns failure before mutations.
 - The H2 expired-link health fixture now places both creation and expiry in the past while preserving the schema's positive lifetime constraint. It avoids comparing independent H2/JVM clock samples at the current instant.
-- The new load probe accepts valid repeated `no-store` directives. The edge probe verifies that its late byte was actually written, rather than calling an earlier inactivity cutoff proof of a total deadline.
+- The October load probe accepted repeated `no-store` directives. Its companion edge probe checked whether the late byte was actually written before reporting a deadline result.
 
 ## Checks requiring the deployment
 
 | Gate | Missing evidence needed before activation |
 | --- | --- |
 | Docker/Compose rollout | Execute image build, startup, migration-failure gating, runtime identity and persistent-volume restart on a Docker host. Docker is absent from this environment. Existing Compose is explicitly local development configuration. |
-| HTTPS and trusted edge | The staging review records the HTTPS and listener results. The final proxy hop's handling of client-supplied forwarding headers and a six-second public reset-body cutoff still need evidence. [Staging ingress review](#staging-ingress-review) |
+| HTTPS and trusted edge | The staging review records the HTTPS and listener results. JEF-16 still requires evidence of forwarding-header handling and the proxy's enforcement of import bytes and upload time. [Staging ingress review](#staging-ingress-review) |
 | SMTP/provider | Authorized test mailbox and configured provider/sender domain: SPF/DKIM/DMARC, link tracking disabled, actual inbox delivery, bounce handling, supported clients/scanners and recovery/support destinations. Loopback acceptance proves no external delivery. |
 | Sustained SLO/load | Section 12 of the design requires at least 30 minutes with managed PostgreSQL, representative workspace/login traffic, distributed legitimate IP/address budgets, boundary bursts and production-equivalent resources. Run the separate campus/shared-NAT and daily mail-ceiling cases. |
 | Monitoring and audit export | Connect private report/logs and application/edge latency, 5xx, permits and timeout telemetry to dashboards/on-call alerts; test alert delivery and recovery. Supply a durable audit sink/checkpoint and prove late-commit-safe export, deduplication and retention. The SQL report is not an exporter. |
@@ -61,7 +63,7 @@ node tests/reset-readiness-load.mjs
 npm.cmd run test:smoke
 # Optional interactive fixture; stop by creating backend/target/browser-readiness.stop.
 node tests/http_smoke.mjs --hold-browser
-# Authorized staging deployment; default total measurement budget is six seconds.
+# Anonymous HTTPS, cookie and cache checks on staging.
 node deploy/probe-edge.mjs --origin https://<staging-host>
 ```
 

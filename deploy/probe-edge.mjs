@@ -1,5 +1,3 @@
-// Anonymous, opt-in transport checks. Never sends an email, password, or complete reset body.
-// Run only against a deployment you operate. This does not certify proxy trust or readiness.
 import http from 'node:http';
 import https from 'node:https';
 import { pathToFileURL } from 'node:url';
@@ -8,7 +6,8 @@ function transport(origin) { return origin.protocol === 'https:' ? https : http;
 
 function get(origin, path, timeoutMs) {
   return new Promise((resolve, reject) => {
-    const request = transport(origin).get(new URL(path, origin), { agent: false }, response => {
+    const request = transport(origin).get(new URL(path, origin), { agent: false, rejectUnauthorized: true }, response => {
+      const tlsProtocol = response.socket.authorized ? response.socket.getProtocol() : undefined;
       let body = '';
       response.setEncoding('utf8');
       response.on('data', chunk => {
@@ -16,7 +15,7 @@ function get(origin, path, timeoutMs) {
         if (body.length > 65536) request.destroy(new Error('oversized probe response'));
       });
       response.on('error', reject);
-      response.on('end', () => resolve({ status: response.statusCode, headers: response.headers, body }));
+      response.on('end', () => resolve({ status: response.statusCode, headers: response.headers, body, tlsProtocol }));
     });
     const timer = setTimeout(() => request.destroy(new Error('probe deadline')), timeoutMs);
     request.on('close', () => clearTimeout(timer));
@@ -24,86 +23,47 @@ function get(origin, path, timeoutMs) {
   });
 }
 
-export function slowBody(origin, csrf, cookie, deadlineMs, lateByte = false) {
-  return new Promise(resolve => {
-    let done = false;
-    let opened = false;
-    let lateByteWritten = false;
-    let began = 0;
-    let timer;
-    let byteTimer;
-    const finish = (ok, detail) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      clearTimeout(byteTimer);
-      request.destroy();
-      resolve({ ok, detail: detail + (lateByte
-        ? `; late byte ${lateByteWritten ? 'written' : 'not written; total-deadline check inconclusive'}` : '') });
-    };
-    const request = transport(origin).request(new URL('/api/auth/password-reset/request', origin), {
-      method: 'POST',
-      agent: false,
-      headers: {
-        'Content-Type': 'application/json', 'Content-Length': '4096',
-        Connection: 'close', Cookie: cookie, [csrf.headerName]: csrf.token,
-      },
-    }, response => {
-      const elapsed = Math.round(performance.now() - began);
-      // A fast 403/429/503 proves neither body handling nor the configured deadline.
-      finish(response.statusCode === 408 && elapsed <= deadlineMs && (!lateByte || lateByteWritten),
-        `HTTP ${response.statusCode} after ${elapsed} ms; expected 408 within ${deadlineMs} ms`);
-    });
-    request.on('socket', socket => {
-      const ready = () => {
-        opened = true;
-        began = performance.now();
-        clearTimeout(timer);
-        timer = setTimeout(() => finish(false, `no server cutoff within ${deadlineMs} ms`), deadlineMs);
-        request.write('{');
-        // Send before Tomcat's five-second inactivity cutoff, even with a larger probe budget.
-        if (lateByte) byteTimer = setTimeout(() => request.write(' ', error => {
-          if (!error) lateByteWritten = true;
-        }), Math.min(4000, Math.floor(deadlineMs * 0.75)));
-      };
-      socket.once(origin.protocol === 'https:' ? 'secureConnect' : 'connect', ready);
-    });
-    request.on('error', error => {
-      // A connection close may be an edge cutoff or a network fault; keep it inconclusive.
-      const elapsed = opened ? Math.round(performance.now() - began) : 0;
-      finish(false,
-        opened ? `connection closed after ${elapsed} ms (${error.code ?? 'transport error'})`
-          : 'connection or TLS handshake failed');
-    });
-    timer = setTimeout(() => finish(false, 'connection or TLS handshake deadline'), deadlineMs);
-    request.flushHeaders();
-  });
+function isLiveSessionCookie(value) {
+  if (!/^JSESSIONID=(?:"[^";]+"|[^;"\s]+)(?:;|$)/i.test(value)) return false;
+  const maxAge = /;\s*Max-Age=(-?\d+)(?:;|$)/i.exec(value);
+  if (maxAge) return Number(maxAge[1]) > 0;
+  const expires = /;\s*Expires=([^;]+)/i.exec(value);
+  const expiresAt = expires ? Date.parse(expires[1]) : NaN;
+  return Number.isNaN(expiresAt) || expiresAt > Date.now();
 }
 
 export async function probe(origin, { deadlineMs = 6000 } = {}) {
   const results = [];
   const add = (name, ok, detail) => results.push({ name, ok, detail });
   const secure = origin.protocol === 'https:';
-  add('HTTPS transport', secure, secure ? 'certificate verification enabled' : 'loopback HTTP is local evidence only');
-  let csrf;
-  let cookie;
-  for (const path of ['/', '/api/auth/csrf']) {
+  let negotiatedTls;
+  for (const [path, expectedStatus] of [['/', 200], ['/api/auth/csrf', 200], ['/api/auth/me', 401]]) {
     try {
       const response = await get(origin, path, deadlineMs);
-      add(`${path} status`, response.status === 200, `HTTP ${response.status}; redirects are not followed`);
+      negotiatedTls ??= response.tlsProtocol;
+      const requestId = response.headers['rndr-id'];
+      const isRenderId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}(?:-[0-9a-f]{4}-[0-9a-f]{12})?$/i.test(requestId ?? '');
+      const status = `HTTP ${response.status}, expected ${expectedStatus}`;
+      add(`${path} status`, response.status === expectedStatus, isRenderId ? `${status}, Render ID ${requestId}` : status);
       add(`${path} private caching`, /(?:^|,)\s*no-store\s*(?:,|$)/i.test(response.headers['cache-control'] ?? ''), 'requires Cache-Control: no-store');
+      if (path !== '/' && (origin.hostname.endsWith('.onrender.com') || response.headers['cf-ray']
+          || response.headers['cf-cache-status'] || response.headers.age !== undefined)) {
+        const cacheStatus = response.headers['cf-cache-status']?.toUpperCase();
+        const bypassed = cacheStatus === 'DYNAMIC' || cacheStatus === 'BYPASS';
+        const hasAge = response.headers.age !== undefined;
+        add(`${path} edge cache bypass`, bypassed && !hasAge,
+          `${bypassed ? cacheStatus : 'bypass unconfirmed'}, Age ${hasAge ? 'present' : 'absent'}`);
+      }
       add(`${path} referrer policy`, response.headers['referrer-policy'] === 'no-referrer', 'requires Referrer-Policy: no-referrer');
-      if (secure) add(`${path} HSTS`, /(?:^|;)\s*max-age=[1-9]\d*/i.test(response.headers['strict-transport-security'] ?? ''), 'requires positive HSTS max-age');
+      if (secure) add(`${path} HSTS`, /(?:^|;)\s*max-age=[1-9]\d*\s*(?:;|$)/i.test(response.headers['strict-transport-security'] ?? ''), 'requires positive HSTS max-age');
       if (path === '/api/auth/csrf' && response.status === 200) {
         const candidate = JSON.parse(response.body);
         const cookies = response.headers['set-cookie'] ?? [];
-        const session = cookies.find(value => /^JSESSIONID=/i.test(value));
-        const valid = typeof candidate.token === 'string' && candidate.token.length > 0
+        const session = cookies.find(isLiveSessionCookie);
+        const valid = typeof candidate.token === 'string' && candidate.token.trim().length > 0
           && candidate.headerName === 'X-CSRF-TOKEN' && session;
-        add('anonymous CSRF session', Boolean(valid), 'session values are retained in memory and never printed');
+        add('anonymous CSRF session', Boolean(valid), 'requires a CSRF token and session cookie');
         if (valid) {
-          csrf = candidate;
-          cookie = session.split(';', 1)[0];
           add('session cookie flags', /;\s*HttpOnly(?:;|$)/i.test(session)
             && /;\s*SameSite=Lax(?:;|$)/i.test(session) && (!secure || /;\s*Secure(?:;|$)/i.test(session)),
           secure ? 'requires Secure, HttpOnly and SameSite=Lax' : 'requires HttpOnly and SameSite=Lax');
@@ -113,12 +73,9 @@ export async function probe(origin, { deadlineMs = 6000 } = {}) {
       add(`${path} reachable`, false, 'network, TLS, response format, or response deadline failed; no response content logged');
     }
   }
-  if (csrf && cookie) {
-    for (const lateByte of [false, true]) {
-      const result = await slowBody(origin, csrf, cookie, deadlineMs, lateByte);
-      add(lateByte ? 'observed cutoff after late byte' : 'stalled body deadline', result.ok, result.detail);
-    }
-  } else add('body deadline checks', false, 'requires a valid anonymous CSRF session');
+  results.unshift({ name: 'HTTPS transport', ok: Boolean(negotiatedTls),
+    detail: negotiatedTls ? `verified certificate, negotiated ${negotiatedTls}`
+      : secure ? 'no verified TLS response' : 'loopback HTTP is local evidence only' });
   return results;
 }
 
@@ -140,11 +97,10 @@ export function parseArguments(args) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const options = parseArguments(process.argv.slice(2));
-    if (!options) console.log('Usage: node deploy/probe-edge.mjs --origin https://staging.example [--deadline-ms 6000]\nSends two incomplete anonymous reset requests; run only on a deployment you operate. No mail or reset is issued.\nLocal loopback HTTP is allowed, but reports HTTPS as BLOCKED. Exit 1 means a check is blocked.\nProxy trust, capacity, database/worker readiness and delivery require separate operator evidence.');
+    if (!options) console.log('Usage: node deploy/probe-edge.mjs --origin https://staging.example [--deadline-ms 6000]\nChecks anonymous GET responses on /, /api/auth/csrf and /api/auth/me. The deadline is the client timeout for each GET.\nLoopback HTTP reports HTTPS as BLOCKED. Exit 1 means a check is blocked.');
     else {
       const results = await probe(options.origin, options);
       for (const result of results) console.log(`${result.ok ? 'PASS' : 'BLOCKED'} ${result.name}: ${result.detail}`);
-      console.log('NOT CHECKED: first-hop deadline enforcement, proxy trust/direct-access isolation, load/admission, database/worker readiness, mail delivery, browser behavior, restore/failover');
       process.exitCode = results.some(result => !result.ok) ? 1 : 0;
     }
   } catch {
