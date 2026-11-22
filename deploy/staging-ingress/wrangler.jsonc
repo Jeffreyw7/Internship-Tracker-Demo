@@ -1,0 +1,10 @@
+{
+  "name": "campus-tracker-staging-ingress",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": {
+    "logs": { "enabled": true, "invocation_logs": false }
+  }
+}

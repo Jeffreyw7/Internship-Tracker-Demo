@@ -30,6 +30,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
+import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -73,9 +74,13 @@ public class SecurityConfig {
             AuthWorkLimiter work, AuthAbuseProperties policies, AuthenticationProvider authenticationProvider,
             JdbcTemplate jdbc, PlatformTransactionManager transactions, RecoveryCapacity capacity,
             ImportAdmissionService importAdmission, ImportWorkLimiter importWork, ImportInputLimits importLimits,
+            @Value("${STAGING_ORIGIN_KEY:#{null}}") String originKey,
             @Value("${campus.ingress.https-only:false}") boolean httpsOnlyIngress) throws Exception {
         var versions = new CredentialVersionFilter(jdbc, transactions, json);
         var sessions = new HttpSessionSecurityContextRepository();
+        if (originKey != null) {
+            http.addFilterBefore(new OriginKeyFilter(originKey), SecurityContextHolderFilter.class);
+        }
         return http
                 .authenticationProvider(authenticationProvider)
                 .securityContext(context -> context.requireExplicitSave(true))

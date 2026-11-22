@@ -12,6 +12,8 @@ The November 22 anonymous GET check negotiated TLS 1.3 and observed HSTS on the 
 
 A health GET took 62.18 seconds before returning 200. The probe allows up to 90 seconds per GET to accommodate a Free service starting after idle. Operators can set a shorter client timeout with `--deadline-ms`. [Render Free service spin-up](https://render.com/docs/free#spinning-down-on-idle)
 
+The project owner approved a project-controlled public URL on the Workers Free plan with the existing Render backend. Deploy the [staging Worker](../deploy/staging-ingress/wrangler.jsonc) with Wrangler and set its `ORIGIN_KEY` secret. Set the same randomly generated 32-byte key, encoded as hex, in Render's `STAGING_ORIGIN_KEY`. Use the Worker HTTPS URL for Render's `PUBLIC_ORIGIN`, keep public registration disabled, and retain `/api/health` as the Render health check. With the key configured, only the health GET and HEAD are public at the Render origin. The [hosted evidence](https://linear.app/jeffreywang/document/jef-16-staging-ingress-evidence-2570b21f0837) records which deployment and public entry point have passed verification.
+
 ## Executed checks
 
 The local checks below were recorded on October 29, 2026.
