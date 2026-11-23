@@ -55,8 +55,12 @@ function outboundHeaders(request, url, token) {
 
 async function readBody(request, policy, started) {
   const tooLarge = () => new Rejection(413, 'The request exceeds the upload limit.', policy.sizeCode);
-  const timeout = () => new Rejection(408, 'The upload deadline elapsed.',
-    policy === RESET ? undefined : 'IMPORT_UPLOAD_TIMEOUT');
+  const timeout = () => {
+    const error = new Rejection(408, 'The upload deadline elapsed.',
+      policy === RESET ? undefined : 'IMPORT_UPLOAD_TIMEOUT');
+    error.expiredAt = Date.now();
+    return error;
+  };
   const length = request.headers.get('content-length');
   if (length !== null && !/^\d+$/.test(length)) throw new Rejection(400, 'Invalid request length.');
   if (length !== null && Number(length) > policy.bytes) throw tooLarge();
@@ -154,6 +158,7 @@ export default {
     } catch (error) {
       const failure = error instanceof Rejection ? error : new Rejection(502, 'The request could not complete.');
       receipt.status = failure.status;
+      if (failure.expiredAt !== undefined) receipt.expiredAt = failure.expiredAt;
       const response = reject(failure);
       response.headers.set('x-campus-ingress-id', id);
       return response;

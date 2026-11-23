@@ -63,9 +63,12 @@ test('each import deadline expires from admission and releases capacity for the 
     if (path === commit) source.enqueue(new Uint8Array([1]));
     await Promise.resolve();
     t.mock.timers.tick(1000);
+    const releaseDelay = path === commit ? 1 : 0;
+    t.mock.timers.tick(releaseDelay);
     assert.equal((await pending).status, 408);
     const expired = log.mock.calls.at(-1).arguments[0];
-    assert.equal(expired.released - expired.started, 30_000);
+    assert.equal(expired.expiredAt - expired.started, 30_000);
+    assert.equal(expired.released - expired.expiredAt, releaseDelay);
     assert.equal(expired.originAttempted, false);
     assert.equal(expired.activeAfterRelease, 0);
     assert.equal((await worker.fetch(new Request(site + path, { method: 'POST', body: '{}' }), env)).status, 201);
