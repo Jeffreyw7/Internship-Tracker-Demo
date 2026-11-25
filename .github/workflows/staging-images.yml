@@ -2,8 +2,21 @@ name: Publish staging images
 
 on:
   push:
-    branches: [codex/jef-15-staging-rollout]
-    paths: [.github/workflows/staging-images.yml]
+    branches: [main, codex/jef-15-staging-rollout]
+    paths:
+      - .github/workflows/staging-images.yml
+      - Dockerfile
+      - .dockerignore
+      - package.json
+      - package-lock.json
+      - index.html
+      - tsconfig.json
+      - vite.config.ts
+      - 'src/**'
+      - 'public/**'
+      - 'tests/**'
+      - 'backend/**'
+      - 'deploy/postgres/**'
   workflow_dispatch:
 
 permissions:
