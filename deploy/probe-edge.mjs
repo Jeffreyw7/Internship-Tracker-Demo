@@ -4,11 +4,10 @@ import { pathToFileURL } from 'node:url';
 
 const GET_TIMEOUT_MS = 90_000;
 
-function transport(origin) { return origin.protocol === 'https:' ? https : http; }
-
 function get(origin, path, timeoutMs) {
+  const transport = origin.protocol === 'https:' ? https : http;
   return new Promise((resolve, reject) => {
-    const request = transport(origin).get(new URL(path, origin), { agent: false, rejectUnauthorized: true }, response => {
+    const request = transport.get(new URL(path, origin), { agent: false, rejectUnauthorized: true }, response => {
       const tlsProtocol = response.socket.authorized ? response.socket.getProtocol() : undefined;
       let body = '';
       response.setEncoding('utf8');
@@ -41,26 +40,25 @@ export async function probe(origin, { deadlineMs = GET_TIMEOUT_MS } = {}) {
   let negotiatedTls;
   for (const [path, expectedStatus] of [['/', 200], ['/api/auth/csrf', 200], ['/api/auth/me', 401]]) {
     try {
-      const response = await get(origin, path, deadlineMs);
-      negotiatedTls ??= response.tlsProtocol;
-      const requestId = response.headers['rndr-id'];
+      const { status, headers, tlsProtocol, body } = await get(origin, path, deadlineMs);
+      negotiatedTls ??= tlsProtocol;
+      const requestId = headers['rndr-id'];
       const isRenderId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}(?:-[0-9a-f]{4}-[0-9a-f]{12})?$/i.test(requestId ?? '');
-      const status = `HTTP ${response.status}, expected ${expectedStatus}`;
-      add(`${path} status`, response.status === expectedStatus, isRenderId ? `${status}, Render ID ${requestId}` : status);
-      add(`${path} private caching`, /(?:^|,)\s*no-store\s*(?:,|$)/i.test(response.headers['cache-control'] ?? ''), 'requires Cache-Control: no-store');
-      if (path !== '/' && (origin.hostname.endsWith('.onrender.com') || response.headers['cf-ray']
-          || response.headers['cf-cache-status'] || response.headers.age !== undefined)) {
-        const cacheStatus = response.headers['cf-cache-status']?.toUpperCase();
+      const statusDetail = `HTTP ${status}, expected ${expectedStatus}`;
+      add(`${path} status`, status === expectedStatus, isRenderId ? `${statusDetail}, Render ID ${requestId}` : statusDetail);
+      add(`${path} private caching`, /(?:^|,)\s*no-store\s*(?:,|$)/i.test(headers['cache-control'] ?? ''), 'requires Cache-Control: no-store');
+      const hasAge = headers.age !== undefined;
+      if (path !== '/' && (origin.hostname.endsWith('.onrender.com') || headers['cf-ray'] || headers['cf-cache-status'] || hasAge)) {
+        const cacheStatus = headers['cf-cache-status']?.toUpperCase();
         const bypassed = cacheStatus === 'DYNAMIC' || cacheStatus === 'BYPASS';
-        const hasAge = response.headers.age !== undefined;
         add(`${path} edge cache bypass`, bypassed && !hasAge,
           `${bypassed ? cacheStatus : 'bypass unconfirmed'}, Age ${hasAge ? 'present' : 'absent'}`);
       }
-      add(`${path} referrer policy`, response.headers['referrer-policy'] === 'no-referrer', 'requires Referrer-Policy: no-referrer');
-      if (secure) add(`${path} HSTS`, /(?:^|;)\s*max-age=[1-9]\d*\s*(?:;|$)/i.test(response.headers['strict-transport-security'] ?? ''), 'requires positive HSTS max-age');
-      if (path === '/api/auth/csrf' && response.status === 200) {
-        const candidate = JSON.parse(response.body);
-        const cookies = response.headers['set-cookie'] ?? [];
+      add(`${path} referrer policy`, headers['referrer-policy'] === 'no-referrer', 'requires Referrer-Policy: no-referrer');
+      if (secure) add(`${path} HSTS`, /(?:^|;)\s*max-age=[1-9]\d*\s*(?:;|$)/i.test(headers['strict-transport-security'] ?? ''), 'requires positive HSTS max-age');
+      if (path === '/api/auth/csrf' && status === 200) {
+        const candidate = JSON.parse(body);
+        const cookies = headers['set-cookie'] ?? [];
         const session = cookies.find(isLiveSessionCookie);
         const valid = typeof candidate.token === 'string' && candidate.token.trim().length > 0
           && candidate.headerName === 'X-CSRF-TOKEN' && session;
