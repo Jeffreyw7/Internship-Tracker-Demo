@@ -64,7 +64,12 @@
 .app-shell .button.primary { box-shadow: none; }
 .app-shell .button.primary:hover { box-shadow: none; }
 .app-shell .button.secondary { color: var(--text-primary); }
-.app-shell .add-main { min-height: 48px; margin: 0; padding-inline: 22px; flex-shrink: 0; }
+.app-shell .button.add-main { min-height: 48px; margin: 0; padding: 0; gap: 0; flex-shrink: 0; border-radius: 6px; font-size: 13px; letter-spacing: 0; transition: background-color 140ms ease-out, border-color 140ms ease-out; }
+.app-shell .add-main-label { padding-inline: 18px; }
+.app-shell .add-main-icon { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 24px; flex-shrink: 0; border-left: 1px solid color-mix(in srgb, var(--action-text) 24%, transparent); }
+.app-shell .button.add-main:not(:disabled):hover { border-color: var(--action-hover); }
+.app-shell .button.add-main:not(:disabled):active { background: color-mix(in srgb, var(--action-bg) 82%, var(--action-text)); }
+.app-shell .button.add-main:disabled { opacity: .5; cursor: not-allowed; background: var(--action-bg); border-color: var(--action-bg); }
 .app-shell .text-button { min-height: 44px; font-size: 12px; }
 .app-shell .icon-button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 8px; }
 .app-shell .summary-grid { gap: 0; border: 1px solid var(--border-subtle); border-radius: 16px; background: var(--bg-surface); margin-bottom: 28px; }
@@ -265,7 +270,7 @@
   .app-shell .welcome { padding: 24px; margin-bottom: 20px; }
   .app-shell .welcome h1 { font-size: 28px; }
   .app-shell .welcome p { font-size: 13px; max-width: none; }
-  .app-shell .add-main { margin-top: 20px; }
+  .app-shell .button.add-main { margin-top: 20px; }
   .app-shell .summary-grid { margin-bottom: 24px; }
   .app-shell .summary-card { padding: 16px; }
   .app-shell .summary-value { font-size: 28px; gap: 6px; }

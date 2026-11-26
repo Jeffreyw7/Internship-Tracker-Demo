@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Campus · Add application button designs</title>
+  <link rel="stylesheet" href="../../src/styles.css">
+  <link rel="stylesheet" href="../../src/workspace.css">
+  <style>
+    @font-face { font-family: 'Campus Manrope'; src: url('../../public/fonts/manrope-400.ttf') format('truetype'); font-weight: 400; font-display: swap; }
+    @font-face { font-family: 'Campus Manrope'; src: url('../../public/fonts/manrope-600.ttf') format('truetype'); font-weight: 600; font-display: swap; }
+    @font-face { font-family: 'Campus Manrope'; src: url('../../public/fonts/manrope-800.ttf') format('truetype'); font-weight: 800; font-display: swap; }
+    body { margin: 0; }
+    .design-board { max-width: 1080px; margin-inline: auto; padding: 48px 40px 32px; }
+    .board-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding-bottom: 32px; }
+    .board-header h1 { margin: 0 0 12px; font-size: clamp(28px, 4vw, 38px); line-height: 1.2; letter-spacing: -.03em; font-weight: 800; }
+    .board-header p, .concept p, .board-footer { color: var(--text-secondary); font-size: 13px; line-height: 1.75; }
+    .theme-picker { display: grid; gap: 6px; font-size: 12px; font-weight: 600; }
+    .theme-picker select { min-height: 44px; padding: 8px 12px; background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-control); border-radius: 6px; font: inherit; }
+    .context-preview { display: flex; align-items: center; justify-content: space-between; gap: 32px; padding: 32px; background: var(--bg-subtle); border-radius: 12px; }
+    .context-preview h2 { margin: 0 0 8px; font-size: 26px; line-height: 1.2; letter-spacing: -.025em; font-weight: 800; }
+    .context-preview p { margin: 0; font-size: 13px; color: var(--text-secondary); line-height: 1.75; }
+    .context-action { flex-shrink: 0; }
+    .design-choices { margin: 24px 0 0; padding: 0; border: 0; min-width: 0; }
+    .design-choices legend { padding: 0 0 4px; font-size: 13px; color: var(--text-secondary); }
+    .concept { display: grid; grid-template-columns: minmax(0, 1fr) 220px 220px; gap: 24px; align-items: center; padding: 28px 0; border-bottom: 1px solid var(--border-subtle); }
+    .concept h3 { font-size: 17px; font-weight: 800; margin: 0 0 8px; }
+    .concept label { display: flex; align-items: center; gap: 10px; cursor: pointer; min-height: 44px; }
+    .concept input { width: 18px; height: 18px; accent-color: var(--action-bg); flex-shrink: 0; }
+    .concept p { margin: 0; max-width: 40ch; }
+    .state-label { display: block; margin-bottom: 12px; color: var(--text-secondary); font-size: 11px; }
+    .app-shell.design-board .button.add-main { margin: 0; }
+    .app-shell .button.design-outline, .app-shell .button.design-document { min-height: 48px; padding: 12px 18px; font-size: 13px; gap: 10px; border-radius: 6px; transition: background-color 140ms ease-out; }
+    .app-shell .button.design-outline { background: var(--bg-surface); border-color: var(--text-primary); color: var(--text-primary); }
+    .app-shell .button.design-outline:hover { background: var(--bg-hover); }
+    .app-shell .button.design-document { background: var(--action-bg); border-color: var(--action-bg); color: var(--action-text); border-radius: 2px; }
+    .app-shell .button.design-document:hover { background: var(--action-hover); border-color: var(--action-hover); }
+    .app-shell .button.design-document:not(:disabled):active { background: color-mix(in srgb, var(--action-bg) 82%, var(--action-text)); }
+    .app-shell .button.design-outline:not(:disabled):active { background: var(--bg-subtle); }
+    .app-shell .button.design-outline:disabled { background: var(--bg-surface); }
+    .app-shell .button.design-document:disabled { background: var(--action-bg); border-color: var(--action-bg); }
+    .app-shell .button:disabled { opacity: .5; cursor: not-allowed; }
+    .preview-feedback { min-height: 24px; margin: 20px 0 4px; color: var(--text-primary); font-size: 13px; }
+    .board-footer { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-subtle); }
+    @media (max-width: 850px) { .concept { grid-template-columns: 1fr 1fr; } .concept-copy { grid-column: 1 / -1; } .concept p { max-width: 65ch; } .context-preview { flex-direction: column; align-items: flex-start; gap: 24px; } }
+    @media (max-width: 520px) { .design-board { padding: 28px 20px; } .board-header { flex-direction: column; } .context-preview { padding: 24px; } .concept { grid-template-columns: 1fr; gap: 20px; } .context-preview h2 { font-size: 24px; } }
+  </style>
+</head>
+<body>
+  <main class="app-shell design-board">
+    <header class="board-header">
+      <div><h1>Add application</h1><p>Three button treatments for the Campus workspace.</p></div>
+      <label class="theme-picker">Appearance<select id="appearance"><option value="light">Light</option><option value="dark">Dark</option></select></label>
+    </header>
+    <section class="context-preview" aria-label="Selected design in context">
+      <div><h2>Your applications</h2><p>Keep your opportunities organized. Focus on what comes next.</p></div>
+      <div class="context-action" id="context-action"></div>
+    </section>
+    <fieldset class="design-choices">
+      <legend>Select a design to preview above. Hover or tab to inspect its states.</legend>
+      <section class="concept">
+        <div class="concept-copy"><h3><label><input type="radio" name="design" value="ink" checked>Solid ink</label></h3><p>Applied in the app. A compact rectangle with a separated plus keeps the primary action clear.</p></div>
+        <div><span class="state-label">Default</span><button type="button" class="button primary add-main" data-design="ink"><span class="add-main-label">Add application</span><span class="add-main-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></button></div>
+        <div><span class="state-label">Unavailable</span><button type="button" class="button primary add-main" disabled><span class="add-main-label">Add application</span><span class="add-main-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></button></div>
+      </section>
+      <section class="concept">
+        <div class="concept-copy"><h3><label><input type="radio" name="design" value="outline">Outline</label></h3><p>A thin ink border and paper background. A quieter choice when the application list should lead.</p></div>
+        <div><span class="state-label">Default</span><button type="button" class="button design-outline" data-design="outline"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add application</button></div>
+        <div><span class="state-label">Unavailable</span><button type="button" class="button design-outline" disabled><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add application</button></div>
+      </section>
+      <section class="concept">
+        <div class="concept-copy"><h3><label><input type="radio" name="design" value="document">Document</label></h3><p>Square corners and a document icon give the action the feel of adding a record to a file.</p></div>
+        <div><span class="state-label">Default</span><button type="button" class="button design-document" data-design="document"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8ZM14 2v6h6M12 12v6M9 15h6"/></svg>Add application</button></div>
+        <div><span class="state-label">Unavailable</span><button type="button" class="button design-document" disabled><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8ZM14 2v6h6M12 12v6M9 15h6"/></svg>Add application</button></div>
+      </section>
+    </fieldset>
+    <p class="preview-feedback" id="feedback" role="status">Solid ink is selected.</p>
+    <footer class="board-footer">Design preview only. Buttons here do not save applications. The app's primary button still opens the existing application form.</footer>
+  </main>
+  <script>
+    const labels = {ink: 'Solid ink', outline: 'Outline', document: 'Document'};
+    const feedback = document.getElementById('feedback');
+    function selectDesign(value) {
+      const source = document.querySelector('[data-design="' + value + '"]');
+      const clone = source.cloneNode(true);
+      document.getElementById('context-action').replaceChildren(clone);
+      document.querySelector('input[value="' + value + '"]').checked = true;
+      feedback.textContent = labels[value] + ' is selected.';
+    }
+    document.getElementById('appearance').addEventListener('change', event => { document.documentElement.dataset.theme = event.target.value; });
+    document.querySelectorAll('input[name="design"]').forEach(input => input.addEventListener('change', () => selectDesign(input.value)));
+    document.addEventListener('click', event => {
+      const button = event.target.closest('button[data-design]');
+      if (!button) return;
+      if (button.closest('#context-action')) feedback.textContent = 'Preview only. In the app, this opens the application form.';
+      else selectDesign(button.dataset.design);
+    });
+    selectDesign('ink');
+  </script>
+</body>
+</html>
