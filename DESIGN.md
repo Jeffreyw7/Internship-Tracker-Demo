@@ -274,6 +274,8 @@ The workspace uses 16px main panels, 12px supporting surfaces, 8px field corners
 
 ### Buttons
 
+The workspace's main Add application button is a local exception to the pill silhouette: 6px corners, 48px minimum height, 13px semibold text, and a trailing plus separated by a short divider. It uses the existing semantic action colors in both themes. Other primary actions retain their existing shape. The [button comparison](docs/designs/add-application-buttons.html) contains the implemented Solid ink treatment and two alternatives.
+
 Primary landing actions pair Campus Ink with On Ink, a pill shape, semibold text, and an inline arrow. The normal action has a 52px minimum height; compact header and mobile variants are defined in the stylesheet. The closing invitation uses the same black primary action on its light paper panel. Hover changes color; keyboard focus uses a visible two-pixel ink outline with an offset. The accent-button tokens describe an optional legacy variant still present in CSS; no current home-page action uses it.
 
 Text actions use a directional SVG icon, a generous inline gap, and an underline on hover. Their wording describes the destination. Account submit actions reuse the black pill with a trailing arrow, a 52px minimum height, and visible ink focus. Workspace actions use theme-aware charcoal/cream fills, 44px minimum targets, and the corresponding semantic focus ring. Add application uses a 48px minimum height. Disabled, busy, error, and retry states remain visible.
