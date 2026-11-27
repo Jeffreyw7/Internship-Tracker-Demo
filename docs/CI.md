@@ -28,7 +28,7 @@ Concurrency is scoped by workflow and pull-request number or ref, with supersede
 
 **Planning estimate:** roughly 5–15 minutes of wall time with the two work jobs running in parallel on a normal network. Cold dependency caches, image pulls and runner load can make it slower; this estimate is not a guaranteed range.
 
-**First hosted observation:** [run 39469068417](https://github.com/Jeffreyw7/Internship-Tracker-Demo/actions/runs/39469068417) succeeded with application verification taking **4 minutes 25 seconds**, container builds **3 minutes 21 seconds**, and the required gate **6 seconds**. These are individual job durations from one run, not a guarantee for future runs. See [VALIDATION.md](../VALIDATION.md#hosted-verification) for the tested source commit and actual test/container results.
+**First hosted observation:** [run 39469068417](https://github.com/Jeffreyw7/NextRound/actions/runs/39469068417) succeeded with application verification taking **4 minutes 25 seconds**, container builds **3 minutes 21 seconds**, and the required gate **6 seconds**. These are individual job durations from one run, not a guarantee for future runs. See [VALIDATION.md](../VALIDATION.md#hosted-verification) for the tested source commit and actual test/container results.
 
 Only downloaded npm and Maven dependencies are cached, using the lockfile and Maven POM/wrapper inputs. `dist`, `backend/target`, JARs, databases, credentials and smoke state are not cached. Failure artifacts retain selected Surefire/Failsafe XML reports, the Failsafe summary, and smoke or container build/runtime transcripts for 3 days; they do not include a full workspace, environment dump, database directory or dependency cache. Treat diagnostics from untrusted pull requests as untrusted data.
 

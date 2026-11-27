@@ -27,7 +27,7 @@ ENTRYPOINT ["java","-cp","/app/classes:/app/lib/*","com.campus.tracker.migration
 FROM eclipse-temurin:17-jre AS app
 WORKDIR /app
 RUN mkdir /app/data && chown -R 10001:10001 /app
-COPY --from=backend --chown=10001:10001 /source/backend/target/campus-tracker-2.0.0.jar /app/campus.jar
+COPY --from=backend --chown=10001:10001 /source/backend/target/nextround-2.0.0.jar /app/campus.jar
 # Use an unprivileged runtime account instead of running the server as root.
 USER 10001:10001
 ENV SERVER_ADDRESS=0.0.0.0

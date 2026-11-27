@@ -1,6 +1,6 @@
-# Campus Internship Tracker — Java + React
+# NextRound — Java + React
 
-The complete Java edition of the Campus workspace: a **Java 17 / Spring Boot 3.5.16 REST backend**, a **React + TypeScript frontend**, and a relational database. Application data is stored in the Java database; there is no localStorage fallback.
+The complete Java edition of the NextRound workspace: a **Java 17 / Spring Boot 3.5.16 REST backend**, a **React + TypeScript frontend**, and a relational database. Application data is stored in the Java database; there is no localStorage fallback.
 
 ## Quick start in VS Code
 
@@ -20,7 +20,7 @@ On **Windows PowerShell**:
 powershell -ExecutionPolicy Bypass -File ..\start.ps1
 ```
 
-The Windows launcher detects a healthy Campus Tracker instance on the configured address and port and prints its URL instead of starting a duplicate. You can also run `powershell -ExecutionPolicy Bypass -File .\start.ps1` directly from the project root after building the frontend.
+The Windows launcher detects a healthy NextRound instance on the configured address and port and prints its URL instead of starting a duplicate. You can also run `powershell -ExecutionPolicy Bypass -File .\start.ps1` directly from the project root after building the frontend.
 
 On **macOS/Linux**:
 
@@ -66,7 +66,7 @@ From the root, first run `npm ci` and `npm run build`. Then:
 ```sh
 cd backend
 ./mvnw -Pwith-ui clean package
-java -jar target/campus-tracker-2.0.0.jar
+java -jar target/nextround-2.0.0.jar
 ```
 
 Use `.\mvnw.cmd` in place of `./mvnw` on Windows. The `with-ui` profile copies the built React files into the executable JAR, so Java serves both the website and `/api` from the same origin. The ordinary backend build does not download or build Node dependencies.
@@ -101,6 +101,8 @@ H2 is the default for a self-contained local project. To use local PostgreSQL wi
 2. Run `docker compose up --build`.
 3. Open http://localhost:8080 and create an account.
 4. Open the local capture inbox at http://localhost:8025, follow the verification link, and enter the signup password to activate the account.
+
+If you move an existing Compose setup into a folder called `NextRound`, keep its previous Compose project name so Docker reuses its PostgreSQL volume. For a setup originally launched from `Internship-Tracker-Demo`, use `docker compose -p internship-tracker-demo up --build`.
 
 The Compose stack binds the app and Mailpit inbox only to **127.0.0.1** and does not expose the database port. Its named PostgreSQL volume survives container restarts. The Compose verification keys are synthetic local values; use independent secrets in every hosted environment. Do not run `docker compose down -v` if you want to retain data.
 

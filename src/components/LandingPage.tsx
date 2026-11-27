@@ -39,13 +39,13 @@ const previewKeys = Object.keys(previews) as Preview[];
 const questions = [
   ['What can I keep track of?', 'Company, role, location, application status, applied date, deadline, follow-up date, notes, and interview stages. Search, filter, and sort your applications as your search grows.'],
   ['Can I bring my existing spreadsheet?', 'Yes. Import a CSV, map its columns, and review the proposed changes before committing them. You can also export your applications as a CSV.'],
-  ['Will Campus send me reminders?', 'Follow-ups and upcoming interviews appear inside your workspace. Campus does not currently send reminder emails or add events to your calendar.'],
+  ['Will NextRound send me reminders?', 'Follow-ups and upcoming interviews appear inside your workspace. NextRound does not currently send reminder emails or add events to your calendar.'],
   ['Who can see my applications?', 'Your applications belong to your account. Sign in to view and manage them; other accounts cannot access your records.'],
   ['How do I get started?', 'Create an account, confirm your email, and sign in. You can start with illustrative sample applications or add your own first application. Account registration must be enabled by the site operator.'],
 ];
 
 export function Brand() {
-  return <a className="landing-brand" href="#top" aria-label="Campus home">campus<span className="landing-brand-dot">.</span><span className="landing-brand-caption">INTERNSHIP<br/>TRACKER</span></a>;
+  return <a className="landing-brand" href="#top" aria-label="NextRound home">NextRound<span className="landing-brand-dot">.</span><span className="landing-brand-caption">INTERNSHIP<br/>TRACKER</span></a>;
 }
 
 // The artwork is decorative; the page explains its meaning in ordinary text.
@@ -142,11 +142,11 @@ export default function LandingPage() {
       <div className="landing-baseline landing-container"><span>Less to juggle. More room to focus.</span><div><span>Applications</span><span>Interviews</span><span>Follow-ups</span></div><a href="#workspace" aria-label="Explore the workspace"><ArrowDown size={19}/></a></div>
 
       <section id="workspace" className="landing-workspace landing-container" aria-labelledby="workspace-title">
-        <div className="landing-section-intro"><h2 id="workspace-title">Your search has a lot<br/>of moving parts.<br/><span>Give them a home.</span></h2><p>The roles you saved. The conversation coming up. The follow-up you meant to send. Campus keeps the details connected.</p></div>
+        <div className="landing-section-intro"><h2 id="workspace-title">Your search has a lot<br/>of moving parts.<br/><span>Give them a home.</span></h2><p>The roles you saved. The conversation coming up. The follow-up you meant to send. NextRound keeps the details connected.</p></div>
         <div className="landing-preview-layout">
           <div className="landing-preview-story"><div className="landing-preview-tabs" role="tablist" aria-label="Explore workspace features">{previewKeys.map(key => <button key={key} id={`preview-tab-${key}`} role="tab" aria-selected={preview === key} aria-controls="workspace-preview" tabIndex={preview === key ? 0 : -1} onClick={() => setPreview(key)} onKeyDown={switchPreview}>{previews[key].label}<ArrowUpRight size={17}/></button>)}</div><div className="landing-preview-copy" key={preview}><h3>{current.title}</h3><p>{current.description}</p></div><a className="landing-text-link" href="#create-account">Make it your own<ArrowRight size={17}/></a></div>
           <div className="landing-preview" id="workspace-preview" role="tabpanel" aria-labelledby={`preview-tab-${preview}`} tabIndex={0}>
-            <div className="landing-preview-top"><span className="preview-wordmark">campus.</span><span className="preview-example">Illustrative preview</span><span className="preview-avatar">A</span></div>
+            <div className="landing-preview-top"><span className="preview-wordmark">NextRound.</span><span className="preview-example">Illustrative preview</span><span className="preview-avatar">A</span></div>
             <div className="landing-preview-body" key={preview}><div className="landing-preview-heading"><h3>{current.label}</h3><span className="preview-add" aria-hidden="true"><Plus size={16}/></span></div>
               <div className="preview-table-heading">{current.columns.map(label => <span key={label}>{label}</span>)}</div>
               <div className="preview-rows">{current.rows.map((row, index) => <div className="preview-row" key={row[0]}><div className="preview-company"><span className={`preview-logo preview-logo-${index}`}>{row[0].slice(0,1)}</span><div><strong>{row[0]}</strong><span>{row[1]}</span></div></div><span className={`preview-status preview-status-${index}`}>{row[2]}</span><div className="preview-next"><strong>{row[3]}</strong><span>{row[4]}</span></div></div>)}</div>

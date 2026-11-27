@@ -1,6 +1,6 @@
 ---
-name: Campus
-description: A shared paper-and-ink identity across public pages and the theme-aware Campus workspace.
+name: NextRound
+description: A shared paper-and-ink identity across public pages and the theme-aware NextRound workspace.
 colors:
   landing-surface: "#fafaf9"
   landing-panel: "#ffffff"
@@ -36,47 +36,47 @@ colors:
   workspace-accent-dark: "#c6ca87"
 typography:
   display:
-    fontFamily: "'Campus Manrope', sans-serif"
+    fontFamily: "'NextRound Manrope', sans-serif"
     fontSize: "clamp(42px, 4.6vw, 68px)"
     fontWeight: 800
     lineHeight: 1.1
     letterSpacing: "-.04em"
   headline:
-    fontFamily: "'Campus Manrope', sans-serif"
+    fontFamily: "'NextRound Manrope', sans-serif"
     fontSize: "44px"
     fontWeight: 800
     lineHeight: 1.18
     letterSpacing: "-.035em"
   title:
-    fontFamily: "'Campus Manrope', sans-serif"
+    fontFamily: "'NextRound Manrope', sans-serif"
     fontSize: "18px"
     fontWeight: 800
     lineHeight: 1.5
     letterSpacing: "-.3px"
   body:
-    fontFamily: "'Campus Manrope', sans-serif"
+    fontFamily: "'NextRound Manrope', sans-serif"
     fontSize: "14px"
     fontWeight: 400
     lineHeight: 1.85
   label:
-    fontFamily: "'Campus Manrope', sans-serif"
+    fontFamily: "'NextRound Manrope', sans-serif"
     fontSize: "13px"
     fontWeight: 600
     lineHeight: 1.65
   brand:
-    fontFamily: "'Campus Manrope', sans-serif"
+    fontFamily: "'NextRound Manrope', sans-serif"
     fontSize: "31px"
     fontWeight: 800
     lineHeight: 1
     letterSpacing: "-1.2px"
   workspace-heading:
-    fontFamily: "'Campus Manrope', sans-serif"
+    fontFamily: "'NextRound Manrope', sans-serif"
     fontSize: "36px"
     fontWeight: 800
     lineHeight: 1.18
     letterSpacing: "-.035em"
   workspace-body:
-    fontFamily: "'Campus Manrope', sans-serif"
+    fontFamily: "'NextRound Manrope', sans-serif"
     fontSize: "14px"
     fontWeight: 400
     lineHeight: 1.6
@@ -182,7 +182,7 @@ components:
     padding: "32px"
 ---
 
-# Design System: Campus
+# Design System: NextRound
 
 ## Overview
 
@@ -192,15 +192,15 @@ The public landing identity gives a student's next action room to stand out. Bol
 
 The paper, ink, Manrope, and restrained yellow identity now extends through sign-in, registration, email verification, and the signed-in workspace. Public pages remain light regardless of the workspace preference. The workspace uses warm paper and charcoal in light mode and warm charcoal surfaces with cream actions in dark mode, preserving account-backed light/dark/system appearance. Its denser controls and operational structure serve daily tracking. Surface-specific compositions belong to the [landing](docs/landing-page-design.md), [authentication](docs/authentication-design.md), and [workspace](docs/workspace-design.md) briefs.
 
-The token snapshot comes from [semantic colors](src/theme/tokens.css), [landing styles](src/landing.css), [landing components](src/components/LandingPage.tsx), [account styles](src/auth.css), [account layout](src/components/AuthLayout.tsx), [base workspace styles](src/styles.css), and the [workspace refinement](src/workspace.css). Update the code and documentation together when intentionally changing a reusable value. The existing [Campus Figma handoff](https://www.figma.com/design/7RYwF1BR4IiplQKBaq27zA) predates these home, authentication, and workspace refinements; those updates have not been added to it.
+The token snapshot comes from [semantic colors](src/theme/tokens.css), [landing styles](src/landing.css), [landing components](src/components/LandingPage.tsx), [account styles](src/auth.css), [account layout](src/components/AuthLayout.tsx), [base workspace styles](src/styles.css), and the [workspace refinement](src/workspace.css). Update the code and documentation together when intentionally changing a reusable value. The existing [NextRound Figma handoff](https://www.figma.com/design/7RYwF1BR4IiplQKBaq27zA) predates these home, authentication, and workspace refinements; those updates have not been added to it.
 
 **Key Characteristics:**
 
-- Spacious black-on-light typography with a compact Campus wordmark.
+- Spacious black-on-light typography with a compact NextRound wordmark.
 - An original paper staircase of saved roles, sent applications, and a yellow next-step folder.
 - Black pill actions, quiet dividing lines, and softly curved paper and preview surfaces.
 - An explicitly illustrative product preview with native, keyboard-accessible controls.
-- One Campus identity with separate public and theme-aware workspace color roles.
+- One NextRound identity with separate public and theme-aware workspace color roles.
 
 ## Colors
 
@@ -208,7 +208,7 @@ The public palette is mostly near-black, warm off-white, and neutral grey; yello
 
 ### Primary
 
-**Campus Ink** is the default heading, action, and icon color. **On Ink** provides the corresponding light action text. **Action Hover** is the established hover treatment for the black action.
+**NextRound Ink** is the default heading, action, and icon color. **On Ink** provides the corresponding light action text. **Action Hover** is the established hover treatment for the black action.
 
 ### Secondary
 
@@ -226,9 +226,9 @@ The frontmatter's workspace entries summarize the paired semantic palettes in th
 
 ## Typography
 
-**Display and body font:** self-hosted Campus Manrope, with a sans-serif fallback. Public pages use real regular, medium, semibold, and extra-bold faces; text hierarchy comes from size, spacing, and weight rather than a second display family.
+**Display and body font:** self-hosted NextRound Manrope, with a sans-serif fallback. Public pages use real regular, medium, semibold, and extra-bold faces; text hierarchy comes from size, spacing, and weight rather than a second display family.
 
-The frontmatter describes desktop role baselines. Display and headline describe public headings; title is the product-preview explanation; body is introductory explanatory copy; label describes primary controls; brand captures the compact public wordmark. The workspace also uses Campus Manrope, with a fixed 36px welcome heading, 22px panel headings, 14px base text, and 12-13px operational controls. Its welcome heading steps down to 30px at 1200px and 28px at 520px; drawers use a 30px heading that becomes 26px on phones.
+The frontmatter describes desktop role baselines. Display and headline describe public headings; title is the product-preview explanation; body is introductory explanatory copy; label describes primary controls; brand captures the compact public wordmark. The workspace also uses NextRound Manrope, with a fixed 36px welcome heading, 22px panel headings, 14px base text, and 12-13px operational controls. Its welcome heading steps down to 30px at 1200px and 28px at 520px; drawers use a 30px heading that becomes 26px on phones.
 
 Headlines use tight tracking and balanced wrapping. Body copy is quieter, with generous line height and deliberately short measures. FAQ answers cap their measure at 65 characters. The largest hierarchy change is between the dominant headline and supporting copy; labels remain subordinate.
 
@@ -236,7 +236,7 @@ Responsive heading overrides are intentional: the main headline becomes 40px at 
 
 Account headings retain medium weight (500) with `clamp(32px, 3.1vw, 42px)`, tight tracking, and a 1.15 line height. Account story titles also retain medium weight (500). Labels remain compact, inputs use 15px text, and phone inputs increase to 16px.
 
-**The Local Type Rule.** Use self-hosted Campus Manrope throughout, with compact fixed typography in the workspace and larger display typography on public pages.
+**The Local Type Rule.** Use self-hosted NextRound Manrope throughout, with compact fixed typography in the workspace and larger display typography on public pages.
 
 ## Layout
 
@@ -276,7 +276,7 @@ The workspace uses 16px main panels, 12px supporting surfaces, 8px field corners
 
 The workspace's main Add application button is a local exception to the pill silhouette: 6px corners, 48px minimum height, 13px semibold text, and a trailing plus separated by a short divider. It uses the existing semantic action colors in both themes. Other primary actions retain their existing shape. The [button comparison](docs/designs/add-application-buttons.html) contains the implemented Solid ink treatment and two alternatives.
 
-Primary landing actions pair Campus Ink with On Ink, a pill shape, semibold text, and an inline arrow. The normal action has a 52px minimum height; compact header and mobile variants are defined in the stylesheet. The closing invitation uses the same black primary action on its light paper panel. Hover changes color; keyboard focus uses a visible two-pixel ink outline with an offset. The accent-button tokens describe an optional legacy variant still present in CSS; no current home-page action uses it.
+Primary landing actions pair NextRound Ink with On Ink, a pill shape, semibold text, and an inline arrow. The normal action has a 52px minimum height; compact header and mobile variants are defined in the stylesheet. The closing invitation uses the same black primary action on its light paper panel. Hover changes color; keyboard focus uses a visible two-pixel ink outline with an offset. The accent-button tokens describe an optional legacy variant still present in CSS; no current home-page action uses it.
 
 Text actions use a directional SVG icon, a generous inline gap, and an underline on hover. Their wording describes the destination. Account submit actions reuse the black pill with a trailing arrow, a 52px minimum height, and visible ink focus. Workspace actions use theme-aware charcoal/cream fills, 44px minimum targets, and the corresponding semantic focus ring. Add application uses a 48px minimum height. Disabled, busy, error, and retry states remain visible.
 
@@ -290,13 +290,13 @@ The white preview panel has rounded corners, a soft diffuse shadow, a divided he
 
 ### Inputs / Fields
 
-The public landing contains no data-entry fields. Account fields use white surfaces, Campus Ink, the account border role, and gently rounded 7px corners. They are 50px high with an ink focus outline. Password fields include a 44px show/hide control with an accessible state and name. Requirements stay associated with the signup password input; errors retain alert semantics and busy controls remain disabled.
+The public landing contains no data-entry fields. Account fields use white surfaces, NextRound Ink, the account border role, and gently rounded 7px corners. They are 50px high with an ink focus outline. Password fields include a 44px show/hide control with an accessible state and name. Requirements stay associated with the signup password input; errors retain alert semantics and busy controls remain disabled.
 
 Application editing uses the revised semantic palette, an 8px corner, and a 48px minimum field height. Labels, required states, errors, native date/select controls, and draft handling remain intact. The sidecar distinguishes fixed-light account fields from theme-aware workspace fields.
 
 ### Navigation
 
-The Campus wordmark is a home link. Public navigation uses compact text links with clear keyboard focus; the mobile menu is an expanded/collapsed control, closes on selection, and supports Escape. A skip link becomes visible on focus. Public destination changes use the existing hash-navigation model.
+The NextRound wordmark is a home link. Public navigation uses compact text links with clear keyboard focus; the mobile menu is an expanded/collapsed control, closes on selection, and supports Escape. A skip link becomes visible on focus. Public destination changes use the existing hash-navigation model.
 
 Account pages offer Back to home and Skip to form. The account heading receives focus when the destination title changes; the skip link targets that heading. The footer explicitly labels the existing theme selector **Workspace appearance** and retains its account-aware controller.
 

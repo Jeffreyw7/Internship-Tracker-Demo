@@ -172,7 +172,7 @@ test('signup submits the entered fields and sample choice before showing email v
 test('the account home link dismisses a verification token before returning to the landing page', async () => {
   await render();
   await navigate('#verify-email=' + 'b'.repeat(43));
-  await act(async () => container.querySelector('a[aria-label="Campus home"]').click());
+  await act(async () => container.querySelector('a[aria-label="NextRound home"]').click());
   assert.equal(verificationLinks.getSnapshot(), null);
   assert.ok(container.querySelector('.landing-page'));
   assert.equal(container.querySelector('.verification-shell'), null);

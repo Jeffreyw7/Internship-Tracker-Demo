@@ -1,9 +1,9 @@
-@font-face{font-family:Campus Manrope;src:url('/fonts/manrope-400.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
-@font-face{font-family:Campus Manrope;src:url('/fonts/manrope-500.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap}
-@font-face{font-family:Campus Manrope;src:url('/fonts/manrope-600.ttf') format('truetype');font-weight:600;font-style:normal;font-display:swap}
-@font-face{font-family:Campus Manrope;src:url('/fonts/manrope-800.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap}
+@font-face{font-family:NextRound Manrope;src:url('/fonts/manrope-400.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:NextRound Manrope;src:url('/fonts/manrope-500.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:NextRound Manrope;src:url('/fonts/manrope-600.ttf') format('truetype');font-weight:600;font-style:normal;font-display:swap}
+@font-face{font-family:NextRound Manrope;src:url('/fonts/manrope-800.ttf') format('truetype');font-weight:800;font-style:normal;font-display:swap}
 
-.landing-page{background:var(--landing-surface);color:var(--landing-ink);font-family:'Campus Manrope',sans-serif;font-size:15px;line-height:1.65;overflow:clip;color-scheme:light;scrollbar-color:var(--landing-muted) var(--landing-surface)}
+.landing-page{background:var(--landing-surface);color:var(--landing-ink);font-family:'NextRound Manrope',sans-serif;font-size:15px;line-height:1.65;overflow:clip;color-scheme:light;scrollbar-color:var(--landing-muted) var(--landing-surface)}
 .landing-page *::selection{background:var(--landing-accent);color:var(--landing-ink)}
 .landing-page h1,.landing-page h2,.landing-page h3,.landing-page button,.landing-page a{font-family:inherit}
 .landing-page h1,.landing-page h2,.landing-page h3{color:inherit;text-wrap:balance}

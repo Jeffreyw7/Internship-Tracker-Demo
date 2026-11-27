@@ -1,4 +1,4 @@
-# Campus Internship Tracker
+# NextRound
 
 <!-- impeccable:product-schema 1 -->
 
@@ -14,9 +14,9 @@ Verified against README.md, src/App.tsx, src/components/AuthGate.tsx, and the do
 Follow-up dates appear inside the workspace. They do not send reminder emails or create external calendar events. Sample entries are illustrative, not live vacancies. Registration availability depends on the deployment configuration. No pricing, customer counts, hiring outcomes, or third-party integrations are established.
 
 ## Brand commitments
-Keep the Campus name. The requested landing page retains the supplied Dribbble video's light space, prominent black typography, and restrained rounded controls. The user's follow-up asks for a more original hero: three tactile application folders now form an ascending paper staircase, replacing the silver orbit. The user explicitly requested a different format from the existing dashboard and previous GUI designs.
+Keep the NextRound name. The requested landing page retains the supplied Dribbble video's light space, prominent black typography, and restrained rounded controls. The user's follow-up asks for a more original hero: three tactile application folders now form an ascending paper staircase, replacing the silver orbit. The user explicitly requested a different format from the existing dashboard and previous GUI designs.
 
-The user subsequently extended the same paper-and-ink identity to authentication and the signed-in workspace. Preserve the workspace's operational density, data flows, semantic states, and account-backed light/dark/system appearance while sharing the Campus typography and visual language.
+The user subsequently extended the same paper-and-ink identity to authentication and the signed-in workspace. Preserve the workspace's operational density, data flows, semantic states, and account-backed light/dark/system appearance while sharing the NextRound typography and visual language.
 
 ## Evidence
 README.md, docs/API.md, docs/CODE_GUIDE.md, source files, and the video at https://cdn.dribbble.com/userupload/49472599/file/acf0c00a22c6170c724c3059d326f759.mp4.

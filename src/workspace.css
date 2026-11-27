@@ -1,8 +1,8 @@
-/* Campus's paper-and-ink identity, at the density of a working application. */
+/* NextRound's paper-and-ink identity, at the density of a working application. */
 .app-shell {
   background: var(--bg-page);
   color: var(--text-primary);
-  font: 14px/1.6 'Campus Manrope', sans-serif;
+  font: 14px/1.6 'NextRound Manrope', sans-serif;
   font-variant-numeric: tabular-nums;
   min-height: 100dvh;
 }

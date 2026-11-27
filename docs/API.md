@@ -1,4 +1,4 @@
-# Campus API
+# NextRound API
 
 All routes are under `/api`. The production JAR serves React and the API from the same origin. During development, Vite proxies these routes to Java. Cross-origin access is not enabled.
 

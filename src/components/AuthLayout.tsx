@@ -23,7 +23,7 @@ export default function AuthLayout({ title, description, children, verification,
       <a className="account-home" href="#top" onClick={onHome}><ArrowLeft size={16} aria-hidden="true"/>Back to home</a>
     </header>
     <main id="account-content" className="account-main landing-container">
-      <aside className="account-story" aria-label="Your Campus workspace">
+      <aside className="account-story" aria-label="Your NextRound workspace">
         <div className="account-story-copy">
           <p className="account-story-title">Every next step,<br/>a little clearer.</p>
           <p>Your applications, interviews, and follow-ups.<br/>A little space for your big ambitions.</p>

@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const jar = path.join(root, 'backend', 'target', 'campus-tracker-2.0.0.jar');
+const jar = path.join(root, 'backend', 'target', 'nextround-2.0.0.jar');
 assert.ok(fs.existsSync(jar), 'Build the with-ui JAR before running this test.');
 
 function javaExecutable() {
@@ -32,7 +32,7 @@ const smtp = net.createServer(socket => {
   smtpSockets.add(socket);
   socket.on('close', () => smtpSockets.delete(socket));
   socket.setEncoding('utf8');
-  socket.write('220 localhost Campus smoke capture\r\n');
+  socket.write('220 localhost NextRound smoke capture\r\n');
   let input = '', dataMode = false, message = '';
   socket.on('data', chunk => {
     input += chunk;
@@ -211,7 +211,7 @@ let server, vite;
 try {
   server = await start();
   const page = (await call('/')).toString('utf8');
-  assert.ok(page.includes('Campus') && page.includes('id="root"'));
+  assert.ok(page.includes('NextRound') && page.includes('id="root"'));
   for (const match of page.matchAll(/(?:src|href)="([^"]+\.(?:js|css))"/g)) assert.ok((await call(match[1])).length > 100);
   await call('/api/applications', { expected: 401 });
   const identity = { email: 'http-test@example.test', password: 'Temporary-test-123!' };

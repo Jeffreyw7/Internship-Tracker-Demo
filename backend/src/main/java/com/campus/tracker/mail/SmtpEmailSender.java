@@ -28,7 +28,7 @@ public class SmtpEmailSender implements EmailSender {
             };
             MimeMessageHelper helper = new MimeMessageHelper(message, "UTF-8");
             helper.setFrom(properties.sender()); helper.setTo(recipient);
-            helper.setSubject("Verify your Campus Internship Tracker email");
+            helper.setSubject("Verify your NextRound email");
             helper.setText("Confirm your email address using the password you chose at signup:\n\n"
                     + properties.publicOrigin() + "/#verify-email=" + token
                     + "\n\nIf you did not create this account, ignore this message.\n", false);

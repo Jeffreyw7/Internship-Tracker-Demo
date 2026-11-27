@@ -1,7 +1,7 @@
 # Local defaults: file-backed H2, schema validation, session cookies, and optional registration.
 spring:
   application:
-    name: campus-tracker
+    name: nextround
   # Local capture SMTP only; run a capture server on loopback before registering.
   mail:
     host: ${SMTP_HOST:127.0.0.1}

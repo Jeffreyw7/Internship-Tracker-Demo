@@ -1,10 +1,10 @@
-# Campus authentication
+# NextRound authentication
 
 Mode: Operate. Scope: sign-in, account creation, check-email, and verification continuation. These screens extend the established landing identity; the authenticated workspace keeps its semantic light/dark/system theme.
 
 ## Composition
 
-The shared Campus header, paper background, ink typography, self-hosted Manrope, and black pill action connect account entry to the landing. A quiet story panel reuses the original folder staircase beside a focused form. The form heading, labelled fields, primary action, account switch, and verification help establish the task order. Yellow is a small heading marker and status accent.
+The shared NextRound header, paper background, ink typography, self-hosted Manrope, and black pill action connect account entry to the landing. A quiet story panel reuses the original folder staircase beside a focused form. The form heading, labelled fields, primary action, account switch, and verification help establish the task order. Yellow is a small heading marker and status accent.
 
 Desktop uses two columns in the existing public container, with a form capped at 410px. At widths of 900px and below, the decorative story panel is hidden and the form centers at up to 430px. At 600px and below, the form cap is 410px, input text is 16px, and the footer stacks. The decorative artwork carries no required form instructions.
 

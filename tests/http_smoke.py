@@ -34,7 +34,7 @@ assert JAVA.is_file(), f'Java runtime executable is missing: {JAVA}'
 
 # Locate the bundled application and choose an unused loopback port for this test.
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-JAR = ROOT / 'backend/target/campus-tracker-2.0.0.jar'
+JAR = ROOT / 'backend/target/nextround-2.0.0.jar'
 assert JAR.exists(), 'Build the with-ui JAR before running this test.'
 with socket.socket() as sock:
     sock.bind(('127.0.0.1', 0))
@@ -45,7 +45,7 @@ base = f'http://127.0.0.1:{port}'
 # Capture verification messages through a minimal loopback SMTP server.
 class SmtpHandler(socketserver.StreamRequestHandler):
     def handle(self):
-        self.wfile.write(b'220 localhost Campus smoke capture\r\n')
+        self.wfile.write(b'220 localhost NextRound smoke capture\r\n')
         data_mode = False
         message = bytearray()
         while True:
@@ -178,7 +178,7 @@ with tempfile.TemporaryDirectory(prefix='campus-http-test-') as temp:
         try:
 # Verify the packaged UI and its assets before exercising the authenticated API.
             page = call('/').decode()
-            assert 'Campus' in page and 'id="root"' in page
+            assert 'NextRound' in page and 'id="root"' in page
             for path in re.findall(r'(?:src|href)="([^"]+\.(?:js|css))"', page):
                 assert len(call(path)) > 100
             call('/api/applications', expected=401)

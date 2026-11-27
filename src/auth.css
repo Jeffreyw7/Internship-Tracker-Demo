@@ -1,4 +1,4 @@
-/* Public account pages inherit Campus's paper, ink, typography, and motion. */
+/* Public account pages inherit NextRound's paper, ink, typography, and motion. */
 .account-page {
   min-height: 100dvh;
   display: flex;
@@ -6,7 +6,7 @@
   background: var(--landing-surface);
   color: var(--landing-ink);
   color-scheme: light;
-  font: 14px/1.65 'Campus Manrope', sans-serif;
+  font: 14px/1.65 'NextRound Manrope', sans-serif;
   scrollbar-color: var(--landing-muted) var(--landing-surface);
 }
 .account-page *::selection { background: var(--landing-accent); color: var(--landing-ink); }

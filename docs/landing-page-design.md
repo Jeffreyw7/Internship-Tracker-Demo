@@ -1,4 +1,4 @@
-# Campus landing page
+# NextRound landing page
 
 Mode: Persuade. Scope: the public entry surface and navigation into existing authentication. The subsequent [workspace refinement](workspace-design.md) extends this identity to signed-in tracking while preserving its behavior.
 
@@ -7,7 +7,7 @@ User-supplied reference: monochrome editorial page with oversized sans-serif typ
 
 The latest user request extends the supplied account-page preview's paper panels, stronger type, black pill controls, and restrained yellow accents to the home page. Preserve the existing content, folder artwork, public routes, and the path into signup.
 
-First viewport: compact Campus wordmark and navigation above a softly rounded gray paper panel. The left column groups the bold "Big ambitions. Clear next steps." heading, explanatory copy, registration action, preview link, and privacy note. The original diagonal staircase of application folders fills the right column. The hero uses normal grid flow rather than absolute copy positioning; below 800px it stacks copy and artwork. A thin baseline introduces applications, interviews, and follow-ups.
+First viewport: compact NextRound wordmark and navigation above a softly rounded gray paper panel. The left column groups the bold "Big ambitions. Clear next steps." heading, explanatory copy, registration action, preview link, and privacy note. The original diagonal staircase of application folders fills the right column. The hero uses normal grid flow rather than absolute copy positioning; below 800px it stacks copy and artwork. A thin baseline introduces applications, interviews, and follow-ups.
 
 Following sections: an interactive, explicitly illustrative workspace preview; a three-step setup sequence on an inset paper surface; native expandable FAQs; a matching light closing invitation with a black registration action. No invented metrics or testimonials. Mobile retains the same reading order and lets actions wrap.
 

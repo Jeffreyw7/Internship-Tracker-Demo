@@ -322,7 +322,7 @@ Local Docker remains absent; the failed local PostgreSQL attempt above is separa
 
 ### Hosted verification
 
-[GitHub Actions run 39469068417](https://github.com/Jeffreyw7/Internship-Tracker-Demo/actions/runs/39469068417) **succeeded** for CI source commit [`6e47873f0812b634cd0c6c446b3d91bc300ee705`](https://github.com/Jeffreyw7/Internship-Tracker-Demo/commit/6e47873f0812b634cd0c6c446b3d91bc300ee705) in [draft PR #1](https://github.com/Jeffreyw7/Internship-Tracker-Demo/pull/1), targeting `CSV-import`. It ran on Ubuntu 24.04 with Node 22 and actual Temurin **17.0.20.1**.
+[GitHub Actions run 39469068417](https://github.com/Jeffreyw7/NextRound/actions/runs/39469068417) **succeeded** for CI source commit [`6e47873f0812b634cd0c6c446b3d91bc300ee705`](https://github.com/Jeffreyw7/NextRound/commit/6e47873f0812b634cd0c6c446b3d91bc300ee705) in [draft PR #1](https://github.com/Jeffreyw7/NextRound/pull/1), targeting `CSV-import`. It ran on Ubuntu 24.04 with Node 22 and actual Temurin **17.0.20.1**.
 
 | Hosted check | Actual result |
 | --- | --- |
@@ -339,7 +339,7 @@ The PostgreSQL scenarios exercised provisioning, legacy upgrade, runtime grants 
 
 A separate, existing Git Credential Manager credential supplied workflow publication permission; the GitHub CLI credential alone lacked that permission. The isolated CI publication used a temporary index, preserving the current branch/index and the pre-existing uncommitted regression test/plan. No image was published and no repository setting was changed. The hosted evidence above applies to the linked source commit; later documentation or formatting updates have their own run.
 
-Final published revision `e4c23169fac13474d0ff84c93e7afe0ce3b1b44e` was independently rerun after the documentation/formatting update: [run 39470045165](https://github.com/Jeffreyw7/Internship-Tracker-Demo/actions/runs/39470045165) passed all three jobs. Application verification took 4m45s, container builds 3m23s, and CI required 6s. The final logs again confirm 136 backend tests plus all 3 PostgreSQL tests without skips, bundled smoke success and exact-success required results. The preceding hosted run remains valid evidence for the original CI snapshot; the latest run confirms the final PR head. Existing Spring Security AntPathRequestMatcher deprecation warnings remain non-failing and outside this CI change.
+Final published revision `e4c23169fac13474d0ff84c93e7afe0ce3b1b44e` was independently rerun after the documentation/formatting update: [run 39470045165](https://github.com/Jeffreyw7/NextRound/actions/runs/39470045165) passed all three jobs. Application verification took 4m45s, container builds 3m23s, and CI required 6s. The final logs again confirm 136 backend tests plus all 3 PostgreSQL tests without skips, bundled smoke success and exact-success required results. The preceding hosted run remains valid evidence for the original CI snapshot; the latest run confirms the final PR head. Existing Spring Security AntPathRequestMatcher deprecation warnings remain non-failing and outside this CI change.
 
 ### Publication follow-up
 

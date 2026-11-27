@@ -8,7 +8,7 @@ $appAddress = if ($env:SERVER_ADDRESS -and $env:SERVER_ADDRESS -ne '0.0.0.0') {
 } else { '127.0.0.1' }
 if ($appAddress.Contains(':')) { $appAddress = "[$appAddress]" }
 $appUrl = "http://${appAddress}:$appPort"
-# Check whether this port already hosts a healthy Campus instance before launching another.
+# Check whether this port already hosts a healthy NextRound instance before launching another.
 $health = $null
 try {
     $health = Invoke-RestMethod "$appUrl/api/health" -TimeoutSec 3
@@ -16,7 +16,7 @@ try {
     # No healthy instance detected; let Spring Boot report startup errors.
 }
 if ($health.application -eq 'campus-tracker' -and $health.status -eq 'UP') {
-    Write-Host "Campus Tracker is already running at $appUrl"
+    Write-Host "NextRound is already running at $appUrl"
     Write-Host 'To restart, press Ctrl+C in its original terminal first.'
     exit 0
 }
@@ -37,6 +37,6 @@ try {
 # Surface startup failures and explain how to handle the common database-lock case.
 if ($launchExitCode -ne 0) {
     Write-Host 'Startup failed. Look above Maven''s exit-code summary for the underlying error.'
-    Write-Host 'If campus.mv.db is locked, stop the existing Campus Tracker instance with Ctrl+C. Keep the database files.'
+    Write-Host 'If campus.mv.db is locked, stop the existing NextRound instance with Ctrl+C. Keep the database files.'
 }
 exit $launchExitCode
